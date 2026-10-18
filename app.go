@@ -113,6 +113,12 @@ func (a *App) SavePreferences(p Preferences) error {
 	if p.Theme != "light" && p.Theme != "dark" && p.Theme != "system" {
 		return errors.New("无效的主题")
 	}
+	if p.HostLayout == "" {
+		p.HostLayout = "grid"
+	}
+	if p.HostLayout != "grid" && p.HostLayout != "list" {
+		return errors.New("无效的主机视图")
+	}
 	if p.FontSize < 11 || p.FontSize > 22 {
 		return errors.New("终端字号范围为 11–22")
 	}

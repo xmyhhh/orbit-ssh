@@ -123,6 +123,7 @@ export const defaults: Workspace = {
   snippetCatalogVersion,
   preferences: {
     theme: "light",
+    hostLayout: "grid",
     fontSize: 14,
     lineHeight: 1.35,
     confirmClose: true,

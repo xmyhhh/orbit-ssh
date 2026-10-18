@@ -21,6 +21,7 @@ export interface Snippet {
 }
 export interface Preferences {
   theme: Theme;
+  hostLayout: "grid" | "list";
   fontSize: number;
   lineHeight: number;
   confirmClose: boolean;

@@ -34,6 +34,7 @@ type Snippet struct {
 
 type Preferences struct {
 	Theme        string  `json:"theme"`
+	HostLayout   string  `json:"hostLayout"`
 	FontSize     int     `json:"fontSize"`
 	LineHeight   float64 `json:"lineHeight"`
 	ConfirmClose bool    `json:"confirmClose"`
@@ -56,7 +57,7 @@ type Store struct {
 func defaultState() State {
 	return State{Hosts: []Host{}, Snippets: append([]Snippet{}, builtinSnippets.Snippets...),
 		SnippetCatalogVersion: builtinSnippets.Version,
-		Preferences:           Preferences{Theme: "light", FontSize: 14, LineHeight: 1.35, ConfirmClose: true}, KnownHosts: map[string]string{}}
+		Preferences:           Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true}, KnownHosts: map[string]string{}}
 }
 
 func openStore(path string) (*Store, error) {
@@ -83,6 +84,9 @@ func openStore(path string) (*Store, error) {
 	}
 	if s.state.KnownHosts == nil {
 		s.state.KnownHosts = map[string]string{}
+	}
+	if s.state.Preferences.HostLayout != "grid" && s.state.Preferences.HostLayout != "list" {
+		s.state.Preferences.HostLayout = "grid"
 	}
 	if upgradeSnippetCatalog(&s.state) {
 		if err = s.persistLocked(); err != nil {

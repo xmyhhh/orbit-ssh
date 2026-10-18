@@ -111,7 +111,7 @@ export default function App() {
   const [groupsOpen, setGroupsOpen] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<HostFilter>("all");
-  const [layout, setLayout] = useState<"grid" | "list">("list");
+  const layout = workspace.preferences.hostLayout === "list" ? "list" : "grid";
   const [platform, setPlatform] = useState("");
   const [wslOpen, setWSLOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -345,6 +345,12 @@ export default function App() {
       void savePreferences({ ...preferences, fontSize }).catch((e) =>
         notify(errorText(e)),
       );
+  }
+  function setHostLayout(hostLayout: Preferences["hostLayout"]) {
+    if (hostLayout === layout) return;
+    void savePreferences({ ...stateRef.current.preferences, hostLayout }).catch(
+      (e) => notify(`视图保存失败：${errorText(e)}`),
+    );
   }
   async function saveSnippets(snippets: Snippet[]) {
     if (isDesktop()) await backend().SaveSnippets(snippets);
@@ -825,7 +831,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.4.1</span>
+          <span>v0.4.2</span>
         </div>
       </aside>
 
@@ -1127,6 +1133,7 @@ export default function App() {
                           <div className="host-controls">
                             <div
                               className="layout-switch"
+                              role="group"
                               aria-label="主机布局"
                             >
                               <button
@@ -1134,18 +1141,18 @@ export default function App() {
                                 aria-label="卡片视图"
                                 aria-pressed={layout === "grid"}
                                 title="卡片视图"
-                                onClick={() => setLayout("grid")}
+                                onClick={() => setHostLayout("grid")}
                               >
-                                <Grid2X2 size={15} />
+                                <Grid2X2 size={15} aria-hidden="true" />
                               </button>
                               <button
                                 className={layout === "list" ? "selected" : ""}
-                                aria-label="列表视图"
+                                aria-label="紧凑列表视图"
                                 aria-pressed={layout === "list"}
-                                title="列表视图"
-                                onClick={() => setLayout("list")}
+                                title="紧凑列表视图"
+                                onClick={() => setHostLayout("list")}
                               >
-                                <LayoutList size={16} />
+                                <LayoutList size={16} aria-hidden="true" />
                               </button>
                             </div>
                             <label className="host-search">
