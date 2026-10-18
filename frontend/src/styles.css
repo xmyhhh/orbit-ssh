@@ -371,56 +371,6 @@ textarea {
   top: 5px;
   color: var(--muted);
 }
-.workspace-id {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 7px;
-  margin-bottom: 26px;
-}
-.workspace-id > div:nth-child(2) {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.workspace-id strong {
-  font-size: 12px;
-  font-weight: 550;
-}
-.workspace-id > div:nth-child(2) > span {
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.2px;
-}
-.workspace-id > svg {
-  color: var(--faint);
-}
-.avatar {
-  position: relative;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 650;
-  color: var(--accent);
-  border-radius: 9px;
-  background: var(--accent-soft);
-  border: 1px solid var(--green-line);
-}
-.avatar > span {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 8px;
-  height: 8px;
-  border: 2px solid var(--sidebar);
-  border-radius: 50%;
-  background: var(--accent-bright);
-}
 .sidebar-search {
   height: 35px;
   display: flex;
@@ -651,23 +601,10 @@ textarea {
   color: var(--text);
   font-weight: 500;
 }
-.breadcrumb > svg {
-  opacity: 0.65;
-}
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.profile-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--warm);
-  color: var(--accent-text);
-  font-size: 11px;
-  border: 3px solid var(--surface);
-  box-shadow: 0 0 0 1px var(--line);
 }
 .tabbar {
   height: 42px;

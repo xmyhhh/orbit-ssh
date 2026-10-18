@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
-  ChevronRight,
   CircleHelp,
   Clipboard,
   Code2,
@@ -658,17 +657,6 @@ export default function App() {
             orbit<span className="brand-ssh">SSH</span>
           </span>
         </button>
-        <div className="workspace-id">
-          <div className="avatar">
-            ME
-            <span />
-          </div>
-          <div>
-            <strong>我的个人空间</strong>
-            <span>本地配置</span>
-          </div>
-          <ShieldCheck size={16} />
-        </div>
         <button className="sidebar-search" onClick={() => setPaletteOpen(true)}>
           <Search size={16} />
           <span>搜索或快速切换</span>
@@ -769,7 +757,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.8</span>
+          <span>v0.3.9</span>
         </div>
       </aside>
 
@@ -783,8 +771,6 @@ export default function App() {
             >
               <Menu size={19} />
             </button>
-            <span>个人空间</span>
-            <ChevronRight size={13} />
             <strong>{activeSession ? "终端会话" : pageNames[page]}</strong>
           </div>
           <div className="topbar-actions">
@@ -800,13 +786,6 @@ export default function App() {
               }
             >
               {dark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button
-              className="profile-button"
-              onClick={() => setPreferencesOpen(true)}
-              aria-label="个人空间偏好设置"
-            >
-              M
             </button>
           </div>
         </header>

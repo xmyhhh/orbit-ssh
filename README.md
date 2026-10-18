@@ -1,10 +1,10 @@
 # Orbit SSH
 
-个人 SSH 桌面工具。Wails v2 + Go + React + TypeScript + xterm.js，使用系统 WebView。默认浅色，可切换深色或跟随系统。
+个人 SSH 桌面工具。无需账号，不做云同步或联网激活，配置和凭据保存在本机；SSH / SFTP 连接你添加的服务器。Wails v2 + Go + React + TypeScript + xterm.js，使用系统 WebView。默认浅色，可切换深色或跟随系统。
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.3.8.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.9.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
 - 双击主机卡片快速连接，网格和列表视图均支持；已连接的主机双击会新开一个独立终端。已保存的凭据自动使用，未保存时提示输入。
@@ -56,7 +56,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.8.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.9.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。
