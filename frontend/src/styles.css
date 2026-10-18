@@ -1035,6 +1035,7 @@ textarea {
 }
 .host-card {
   background: var(--surface);
+  cursor: pointer;
   border: 1px solid var(--line);
   padding: 18px;
   border-radius: 8px;

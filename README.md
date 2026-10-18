@@ -4,9 +4,10 @@
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.3.6.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.7.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
+- 双击主机卡片快速连接，网格和列表视图均支持；已连接的主机双击会新开一个独立终端。已保存的凭据自动使用，未保存时提示输入。
 - 用户名和私钥文件路径自动保存。密码登录勾选“记住密码”后，连接成功时加密保存，下次连接免输入；加密私钥也可记住私钥口令。密码与口令使用 Windows 凭据管理器 / macOS Keychain / Linux Secret Service 保存在本机。
 - 首次连接核对 SHA-256 服务器指纹，之后自动验证；指纹变化时拒绝连接。
 - 终端支持多标签、搜索、命令片段、多行粘贴确认。浅色终端使用灰绿色背景，支持 Ctrl +/−、Ctrl 0、Ctrl + 滚轮缩放，偏好设置可调字号和行距。
@@ -54,7 +55,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.6.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.7.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。

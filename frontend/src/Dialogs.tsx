@@ -87,7 +87,8 @@ export function Modal({
     <div
       className="modal-scrim"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        // A second press can land here after the first click opens the dialog.
+        if (e.target === e.currentTarget && e.detail < 2) onClose();
       }}
     >
       <div
@@ -897,7 +898,7 @@ export function PreferencesDialog({
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.3.6</span>
+        <span className="version-label">Orbit SSH · v0.3.7</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>

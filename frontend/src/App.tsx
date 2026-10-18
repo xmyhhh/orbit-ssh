@@ -673,7 +673,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.6</span>
+          <span>v0.3.7</span>
         </div>
       </aside>
 
@@ -1651,13 +1651,24 @@ function HostCard({
     };
   }, []);
   return (
-    <article className="host-card">
+    <article
+      className="host-card"
+      title={online ? "双击新建终端" : "双击连接"}
+      onDoubleClick={(e) => {
+        if (
+          e.target instanceof Element &&
+          e.target.closest("button, .card-menu-wrap")
+        )
+          return;
+        onConnect();
+      }}
+    >
       <div className="host-card-top">
         <span className={`host-icon ${host.color}`}>
           <Server size={22} strokeWidth={1.6} />
         </span>
         <div className="host-card-title">
-          <button onClick={onConnect}>
+          <button onClick={(e) => e.detail < 2 && onConnect()}>
             <h3>{host.name}</h3>
           </button>
           <span>{host.group}</span>
@@ -1718,7 +1729,7 @@ function HostCard({
               ? "密钥认证"
               : "密码认证"}
         </span>
-        <button onClick={onConnect}>
+        <button onClick={(e) => e.detail < 2 && onConnect()}>
           {online ? "新建终端" : "连接"}
           <ArrowUpRight size={14} />
         </button>
