@@ -9,7 +9,6 @@ import {
   CircleHelp,
   Clipboard,
   Code2,
-  Copy,
   Ellipsis,
   FolderClosed,
   FolderOpen,
@@ -31,7 +30,6 @@ import {
   TerminalSquare,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import type {
   Host,
@@ -756,7 +754,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.10</span>
+          <span>v0.3.11</span>
         </div>
       </aside>
 
@@ -1026,9 +1024,7 @@ export default function App() {
                       </div>
                     </section>
                   ) : (
-                    <div
-                      className={`workspace-columns ${page === "hosts" ? "hosts-only" : ""}`}
-                    >
+                    <div className="workspace-columns">
                       <div className="hosts-section">
                         <div className="section-heading">
                           <div>
@@ -1171,77 +1167,6 @@ export default function App() {
                           </div>
                         )}
                       </div>
-                      {page === "workspace" && (
-                        <aside className="dashboard-rail">
-                          <div className="section-heading">
-                            <div>
-                              <Zap size={16} />
-                              <h2>常用命令</h2>
-                            </div>
-                            <button
-                              className="icon-button"
-                              aria-label="添加命令片段"
-                              title="添加命令片段"
-                              onClick={() => setSnippetEditor({})}
-                            >
-                              <Plus size={16} />
-                            </button>
-                          </div>
-                          <div className="quick-snippets">
-                            {workspace.snippets.slice(0, 3).map((s) => (
-                              <button
-                                key={s.id}
-                                onClick={() => insertSnippet(s)}
-                                title={`${s.command} · ${sessions.some((t) => t.status === "connected") ? "插入终端" : "复制命令"}`}
-                              >
-                                <span className="quick-snippet-icon">
-                                  <Code2 size={15} />
-                                </span>
-                                <span>
-                                  <strong>{s.name}</strong>
-                                  <code>{s.command}</code>
-                                </span>
-                                <Copy size={13} />
-                              </button>
-                            ))}
-                            {!workspace.snippets.length && (
-                              <button onClick={() => setSnippetEditor({})}>
-                                <Plus size={16} />
-                                <span>添加片段</span>
-                              </button>
-                            )}
-                          </div>
-                          <button
-                            className="view-snippets"
-                            onClick={() => navigate("snippets")}
-                          >
-                            管理全部片段
-                            <ArrowRight size={13} />
-                          </button>
-                          <div className="shortcut-card">
-                            <h3>快捷键</h3>
-                            <div>
-                              <span>搜索与切换</span>
-                              <kbd>Ctrl K</kbd>
-                            </div>
-                            <div>
-                              <span>新建连接</span>
-                              <kbd>Ctrl T</kbd>
-                            </div>
-                            <div>
-                              <span>终端内搜索</span>
-                              <kbd>Ctrl ⇧ F</kbd>
-                            </div>
-                            <button
-                              className="text-button"
-                              onClick={() => setHelpOpen(true)}
-                            >
-                              全部快捷键
-                              <ArrowUpRight size={12} />
-                            </button>
-                          </div>
-                        </aside>
-                      )}
                     </div>
                   )}
                   {!isDesktop() && (
