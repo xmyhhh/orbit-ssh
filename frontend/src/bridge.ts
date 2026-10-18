@@ -3,6 +3,7 @@ import type {
   Directory,
   LocalDirectory,
   FilePreview,
+  RemoteTextFile,
   Transfer,
   TransferRequest,
   Host,
@@ -49,6 +50,17 @@ interface Backend {
     side: string,
     filename: string,
   ): Promise<FilePreview>;
+  ReadRemoteTextFile(
+    sessionId: string,
+    filename: string,
+  ): Promise<RemoteTextFile>;
+  SaveRemoteTextFile(
+    sessionId: string,
+    filename: string,
+    text: string,
+    revision: string,
+  ): Promise<RemoteTextFile>;
+  SetEditorDirty(id: string, dirty: boolean): Promise<void>;
   UploadFile(id: string, dir: string): Promise<boolean>;
   DownloadFile(id: string, path: string): Promise<boolean>;
   MakeDirectory(id: string, dir: string, name: string): Promise<void>;

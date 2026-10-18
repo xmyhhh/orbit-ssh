@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -52,5 +53,35 @@ func TestCloseConfirmation(t *testing.T) {
 	a.store.mu.Unlock()
 	if a.beforeClose(context.Background()) {
 		t.Fatal("disabled confirmation still blocks exit")
+	}
+}
+
+func TestDirtyEditorCloseConfirmation(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	a.store.state.Preferences.ConfirmClose = false
+	original := showMessageDialog
+	t.Cleanup(func() { showMessageDialog = original })
+	a.SetEditorDirty("draft", true)
+	for _, discard := range []bool{false, true} {
+		showMessageDialog = func(_ context.Context, options runtime.MessageDialogOptions) (string, error) {
+			if !strings.Contains(options.Message, "未保存") {
+				t.Fatal("missing unsaved-file warning")
+			}
+			if discard {
+				return options.Buttons[0], nil
+			}
+			return options.CancelButton, nil
+		}
+		if block := a.beforeClose(context.Background()); block == discard {
+			t.Fatal("incorrect unsaved-file close result")
+		}
+	}
+	a.SetEditorDirty("draft", false)
+	showMessageDialog = func(context.Context, runtime.MessageDialogOptions) (string, error) {
+		t.Fatal("unexpected dialog after clearing draft")
+		return "", nil
+	}
+	if a.beforeClose(context.Background()) {
+		t.Fatal("clean editor blocked close")
 	}
 }

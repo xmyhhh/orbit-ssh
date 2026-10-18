@@ -27,12 +27,14 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  className = "",
 }: {
   title: string;
   eyebrow?: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -47,6 +49,12 @@ export function Modal({
     );
     function key(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        // Let CodeMirror dismiss its search panel or completion popup first.
+        if (
+          (event.target as Element).closest?.(".cm-editor") &&
+          ref.current?.querySelector(".cm-panel, .cm-tooltip")
+        )
+          return;
         event.preventDefault();
         event.stopPropagation();
         close.current();
@@ -83,7 +91,7 @@ export function Modal({
     >
       <div
         ref={ref}
-        className={`modal ${wide ? "wide" : ""}`}
+        className={`modal ${wide ? "wide" : ""} ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-heading"
@@ -872,7 +880,7 @@ export function PreferencesDialog({
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.3.4</span>
+        <span className="version-label">Orbit SSH · v0.3.5</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>

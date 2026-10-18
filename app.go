@@ -21,6 +21,8 @@ type App struct {
 	transferMu   sync.Mutex
 	transfers    []*transferJob
 	transferRuns map[string]bool
+	fileEditMu   sync.Mutex
+	dirtyEditors map[string]bool
 }
 
 func NewApp() *App {
@@ -142,17 +144,32 @@ func (a *App) DataDirectory() (string, error) {
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {
-	if a.store == nil {
-		return false
-	}
 	a.mu.Lock()
 	count := len(a.sessions) + len(a.pending)
+	dirty := len(a.dirtyEditors) > 0
 	a.mu.Unlock()
-	if count == 0 || !a.store.snapshot().Preferences.ConfirmClose {
+	if dirty {
+		confirmed, err := confirmAction(ctx, "仍有未保存的文件", "退出将丢失未保存的修改，并断开所有连接。", "放弃修改并退出")
+		return err != nil || !confirmed
+	}
+	if a.store == nil || count == 0 || !a.store.snapshot().Preferences.ConfirmClose {
 		return false
 	}
 	confirmed, err := confirmAction(ctx, "关闭 Orbit SSH？", "仍有 SSH 会话，关闭窗口将断开所有连接。", "断开并退出")
 	return err != nil || !confirmed
+}
+
+func (a *App) SetEditorDirty(id string, dirty bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.dirtyEditors == nil {
+		a.dirtyEditors = map[string]bool{}
+	}
+	if dirty {
+		a.dirtyEditors[id] = true
+	} else {
+		delete(a.dirtyEditors, id)
+	}
 }
 
 func (a *App) shutdown(_ context.Context) {

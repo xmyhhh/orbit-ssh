@@ -95,6 +95,13 @@ export interface FilePreview {
   text: string;
   truncated: boolean;
 }
+export interface RemoteTextFile {
+  path: string;
+  text: string;
+  revision: string;
+  lineEnding: "LF" | "CRLF" | "mixed";
+  bom: boolean;
+}
 export interface TransferRequest {
   sessionId: string;
   direction: "upload" | "download";

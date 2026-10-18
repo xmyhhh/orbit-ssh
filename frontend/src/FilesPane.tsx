@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import {
   ArrowDownToLine,
@@ -31,12 +31,13 @@ import { backend, errorText, listen } from "./bridge";
 import { Modal } from "./Dialogs";
 import type {
   Directory,
-  FilePreview,
   LocalDirectory,
   RemoteFile,
   Session,
   Transfer,
 } from "./types";
+
+const TextFileDialog = lazy(() => import("./TextFileDialog"));
 
 type Side = "local" | "remote";
 let lastLocalPath = "";
@@ -565,7 +566,7 @@ function FileBrowser({
                 <td>
                   <button
                     className={`browser-file-name ${f.isDir ? "folder" : ""}`}
-                    title={`${f.name}${f.isSymlink ? " · 符号链接" : ""}\n${f.mode}\n${f.isDir ? "双击或按 Enter 打开文件夹" : "双击或按 Enter 预览文本"}`}
+                    title={`${f.name}${f.isSymlink ? " · 符号链接" : ""}\n${f.mode}\n${f.isDir ? "双击或按 Enter 打开文件夹" : "双击或按 Enter 打开文本"}`}
                     disabled={disabled}
                     onClick={(e) => {
                       if (e.detail === 0) {
@@ -674,11 +675,8 @@ export default function FilesPane({
   const [preview, setPreview] = useState<{
     name: string;
     side: Side;
-    loading: boolean;
-    value?: FilePreview;
-    error?: string;
+    path: string;
   } | null>(null);
-  const previewToken = useRef(0);
   const alive = useRef(true);
   const sequence = useRef(0);
   async function refreshJobs() {
@@ -720,7 +718,6 @@ export default function FilesPane({
     return () => {
       alive.current = false;
       sequence.current++;
-      previewToken.current++;
       off();
       clearInterval(timer);
     };
@@ -753,29 +750,8 @@ export default function FilesPane({
       if (alive.current) setEnqueueing(false);
     }
   }
-  async function openPreview(side: Side, file: RemoteFile, filename: string) {
-    const current = ++previewToken.current;
-    setPreview({ name: file.name, side, loading: true });
-    try {
-      const value = session.demo
-        ? {
-            text: file.name.endsWith(".json")
-              ? '{\n  "name": "Orbit SSH",\n  "mode": "preview"\n}\n'
-              : "# Orbit SSH\n\n这是文件预览示例。\n连接服务器后可以查看真实文件。\n",
-            truncated: false,
-          }
-        : await backend().ReadFilePreview(session.id, side, filename);
-      if (alive.current && current === previewToken.current)
-        setPreview({ name: file.name, side, loading: false, value });
-    } catch (e) {
-      if (alive.current && current === previewToken.current)
-        setPreview({
-          name: file.name,
-          side,
-          loading: false,
-          error: errorText(e),
-        });
-    }
+  function openPreview(side: Side, file: RemoteFile, filename: string) {
+    setPreview({ name: file.name, side, path: filename });
   }
   const active = transfers.filter((t) => !finished(t)).length;
   const canTransfer =
@@ -994,37 +970,23 @@ export default function FilesPane({
         <span>双击打开 · Ctrl / Shift 多选</span>
       </div>
       {preview && (
-        <Modal
-          title={preview.name}
-          eyebrow={`${preview.side === "local" ? "本地" : "远程"} · 只读文本预览`}
-          wide
-          onClose={() => {
-            previewToken.current++;
-            setPreview(null);
-          }}
-        >
-          <div className="file-preview-body">
-            {preview.loading ? (
+        <Suspense
+          fallback={
+            <Modal title={preview.name} onClose={() => setPreview(null)}>
               <div className="browser-empty">
                 <LoaderCircle className="spin" size={22} />
-                正在读取…
+                正在打开…
               </div>
-            ) : preview.error ? (
-              <p role="alert" className="form-error">
-                {preview.error}
-              </p>
-            ) : (
-              <>
-                <pre tabIndex={0}>{preview.value?.text || "（空文件）"}</pre>
-                {preview.value?.truncated && (
-                  <p className="file-preview-note">
-                    仅显示前 256 KB，下载后可查看完整内容。
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </Modal>
+            </Modal>
+          }
+        >
+          <TextFileDialog
+            session={session}
+            {...preview}
+            onClose={() => setPreview(null)}
+            onSaved={() => void remote.load(remote.latest.current.path)}
+          />
+        </Suspense>
       )}
     </section>
   );
