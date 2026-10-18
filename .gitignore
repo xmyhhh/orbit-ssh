@@ -1,0 +1,17 @@
+node_modules/
+frontend/dist/
+frontend/wailsjs/
+build/bin/
+*.log
+.DS_Store
+test-results/
+playwright-report/
+.playwright-cli/
+*.tsbuildinfo
+frontend/package.json.md5
+output/
+.env
+.env.*
+!.env.example
+*.pem
+*.key

@@ -1,0 +1,56 @@
+# Orbit SSH
+
+个人 SSH 桌面工具。Wails v2 + Go + React + TypeScript + xterm.js，使用系统 WebView。默认浅色，可切换深色或跟随系统。
+
+## 使用
+
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.0.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+
+- 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
+- 私钥文件路径自动保存。加密私钥首次连接输入口令，勾选“记住私钥口令”后，下次自动连接；口令存入 Windows 凭据管理器 / macOS Keychain / Linux Secret Service。密码认证的密码仅用于当前连接。
+- 首次连接核对 SHA-256 服务器指纹，之后自动验证；指纹变化时拒绝连接。
+- 终端支持多标签、搜索、命令片段、多行粘贴确认。浅色终端使用灰绿色背景，支持 Ctrl +/−、Ctrl 0、Ctrl + 滚轮缩放，偏好设置可调字号和行距。
+- “文件”打开双栏文件管理器：左侧本地，右侧远程。支持路径跳转、隐藏文件、筛选、多选、新建文件夹，以及 UTF-8 文本只读预览。
+- 左侧选中项目后点击“上传”，发送到右侧当前目录；右侧选中项目后点击“下载”，保存到左侧当前目录。支持多文件与递归文件夹传输，同名文件默认跳过，可切换为替换。
+- 传输队列显示进度、速度和失败原因，支持取消。切回终端或切换标签不影响后台传输；关闭连接或退出应用会中断传输。队列记录保留在本次运行中。
+- “监控”打开 CPU、内存、交换空间、磁盘和进程列表。可展开面板、暂停、手动刷新，或选择 3 / 5 / 10 秒间隔；窗口隐藏时暂停采样。
+
+监控目前支持 Linux 服务器，需要 `/proc`、`df` 和 procps 的 `ps`。通过独立 SSH exec 通道只读采样，无需安装远端程序。CPU 使用率在第二次采样后显示；内存已用量按 `MemTotal - MemAvailable` 计算。进程 CPU 为 `ps` 报告的生命周期平均值，多核可超过 100%；每次最多读取 CPU 排名前 500 个进程。磁盘展示空间使用情况。
+
+## 本地数据
+
+主机、用户名、私钥路径、主题与指纹保存为本地 JSON，私钥保留在原文件位置。JSON 不保存密码或私钥口令。清除保存的私钥口令可在主机编辑窗口操作。
+
+配置路径：
+
+- Windows：`%APPDATA%\OrbitSSH\workspace.json`
+- macOS：`~/Library/Application Support/OrbitSSH/workspace.json`
+- Linux：`$XDG_CONFIG_HOME/OrbitSSH/workspace.json`，默认 `~/.config/OrbitSSH/workspace.json`
+
+网页开发预览使用独立 localStorage，与桌面配置分开。网页的体验终端、监控和文件数据均为演示；真实 SSH 连接在桌面版使用。
+
+文件传输通过 SFTP 完成，服务器需开启 SFTP 子系统。符号链接和特殊文件跳过，不跟随链接递归；已有目标符号链接拒绝写入。文本预览最多读取前 256 KB。传输先写入临时文件，成功后替换目标；取消会清理当前临时文件，已经完成的文件会保留。目前不支持断点续传，断网后可重新选择项目传输。
+
+## 开发与构建
+
+安装 Go 1.24+、Node.js 20+，以及 Wails 对应系统的构建依赖。Windows 需要 C 编译工具和 WebView2；macOS 需要 Xcode Command Line Tools；Linux 需要 GTK / WebKitGTK 和可用的 Secret Service。
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+go test ./...
+go vet ./...
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
+```
+
+Windows 打包：
+
+```powershell
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.0.exe -platform windows/amd64 -webview2 browser
+```
+
+macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。
+
+注意 Go 会嵌入 `frontend/dist`，请先完成前端构建再执行 Go 检查，避免同时改写 dist。测试使用本地 SSH / SFTP 服务和模拟凭据库，不接触用户配置。
