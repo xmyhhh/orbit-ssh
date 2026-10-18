@@ -353,6 +353,20 @@ export default function App() {
             : h,
         ),
       });
+      if (host.authType === "password") {
+        try {
+          if (credentials.rememberPassword && credentials.password) {
+            await backend().SavePassword(host.id, credentials.password);
+          } else if (credentials.rememberPassword === false) {
+            await backend().ForgetPassword(host.id);
+          }
+        } catch (e) {
+          notify(
+            `已连接，密码${credentials.rememberPassword === false ? "清除" : "保存"}失败：${errorText(e)}`,
+          );
+          return;
+        }
+      }
       if (
         host.authType === "key" &&
         credentials.rememberKey &&
@@ -631,7 +645,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.0</span>
+          <span>v0.3.1</span>
         </div>
       </aside>
 
@@ -1500,7 +1514,7 @@ export default function App() {
               <div>
                 <h3>核对指纹，安心连接</h3>
                 <p>
-                  首次连接核对服务器指纹，之后自动验证。私钥口令可保存在系统凭据库。
+                  首次连接核对服务器指纹，之后自动验证。密码和私钥口令可加密保存在本机。
                 </p>
               </div>
             </div>

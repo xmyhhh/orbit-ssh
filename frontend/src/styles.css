@@ -3157,6 +3157,18 @@ textarea {
   color: var(--muted);
   font-size: 12px;
 }
+.password-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  margin-bottom: 4px;
+}
+.password-options > .text-button {
+  font-size: 11px;
+  min-height: 30px;
+}
 .forget-key {
   margin: 0 0 15px;
   font-size: 11px;

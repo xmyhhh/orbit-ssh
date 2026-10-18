@@ -3,6 +3,8 @@ import type { FormEvent, ReactNode } from "react";
 import {
   Check,
   ChevronRight,
+  Eye,
+  EyeOff,
   FileKey2,
   Fingerprint,
   FolderOpen,
@@ -142,6 +144,7 @@ export function HostDialog({
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [credentialNotice, setCredentialNotice] = useState("");
   const field = <K extends keyof Host>(key: K, value: Host[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
   async function save(e: FormEvent) {
@@ -315,7 +318,7 @@ export function HostDialog({
           <span>
             {form.authType === "key"
               ? "用户名与私钥路径自动保存，下次直接连接。"
-              : "用户名自动保存，密码仅用于当前会话。"}
+              : "用户名自动保存，连接时可记住密码并加密保存在本机。"}
           </span>
         </div>
         {host && !isNew && form.authType === "key" && isDesktop() && (
@@ -331,6 +334,27 @@ export function HostDialog({
           >
             清除已保存的私钥口令
           </button>
+        )}
+        {host && !isNew && form.authType === "password" && isDesktop() && (
+          <button
+            className="text-button forget-key"
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              setCredentialNotice("");
+              void backend()
+                .ForgetPassword(host.id)
+                .then(() => setCredentialNotice("已清除保存的密码"))
+                .catch((e) => setError(errorText(e)));
+            }}
+          >
+            清除已保存的密码
+          </button>
+        )}
+        {credentialNotice && (
+          <p role="status" className="field-hint">
+            {credentialNotice}
+          </p>
         )}
         {error && (
           <p role="alert" className="form-error">
@@ -373,19 +397,42 @@ export function ConnectDialog({
     password: "",
     passphrase: "",
     rememberKey: true,
+    rememberPassword: true,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fingerprint, setFingerprint] = useState("");
+  const [hasSavedPassword, setHasSavedPassword] = useState(false);
+  const [checkingPassword, setCheckingPassword] = useState(
+    host.authType === "password" && isDesktop(),
+  );
+  const [showPassword, setShowPassword] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
+    let current = true;
+    if (host.authType === "password" && isDesktop()) {
+      void backend()
+        .HasSavedPassword(host.id)
+        .then((saved) => {
+          if (!current) return;
+          setHasSavedPassword(saved);
+          setCheckingPassword(false);
+          if (saved) void connect();
+        })
+        .catch((e) => {
+          if (!current) return;
+          setCheckingPassword(false);
+          setError(errorText(e));
+        });
+    }
     const timer =
       host.authType === "key"
         ? requestAnimationFrame(() => void connect())
         : undefined;
     return () => {
       mounted.current = false;
+      current = false;
       if (timer !== undefined) cancelAnimationFrame(timer);
     };
   }, []);
@@ -410,7 +457,9 @@ export function ConnectDialog({
         setError(
           message.includes("HOST_KEY_CHANGED")
             ? `服务器指纹与之前保存的记录不同，连接已拒绝。请先与服务器管理员核实。\n${message}`
-            : message.replace("KEY_PASSPHRASE_REQUIRED|", ""),
+            : message
+                .replace("KEY_PASSPHRASE_REQUIRED|", "")
+                .replace("PASSWORD_REQUIRED|", ""),
         );
       }
     } finally {
@@ -465,25 +514,88 @@ export function ConnectDialog({
         <form onSubmit={(e) => void connect(e)}>
           <label className="field">
             {host.authType === "key" ? "私钥口令（未加密可留空）" : "登录密码"}
-            <input
-              autoFocus
-              type="password"
-              required={host.authType === "password"}
-              autoComplete="current-password"
-              value={
-                host.authType === "password"
-                  ? credentials.password
-                  : credentials.passphrase
-              }
-              onChange={(e) =>
-                setCredentials((c) =>
+            <div className="input-action">
+              <input
+                autoFocus
+                type={showPassword ? "text" : "password"}
+                name="password"
+                required={host.authType === "password" && !hasSavedPassword}
+                disabled={busy || checkingPassword}
+                placeholder={
+                  hasSavedPassword ? "已加密保存，留空使用；输入可更新" : ""
+                }
+                autoComplete="current-password"
+                value={
                   host.authType === "password"
-                    ? { ...c, password: e.target.value }
-                    : { ...c, passphrase: e.target.value },
-                )
-              }
-            />
+                    ? credentials.password
+                    : credentials.passphrase
+                }
+                onChange={(e) =>
+                  setCredentials((c) =>
+                    host.authType === "password"
+                      ? { ...c, password: e.target.value }
+                      : { ...c, passphrase: e.target.value },
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                aria-pressed={showPassword}
+                disabled={busy || checkingPassword}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
           </label>
+          <input
+            type="hidden"
+            name="username"
+            autoComplete="username"
+            value={host.username}
+          />
+          {host.authType === "password" && (
+            <div className="password-options">
+              <label className="key-remember">
+                <input
+                  type="checkbox"
+                  checked={credentials.rememberPassword ?? true}
+                  disabled={busy || checkingPassword}
+                  onChange={(e) =>
+                    setCredentials((c) => ({
+                      ...c,
+                      rememberPassword: e.target.checked,
+                    }))
+                  }
+                />
+                记住密码（加密保存在本机）
+              </label>
+              {hasSavedPassword && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy || checkingPassword}
+                  onClick={() => {
+                    void backend()
+                      .ForgetPassword(host.id)
+                      .then(() => {
+                        if (mounted.current) {
+                          setHasSavedPassword(false);
+                          setError("");
+                        }
+                      })
+                      .catch((e) => {
+                        if (mounted.current) setError(errorText(e));
+                      });
+                  }}
+                >
+                  清除已保存密码
+                </button>
+              )}
+            </div>
+          )}
           {host.authType === "key" && (
             <label className="key-remember">
               <input
@@ -503,7 +615,9 @@ export function ConnectDialog({
             <LockKeyhole size={15} />
             {host.authType === "key"
               ? "已保存的私钥和口令将自动用于下次连接。"
-              : "密码仅用于本次连接。"}
+              : credentials.rememberPassword
+                ? "连接成功后加密保存，下次连接免输入。"
+                : "密码仅用于本次连接，连接成功后清除已保存的密码。"}
           </div>
           {error && (
             <p className="form-error" role="alert">
@@ -518,8 +632,15 @@ export function ConnectDialog({
             >
               取消
             </button>
-            <button className="button primary" disabled={busy}>
-              {busy ? "正在连接…" : "建立连接"}
+            <button
+              className="button primary"
+              disabled={busy || checkingPassword}
+            >
+              {checkingPassword
+                ? "检查已保存密码…"
+                : busy
+                  ? "正在连接…"
+                  : "建立连接"}
               <ChevronRight size={16} />
             </button>
           </div>
@@ -740,7 +861,7 @@ export function PreferencesDialog({
         <ShieldCheck size={18} />
         <div>
           <strong>你的数据，留在你的设备</strong>
-          <p>配置保存在本机，私钥口令可存入系统凭据库。</p>
+          <p>配置保存在本机，密码和私钥口令可加密存入系统凭据库。</p>
           {dir && <code>{dir}</code>}
           {!isDesktop() && <p>当前为网页预览，使用独立的浏览器本地存储。</p>}
         </div>
@@ -751,7 +872,7 @@ export function PreferencesDialog({
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.3.0</span>
+        <span className="version-label">Orbit SSH · v0.3.1</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>

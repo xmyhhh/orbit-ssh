@@ -22,6 +22,9 @@ interface Backend {
   SelectKeyFile(): Promise<string>;
   SaveKeyPassphrase(hostID: string, passphrase: string): Promise<void>;
   ForgetKeyPassphrase(hostID: string): Promise<void>;
+  HasSavedPassword(hostID: string): Promise<boolean>;
+  SavePassword(hostID: string, password: string): Promise<void>;
+  ForgetPassword(hostID: string): Promise<void>;
   Monitor(id: string): Promise<Metrics>;
   Connect(
     id: string,

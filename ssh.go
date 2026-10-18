@@ -130,6 +130,15 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 		}
 		auth = ssh.PublicKeys(signer)
 	} else {
+		if credentials.Password == "" {
+			credentials.Password, err = savedPassword(host)
+			if err != nil {
+				return err
+			}
+			if credentials.Password == "" {
+				return errors.New("PASSWORD_REQUIRED|请输入登录密码")
+			}
+		}
 		auth = ssh.Password(credentials.Password)
 	}
 	address := net.JoinHostPort(host.Address, strconv.Itoa(host.Port))

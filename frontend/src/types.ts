@@ -34,6 +34,7 @@ export interface Credentials {
   password: string;
   passphrase: string;
   rememberKey?: boolean;
+  rememberPassword?: boolean;
 }
 export interface DiskMetric {
   filesystem: string;
