@@ -6,6 +6,33 @@ Orbit SSH 是一款个人 SSH 桌面工具，适合日常连接 Linux 服务器�
 
 **[下载 v1.0 · Windows x64](https://github.com/xmyhhh/orbit-ssh/releases/download/v1.0/OrbitSSH-v1.0-windows-x64.exe)** · [查看发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v1.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
+![Orbit SSH v1.0 首页：以卡片展示主机，支持分组、收藏和搜索](docs/images/home.png)
+
+<details>
+<summary>查看更多界面：多终端、文件管理与远程编辑</summary>
+
+### 深色模式与多终端
+
+按主机组织会话，同一主机可同时打开多个独立终端。
+
+![Orbit SSH 深色终端：两台主机、三个独立会话，展示常用运维命令输出](docs/images/terminal.png)
+
+### 双栏文件管理
+
+左侧浏览本地文件，右侧浏览服务器目录，支持上传、下载和传输队列。
+
+![Orbit SSH 文件管理器：并排展示本地项目与远程目录](docs/images/files.png)
+
+### 远程文本编辑
+
+直接编辑服务器上的配置文件，支持语法高亮、查找替换和快捷保存。
+
+![Orbit SSH 远程编辑器：打开带 Nginx 语法高亮的示例配置](docs/images/editor.png)
+
+</details>
+
+*截图使用示例主机和数据。*
+
 ## 下载与运行
 
 1. 下载 **`OrbitSSH-v1.0-windows-x64.exe`**，保存到你喜欢的文件夹。
