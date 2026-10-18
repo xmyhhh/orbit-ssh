@@ -381,7 +381,6 @@ export default function MonitorPanel({
                 ? "连接后查看监控"
                 : "正在读取服务器数据…"}
           </p>
-          <span>Linux · CPU / 内存 / 磁盘 / 进程</span>
         </div>
       ) : (
         <div className="monitor-body">

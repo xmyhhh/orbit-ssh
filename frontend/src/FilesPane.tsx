@@ -692,7 +692,7 @@ function FileBrowser({
               )
             : hidden
               ? "含隐藏文件"
-              : "隐藏文件已折叠"}
+              : ""}
         </span>
       </div>
       {contextMenu && (
@@ -1014,14 +1014,14 @@ export default function FilesPane({
             </div>
           ) : (
             <div className="transfer-queue-empty">
-              选择文件或文件夹，点击上传 / 下载
+              暂无传输
             </div>
           ))}
       </section>
       <div className="file-workspace-status">
         <span>
           <ShieldCheck size={12} aria-hidden="true" />
-          {session.demo ? "演示模式 · 真实传输请连接主机" : "SSH 加密传输"}
+          {session.demo ? "演示模式" : "SFTP"}
         </span>
         <span>双击打开 · Ctrl / Shift 多选</span>
       </div>

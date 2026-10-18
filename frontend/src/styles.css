@@ -952,21 +952,11 @@ textarea {
   font-size: 14px;
   font-weight: 550;
 }
-.hosts-empty > p {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 7px;
-}
 .hosts-empty .button {
   height: 31px;
   margin-top: 20px;
   font-size: 11px;
   padding: 0 12px;
-}
-.empty-formats {
-  font-size: 9px;
-  color: var(--faint);
-  margin-top: 11px;
 }
 .host-cards {
   display: grid;
@@ -2252,21 +2242,6 @@ textarea {
   color: var(--muted);
   white-space: nowrap;
 }
-.privacy-note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 11px 12px;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 18px;
-}
-.privacy-note svg {
-  color: var(--accent);
-}
 .modal-footer {
   display: flex;
   align-items: center;
@@ -2353,13 +2328,6 @@ textarea {
   font-weight: 550;
   margin: 25px 0 12px;
 }
-.settings-label > span {
-  display: block;
-  font-size: 10px;
-  color: var(--muted);
-  font-weight: 400;
-  margin-top: 5px;
-}
 .theme-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2399,11 +2367,6 @@ textarea {
 .setting-row strong {
   font-size: 12px;
   font-weight: 550;
-}
-.setting-row p {
-  color: var(--muted);
-  font-size: 10px;
-  margin-top: 4px;
 }
 .font-control {
   display: flex;
@@ -2446,33 +2409,17 @@ textarea {
 .switch.on > span {
   transform: translateX(14px);
 }
-.local-storage-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 15px;
+.data-directory {
   margin-top: 17px;
-}
-.local-storage-note > svg {
-  color: var(--accent);
-}
-.local-storage-note strong {
   font-size: 11px;
-  font-weight: 550;
-}
-.local-storage-note p {
-  font-size: 10px;
   color: var(--muted);
-  margin-top: 5px;
-  line-height: 1.7;
 }
-.local-storage-note code {
-  font-size: 9px;
-  color: var(--faint);
+.data-directory summary {
+  cursor: pointer;
+}
+.data-directory code {
   display: block;
+  font-size: 10px;
   margin-top: 8px;
   overflow-wrap: anywhere;
 }
@@ -2553,41 +2500,6 @@ textarea {
   line-height: 1.9;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.help-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 23px;
-  margin: 24px 0;
-}
-.help-steps > div {
-  display: flex;
-  gap: 15px;
-}
-.help-steps > div > span {
-  font-size: 11px;
-  font-family: Consolas, monospace;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid var(--green-line);
-  border-radius: 8px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.help-steps h3 {
-  font-size: 12px;
-  font-weight: 550;
-  margin-top: 1px;
-}
-.help-steps p {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.8;
-  margin-top: 5px;
 }
 .help-shortcuts {
   border: 1px solid var(--line);

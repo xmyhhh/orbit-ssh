@@ -12,7 +12,7 @@
   },
   "info": {
     "productName": "Orbit SSH",
-    "productVersion": "0.3.9",
+    "productVersion": "0.3.10",
     "copyright": "Your servers. Your space.",
     "comments": "A personal, lightweight SSH workspace."
   }

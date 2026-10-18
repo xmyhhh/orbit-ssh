@@ -4,7 +4,7 @@
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.3.9.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.10.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
 - 双击主机卡片快速连接，网格和列表视图均支持；已连接的主机双击会新开一个独立终端。已保存的凭据自动使用，未保存时提示输入。
@@ -56,7 +56,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.9.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.10.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。

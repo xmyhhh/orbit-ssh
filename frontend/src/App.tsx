@@ -11,7 +11,6 @@ import {
   Code2,
   Copy,
   Ellipsis,
-  ExternalLink,
   FolderClosed,
   FolderOpen,
   Grid2X2,
@@ -348,7 +347,7 @@ export default function App() {
   }
   function chooseHost(host: Host) {
     if (!isDesktop()) {
-      notify("当前是网页预览。真实 SSH 连接请使用 Orbit SSH 桌面应用。");
+      notify("请使用桌面版连接 SSH。");
       return;
     }
     setConnectHost(host);
@@ -560,7 +559,7 @@ export default function App() {
     if (!current) {
       void navigator.clipboard
         .writeText(snippet.command)
-        .then(() => notify("命令已复制。连接主机后可粘贴使用。"))
+        .then(() => notify("命令已复制"))
         .catch(() => notify("复制失败，请在片段详情中手动复制。"));
       return;
     }
@@ -592,7 +591,7 @@ export default function App() {
   function deleteHost(host: Host) {
     setConfirmation({
       title: "移除这台主机？",
-      message: `将从工作空间移除“${host.name}”的配置。你可以随时重新添加。`,
+      message: `移除“${host.name}”的主机配置。`,
       action: "移除主机",
       danger: true,
       run: async () => {
@@ -757,7 +756,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.9</span>
+          <span>v0.3.10</span>
         </div>
       </aside>
 
@@ -870,7 +869,7 @@ export default function App() {
           {loading ? (
             <div className="full-state">
               <LoaderCircle className="spin" size={24} />
-              <p>正在打开你的工作空间…</p>
+              <p>加载中…</p>
             </div>
           ) : loadError ? (
             <div className="full-state">
@@ -946,11 +945,6 @@ export default function App() {
                               ? "没有匹配的片段"
                               : "暂无命令片段"}
                           </strong>
-                          <span>
-                            {workspace.snippets.length
-                              ? "换个关键词或分类试试"
-                              : "点击新建片段添加常用命令"}
-                          </span>
                           {(snippetQuery || snippetFilter !== "全部") && (
                             <button
                               className="button secondary compact"
@@ -976,7 +970,7 @@ export default function App() {
                                 <span className="snippet-category">
                                   {snippetCategory(s)}
                                 </span>
-                                <p>{s.description || "自定义命令片段"}</p>
+                                {s.description && <p>{s.description}</p>}
                               </div>
                               <button
                                 className="icon-button"
@@ -1117,8 +1111,7 @@ export default function App() {
                                 </span>
                               </div>
                             </div>
-                            <h3>下一站，连接你的服务器</h3>
-                            <p>添加第一台主机，把远程变成触手可及。</p>
+                            <h3>暂无主机</h3>
                             <button
                               className="button secondary"
                               onClick={newHost}
@@ -1126,9 +1119,6 @@ export default function App() {
                               <Plus size={16} />
                               添加主机
                             </button>
-                            <span className="empty-formats">
-                              支持密码与 SSH 密钥认证
-                            </span>
                           </div>
                         ) : filtered.length ? (
                           <div className={`host-cards ${layout}`}>
@@ -1157,7 +1147,6 @@ export default function App() {
                           <div className="search-empty">
                             <Search size={26} />
                             <h3>没有匹配的主机</h3>
-                            <p>换个关键词，或试试其他筛选条件。</p>
                             <button
                               className="text-button"
                               onClick={() => {
@@ -1172,14 +1161,11 @@ export default function App() {
                         )}
                         {page === "workspace" && (
                           <div className="demo-launch">
-                            <span>
-                              <TerminalSquare size={18} />
-                              本地演示
-                            </span>
                             <button
                               className="text-button"
                               onClick={() => openDemo()}
                             >
+                              <TerminalSquare size={16} />
                               体验终端 <ArrowUpRight size={15} />
                             </button>
                           </div>
@@ -1190,7 +1176,7 @@ export default function App() {
                           <div className="section-heading">
                             <div>
                               <Zap size={16} />
-                              <h2>随手可用</h2>
+                              <h2>常用命令</h2>
                             </div>
                             <button
                               className="icon-button"
@@ -1221,7 +1207,7 @@ export default function App() {
                             {!workspace.snippets.length && (
                               <button onClick={() => setSnippetEditor({})}>
                                 <Plus size={16} />
-                                <span>创建第一个命令片段</span>
+                                <span>添加片段</span>
                               </button>
                             )}
                           </div>
@@ -1250,7 +1236,7 @@ export default function App() {
                               className="text-button"
                               onClick={() => setHelpOpen(true)}
                             >
-                              了解更多
+                              全部快捷键
                               <ArrowUpRight size={12} />
                             </button>
                           </div>
@@ -1258,14 +1244,11 @@ export default function App() {
                       )}
                     </div>
                   )}
-                  <footer className="dashboard-footer">
-                    <span>
-                      <span className="status-dot" />
-                      {isDesktop()
-                        ? "所有配置保存在本机"
-                        : "网页预览 · 真实连接请使用桌面版"}
-                    </span>
-                  </footer>
+                  {!isDesktop() && (
+                    <footer className="dashboard-footer">
+                      <span>网页预览</span>
+                    </footer>
+                  )}
                 </div>
               </div>
               <div
@@ -1654,34 +1637,7 @@ export default function App() {
         />
       )}
       {helpOpen && (
-        <Modal title="使用帮助" onClose={() => setHelpOpen(false)}>
-          <div className="help-steps">
-            <div>
-              <span>01</span>
-              <div>
-                <h3>添加你的主机</h3>
-                <p>填写 IP、端口与用户名，选择密码或私钥认证。</p>
-              </div>
-            </div>
-            <div>
-              <span>02</span>
-              <div>
-                <h3>核对指纹，安心连接</h3>
-                <p>
-                  首次连接核对服务器指纹，之后自动验证。密码和私钥口令可加密保存在本机。
-                </p>
-              </div>
-            </div>
-            <div>
-              <span>03</span>
-              <div>
-                <h3>终端与文件，在同一空间</h3>
-                <p>
-                  打开多个终端标签，通过 SFTP 上传、下载文件，或插入命令片段。
-                </p>
-              </div>
-            </div>
-          </div>
+        <Modal title="快捷键" onClose={() => setHelpOpen(false)}>
           <div className="help-shortcuts">
             <div>
               <span>快速切换</span>
@@ -1703,26 +1659,21 @@ export default function App() {
               <span>复制 / 粘贴</span>
               <kbd>Ctrl Shift C / V</kbd>
             </div>
+            <div>
+              <span>保存文件</span>
+              <kbd>Ctrl / ⌘ S</kbd>
+            </div>
+            <div>
+              <span>终端缩放 / 复原</span>
+              <kbd>Ctrl + / − / 0</kbd>
+            </div>
           </div>
-          <p className="field-hint">
-            片段只插入命令，按 Enter 才会执行。多行粘贴会先提醒确认。
-          </p>
           <div className="modal-footer">
-            <button
-              className="button secondary"
-              onClick={() => {
-                setHelpOpen(false);
-                openDemo();
-              }}
-            >
-              先试试体验终端
-              <ExternalLink size={14} />
-            </button>
             <button
               className="button primary"
               onClick={() => setHelpOpen(false)}
             >
-              知道了
+              关闭
             </button>
           </div>
         </Modal>

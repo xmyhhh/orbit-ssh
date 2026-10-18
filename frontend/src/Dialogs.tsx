@@ -323,14 +323,6 @@ export function HostDialog({
             收藏主机
           </label>
         </div>
-        <div className="privacy-note">
-          <ShieldCheck size={16} />
-          <span>
-            {form.authType === "key"
-              ? "用户名与私钥路径自动保存，下次直接连接。"
-              : "用户名自动保存，连接时可记住密码并加密保存在本机。"}
-          </span>
-        </div>
         {host && !isNew && form.authType === "key" && isDesktop() && (
           <button
             className="text-button forget-key"
@@ -497,15 +489,9 @@ export function ConnectDialog({
         <>
           <div className="trust-copy">
             <Fingerprint size={28} />
-            <p>
-              这是你第一次连接这台服务器。请核对 SHA-256
-              指纹，确认后会保存在本机。
-            </p>
+            <p>请通过云控制台或管理员核对服务器指纹。</p>
           </div>
           <code className="fingerprint">{fingerprint}</code>
-          <p className="field-hint">
-            建议通过云控制台或服务器管理员提供的独立渠道核对。
-          </p>
           <div className="modal-footer">
             <button className="button secondary" onClick={onClose}>
               取消
@@ -531,9 +517,7 @@ export function ConnectDialog({
                 name="password"
                 required={host.authType === "password" && !hasSavedPassword}
                 disabled={busy || checkingPassword}
-                placeholder={
-                  hasSavedPassword ? "已加密保存，留空使用；输入可更新" : ""
-                }
+                placeholder={hasSavedPassword ? "留空使用已保存密码" : ""}
                 autoComplete="current-password"
                 value={
                   host.authType === "password"
@@ -580,7 +564,7 @@ export function ConnectDialog({
                     }))
                   }
                 />
-                记住密码（加密保存在本机）
+                记住密码（本机加密）
               </label>
               {hasSavedPassword && (
                 <button
@@ -618,17 +602,14 @@ export function ConnectDialog({
                   }))
                 }
               />
-              记住私钥口令（系统凭据库）
+              记住私钥口令（本机加密）
             </label>
           )}
-          <div className="privacy-note">
-            <LockKeyhole size={15} />
-            {host.authType === "key"
-              ? "已保存的私钥和口令将自动用于下次连接。"
-              : credentials.rememberPassword
-                ? "连接成功后加密保存，下次连接免输入。"
-                : "密码仅用于本次连接，连接成功后清除已保存的密码。"}
-          </div>
+          {host.authType === "password" &&
+            hasSavedPassword &&
+            credentials.rememberPassword === false && (
+              <p className="field-hint">连接成功后清除已保存密码。</p>
+            )}
           {error && (
             <p className="form-error" role="alert">
               {error}
@@ -745,7 +726,6 @@ export function SnippetDialog({
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
         </label>
-        <p className="field-hint">插入片段只填入终端，按 Enter 后才会执行。</p>
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -801,9 +781,7 @@ export function PreferencesDialog({
   }
   return (
     <Modal title="偏好设置" onClose={onClose}>
-      <div className="settings-label">
-        界面主题<span>默认浅色，也可以跟随系统</span>
-      </div>
+      <div className="settings-label">界面主题</div>
       <div className="theme-options">
         {(
           [
@@ -828,7 +806,6 @@ export function PreferencesDialog({
       <div className="setting-row">
         <div>
           <strong>终端字号</strong>
-          <p>Ctrl +/− 缩放，Ctrl 0 复原；支持 Ctrl + 滚轮</p>
         </div>
         <label className="font-control">
           <button
@@ -851,7 +828,6 @@ export function PreferencesDialog({
       <div className="setting-row">
         <div>
           <strong>终端行距</strong>
-          <p>调节同一屏能显示的行数</p>
         </div>
         <select
           aria-label="终端行距"
@@ -868,7 +844,6 @@ export function PreferencesDialog({
       <div className="setting-row">
         <div>
           <strong>退出前确认</strong>
-          <p>有连接时，关闭应用前提醒</p>
         </div>
         <button
           className={`switch ${preferences.confirmClose ? "on" : ""}`}
@@ -883,22 +858,19 @@ export function PreferencesDialog({
           <span />
         </button>
       </div>
-      <div className="local-storage-note">
-        <ShieldCheck size={18} />
-        <div>
-          <strong>你的数据，留在你的设备</strong>
-          <p>配置保存在本机，密码和私钥口令可加密存入系统凭据库。</p>
-          {dir && <code>{dir}</code>}
-          {!isDesktop() && <p>当前为网页预览，使用独立的浏览器本地存储。</p>}
-        </div>
-      </div>
+      {dir && (
+        <details className="data-directory">
+          <summary>配置目录</summary>
+          <code>{dir}</code>
+        </details>
+      )}
       {error && (
         <p role="alert" className="form-error">
           {error}
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.3.9</span>
+        <span className="version-label">Orbit SSH · v0.3.10</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>
