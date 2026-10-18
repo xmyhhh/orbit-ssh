@@ -1739,8 +1739,10 @@ textarea {
 .terminal-search {
   position: absolute;
   z-index: 5;
-  top: 50px;
-  right: 20px;
+  top: 12px;
+  right: 18px;
+  width: 320px;
+  max-width: calc(100% - 30px);
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 6px;
@@ -1752,18 +1754,25 @@ textarea {
 }
 .terminal-search > svg {
   color: var(--muted);
+  flex-shrink: 0;
 }
 .terminal-search input {
+  flex: 1;
+  min-width: 0;
   border: none;
   height: 27px;
   background: transparent;
-  width: 180px;
+  width: 0;
   font-size: 12px;
   outline: none;
 }
 .terminal-search > span {
   font-size: 10px;
   color: var(--danger);
+  white-space: nowrap;
+}
+.terminal-search > button {
+  flex-shrink: 0;
 }
 .reconnect-bar {
   display: flex;
@@ -2652,9 +2661,6 @@ textarea {
   .terminal-search {
     right: 10px;
     max-width: calc(100% - 20px);
-  }
-  .terminal-search input {
-    width: 130px;
   }
   .terminal-status {
     padding: 0 10px;

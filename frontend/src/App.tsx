@@ -754,7 +754,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.11</span>
+          <span>v0.3.12</span>
         </div>
       </aside>
 
@@ -1335,53 +1335,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                {terminalSearch !== null && activeSession && !filesOpen && (
-                  <form
-                    className="terminal-search"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      setSearchFound(
-                        handles.current.get(active)?.search(terminalSearch) ??
-                          false,
-                      );
-                    }}
-                  >
-                    <Search size={15} />
-                    <input
-                      autoFocus
-                      aria-label="终端搜索文本"
-                      value={terminalSearch}
-                      onChange={(e) => {
-                        setTerminalSearch(e.target.value);
-                        setSearchFound(
-                          e.target.value
-                            ? (handles.current
-                                .get(active)
-                                ?.search(e.target.value) ?? false)
-                            : true,
-                        );
-                      }}
-                      placeholder="在终端中查找…"
-                    />
-                    {!searchFound && <span>未找到</span>}
-                    <button
-                      type="submit"
-                      className="icon-button"
-                      aria-label="下一个匹配"
-                      title="下一个匹配"
-                    >
-                      <ArrowRight size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label="关闭终端搜索"
-                      onClick={() => setTerminalSearch(null)}
-                    >
-                      <X size={15} />
-                    </button>
-                  </form>
-                )}
                 <div
                   className={`terminal-layout ${monitorOpen && monitorExpanded ? "monitor-expanded" : ""} ${filesOpen ? "files-expanded" : ""}`}
                 >
@@ -1389,6 +1342,54 @@ export default function App() {
                     className="terminals"
                     inert={filesOpen || (monitorOpen && monitorExpanded)}
                   >
+                    {terminalSearch !== null && activeSession && !filesOpen && (
+                      <form
+                        className="terminal-search"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          setSearchFound(
+                            handles.current
+                              .get(active)
+                              ?.search(terminalSearch) ?? false,
+                          );
+                        }}
+                      >
+                        <Search size={15} />
+                        <input
+                          autoFocus
+                          aria-label="终端搜索文本"
+                          value={terminalSearch}
+                          onChange={(e) => {
+                            setTerminalSearch(e.target.value);
+                            setSearchFound(
+                              e.target.value
+                                ? (handles.current
+                                    .get(active)
+                                    ?.search(e.target.value) ?? false)
+                                : true,
+                            );
+                          }}
+                          placeholder="在终端中查找…"
+                        />
+                        {!searchFound && <span>未找到</span>}
+                        <button
+                          type="submit"
+                          className="icon-button"
+                          aria-label="下一个匹配"
+                          title="下一个匹配"
+                        >
+                          <ArrowRight size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="关闭终端搜索"
+                          onClick={() => setTerminalSearch(null)}
+                        >
+                          <X size={15} />
+                        </button>
+                      </form>
+                    )}
                     {sessions.map((s) => (
                       <div
                         className="terminal-session"
