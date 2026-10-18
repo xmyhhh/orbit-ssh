@@ -2737,24 +2737,6 @@ textarea {
     padding: 0 12px;
   }
 }
-.demo-launch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 22px;
-  padding: 15px 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-}
-.demo-launch > span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-  font-size: 12px;
-}
 .page-heading {
   margin-bottom: 25px;
 }
@@ -3249,12 +3231,6 @@ textarea {
   }
   .monitor-metric > strong {
     font-size: 25px;
-  }
-  .demo-launch {
-    padding: 12px;
-  }
-  .demo-launch > span {
-    font-size: 10px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

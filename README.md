@@ -4,7 +4,7 @@
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.3.12.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.13.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
 - 双击主机卡片快速连接，网格和列表视图均支持；已连接的主机双击会新开一个独立终端。已保存的凭据自动使用，未保存时提示输入。
@@ -33,7 +33,7 @@ Windows 可直接运行 `build/bin/OrbitSSH-v0.3.12.exe`，需要系统已安装
 - macOS：`~/Library/Application Support/OrbitSSH/workspace.json`
 - Linux：`$XDG_CONFIG_HOME/OrbitSSH/workspace.json`，默认 `~/.config/OrbitSSH/workspace.json`
 
-网页开发预览使用独立 localStorage，与桌面配置分开。网页的体验终端、监控和文件数据均为演示；真实 SSH 连接在桌面版使用。
+网页开发预览使用独立 localStorage，与桌面配置分开；SSH 连接、监控和文件操作在桌面版使用。
 
 文件传输通过 SFTP 完成，服务器需开启 SFTP 子系统。符号链接和特殊文件跳过，不跟随链接递归；已有传输目标符号链接拒绝写入。传输先写入临时文件，成功后替换目标；取消会清理当前临时文件，已经完成的文件会保留。目前不支持断点续传，断网后可重新选择项目传输。
 
@@ -56,7 +56,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.12.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.13.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。

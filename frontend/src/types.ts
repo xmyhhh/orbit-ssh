@@ -150,16 +150,3 @@ export interface TerminalHandle {
   search: (text: string) => boolean;
   size: () => TerminalSize;
 }
-export const demoHost: Host = {
-  id: "demo",
-  name: "Orbit 体验空间",
-  address: "sandbox.orbit.local",
-  port: 22,
-  username: "explorer",
-  group: "体验",
-  authType: "password",
-  keyPath: "",
-  color: "mint",
-  favorite: false,
-  lastConnected: "",
-};

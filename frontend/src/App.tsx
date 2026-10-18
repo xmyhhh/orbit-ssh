@@ -27,7 +27,6 @@ import {
   ShieldCheck,
   Star,
   Sun,
-  TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
@@ -40,7 +39,6 @@ import type {
   Workspace,
   Credentials,
 } from "./types";
-import { demoHost } from "./types";
 import {
   backend,
   defaults,
@@ -350,15 +348,15 @@ export default function App() {
     }
     setConnectHost(host);
   }
-  function allocateSession(host: Host, demo: boolean): Session {
+  function allocateSession(host: Host): Session {
     const terminalNumber = (terminalNumbers.current.get(host.id) ?? 0) + 1;
     terminalNumbers.current.set(host.id, terminalNumber);
     return {
       id: crypto.randomUUID(),
       host,
       terminalNumber,
-      demo,
-      status: demo ? "connected" : "connecting",
+      demo: false,
+      status: "connecting",
     };
   }
   function newTerminal() {
@@ -366,8 +364,7 @@ export default function App() {
     setFilesOpen(false);
     setMonitorExpanded(false);
     setTerminalSearch(null);
-    if (activeSession?.demo) openDemo(true);
-    else if (activeSession)
+    if (activeSession)
       chooseHost(
         workspace.hosts.find((h) => h.id === activeSession.host.id) ??
           activeSession.host,
@@ -375,23 +372,12 @@ export default function App() {
     else if (workspace.hosts.length) setPaletteOpen(true);
     else newHost();
   }
-  function openDemo(forceNew = false) {
-    const existing = !forceNew && sessions.find((s) => s.demo);
-    if (existing) {
-      setActive(existing.id);
-      return;
-    }
-    const session = allocateSession(demoHost, true);
-    setSessions((s) => [...s, session]);
-    setActive(session.id);
-    setSidebarOpen(false);
-  }
   async function connect(
     host: Host,
     credentials: Credentials,
     fingerprint: string,
   ) {
-    const session = allocateSession(host, false);
+    const session = allocateSession(host);
     const id = session.id;
     const previousActive = active;
     connectingID.current = id;
@@ -754,7 +740,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.12</span>
+          <span>v0.3.13</span>
         </div>
       </aside>
 
@@ -1155,17 +1141,6 @@ export default function App() {
                             </button>
                           </div>
                         )}
-                        {page === "workspace" && (
-                          <div className="demo-launch">
-                            <button
-                              className="text-button"
-                              onClick={() => openDemo()}
-                            >
-                              <TerminalSquare size={16} />
-                              体验终端 <ArrowUpRight size={15} />
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
@@ -1558,7 +1533,6 @@ export default function App() {
           hosts={workspace.hosts}
           onSelect={chooseHost}
           onNew={newHost}
-          onDemo={openDemo}
           onClose={() => setPaletteOpen(false)}
         />
       )}

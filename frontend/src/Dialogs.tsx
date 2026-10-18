@@ -870,7 +870,7 @@ export function PreferencesDialog({
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.3.12</span>
+        <span className="version-label">Orbit SSH · v0.3.13</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>
@@ -883,13 +883,11 @@ export function CommandPalette({
   hosts,
   onSelect,
   onNew,
-  onDemo,
   onClose,
 }: {
   hosts: Host[];
   onSelect: (host: Host) => void;
   onNew: () => void;
-  onDemo: () => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -947,16 +945,6 @@ export function CommandPalette({
           <KeyRound size={18} />
           <strong>添加新主机</strong>
           <kbd>Ctrl T</kbd>
-        </button>
-        <button
-          onClick={() => {
-            onClose();
-            onDemo();
-          }}
-        >
-          <TerminalSquare size={18} />
-          <strong>打开体验终端</strong>
-          <span className="tag neutral">本地演示</span>
         </button>
       </div>
     </Modal>
