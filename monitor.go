@@ -131,7 +131,10 @@ func (a *App) Monitor(id string) (Metrics, error) {
 		return Metrics{}, errors.New("监控采样超时，可稍后重试")
 	case err = <-result:
 	}
-	if strings.Contains(output.String(), "ORBIT_UNSUPPORTED") {
+	// ps includes this script in its own shell's arguments. A marker inside a
+	// process command is data; only the explicit failure response is an error.
+	var exitError *ssh.ExitError
+	if errors.As(err, &exitError) && exitError.ExitStatus() == 42 && strings.TrimSpace(output.String()) == "ORBIT_UNSUPPORTED" {
 		return Metrics{}, errors.New("当前监控支持 Linux 服务器（需要 /proc、df 和 procps ps）")
 	}
 	if err != nil {

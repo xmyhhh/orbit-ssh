@@ -645,7 +645,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.1</span>
+          <span>v0.3.2</span>
         </div>
       </aside>
 

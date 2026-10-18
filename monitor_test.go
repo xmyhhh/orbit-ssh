@@ -79,6 +79,9 @@ func TestMonitorExecKeepsTerminal(t *testing.T) {
 	if err != nil || first.CPUPercent != nil {
 		t.Fatalf("first sample: %+v %v", first, err)
 	}
+	if len(first.Processes) != 3 || !strings.Contains(first.Processes[2].Command, "ORBIT_UNSUPPORTED") {
+		t.Fatal("sampler shell was not included in the process list")
+	}
 	second, err := a.Monitor("monitor")
 	if err != nil || second.CPUPercent == nil || math.Abs(*second.CPUPercent-100) > .01 {
 		t.Fatalf("delta sample: %+v %v", second, err)
@@ -91,6 +94,35 @@ func TestMonitorExecKeepsTerminal(t *testing.T) {
 	}
 	if _, err = a.Monitor("monitor"); err == nil {
 		t.Fatal("disconnected monitor accepted")
+	}
+}
+
+func TestMonitorUnsupportedSystem(t *testing.T) {
+	address, fingerprint := testSSHServerWithMonitor(t, func(uint64) (string, string, uint32) {
+		return "ORBIT_UNSUPPORTED\n", "", 42
+	})
+	a := testApp(t, address)
+	if err := a.Connect("unsupported", "test-host", Credentials{Password: "session-only-secret"}, fingerprint, TerminalSize{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Monitor("unsupported"); err == nil || !strings.Contains(err.Error(), "当前监控支持 Linux") {
+		t.Fatalf("unsupported system was not reported: %v", err)
+	}
+	if err := a.WriteTerminal("unsupported", "still connected\r"); err != nil {
+		t.Fatalf("unsupported monitor closed terminal: %v", err)
+	}
+}
+
+func TestMonitorDoesNotInferUnsupportedFromProcessOutput(t *testing.T) {
+	address, fingerprint := testSSHServerWithMonitor(t, func(uint64) (string, string, uint32) {
+		return monitorFixture + "2500 tester Ss 0 0 1024 0 echo ORBIT_UNSUPPORTED\n", "", 42
+	})
+	a := testApp(t, address)
+	if err := a.Connect("exec-error", "test-host", Credentials{Password: "session-only-secret"}, fingerprint, TerminalSize{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Monitor("exec-error"); err == nil || !strings.Contains(err.Error(), "监控读取失败") {
+		t.Fatalf("non-protocol exit was misclassified: %v", err)
 	}
 }
 

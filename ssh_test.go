@@ -21,6 +21,12 @@ import (
 )
 
 func testSSHServer(t *testing.T, keys ...ssh.PublicKey) (string, string) {
+	return testSSHServerWithMonitor(t, nil, keys...)
+}
+
+type testMonitorResponse func(sample uint64) (stdout, stderr string, status uint32)
+
+func testSSHServerWithMonitor(t *testing.T, monitor testMonitorResponse, keys ...ssh.PublicKey) (string, string) {
 	t.Helper()
 	_, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -102,8 +108,16 @@ func testSSHServer(t *testing.T, keys ...ssh.PublicKey) (string, string) {
 								}
 								req.Reply(true, nil)
 								value := sampleCount.Add(10)
-								_, _ = io.WriteString(ch, strings.Replace(monitorFixture, "cpu 100 0 50 800 50 0 0 0 10 0", "cpu "+strconv.FormatUint(100+value, 10)+" 0 50 800 50 0 0 0 10 0", 1))
-								ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
+								stdout := strings.Replace(monitorFixture, "cpu 100 0 50 800 50 0 0 0 10 0", "cpu "+strconv.FormatUint(100+value, 10)+" 0 50 800 50 0 0 0 10 0", 1)
+								// Linux ps also reports the sampler's own shell command.
+								stdout += "2500 tester Ss 0.0 0.1 1024 0 sh -c " + strings.ReplaceAll(monitorCommand, "\n", " ") + "\n"
+								stderr, status := "", uint32(0)
+								if monitor != nil {
+									stdout, stderr, status = monitor(value)
+								}
+								_, _ = io.WriteString(ch, stdout)
+								_, _ = io.WriteString(ch.Stderr(), stderr)
+								ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 								return
 							case "subsystem":
 								var payload struct{ Name string }

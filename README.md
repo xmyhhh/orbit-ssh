@@ -4,7 +4,7 @@
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.3.1.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.2.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
 - 用户名和私钥文件路径自动保存。密码登录勾选“记住密码”后，连接成功时加密保存，下次连接免输入；加密私钥也可记住私钥口令。密码与口令使用 Windows 凭据管理器 / macOS Keychain / Linux Secret Service 保存在本机。
@@ -48,9 +48,11 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.1.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.2.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。
 
-注意 Go 会嵌入 `frontend/dist`，请先完成前端构建再执行 Go 检查，避免同时改写 dist。测试使用本地 SSH / SFTP 服务和模拟凭据库，不接触用户配置。
+注意 Go 会嵌入 `frontend/dist`，请先完成前端构建再执行 Go 检查，避免同时改写 dist。默认测试使用本地 SSH / SFTP 服务和模拟凭据库，不接触用户配置。
+
+真实监控测试可显式设置 `ORBIT_TEST_MONITOR_HOST` 为应用中已保存的主机名称或 ID，再运行 `go test -run '^TestMonitorLiveHost$' -v`。它使用已信任的主机指纹和已保存的凭据，只读采集两次；工作空间使用临时副本。
