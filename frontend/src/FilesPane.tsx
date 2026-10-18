@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { backend, errorText, listen } from "./bridge";
 import { Modal } from "./Dialogs";
+import FileContextMenu from "./FileContextMenu";
 import type {
   Directory,
   LocalDirectory,
@@ -220,6 +221,12 @@ function FileBrowser({
   const [folderName, setFolderName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
+  const [contextMenu, setContextMenu] = useState<{
+    file: RemoteFile;
+    x: number;
+    y: number;
+    trigger: HTMLElement | null;
+  } | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const anchor = useRef("");
   const selectedNames = useMemo(() => new Set(selected), [selected]);
@@ -280,6 +287,19 @@ function FileBrowser({
     if (file.isDir) void load(path);
     else onPreview(side, file, path);
   }
+  function showContextMenu(
+    file: RemoteFile,
+    row: HTMLElement,
+    x: number,
+    y: number,
+  ) {
+    if (disabled) return;
+    setSelected([file.name]);
+    anchor.current = file.name;
+    const trigger = row.querySelector<HTMLButtonElement>(".browser-file-name");
+    trigger?.focus({ preventScroll: true });
+    setContextMenu({ file, x, y, trigger });
+  }
   async function chooseFolder() {
     try {
       const path = await backend().SelectLocalDirectory();
@@ -311,6 +331,9 @@ function FileBrowser({
     creating ||
     !directory.path ||
     (side === "remote" && session.status !== "connected");
+  useEffect(() => {
+    setContextMenu(null);
+  }, [directory, query, hidden, sort, disabled]);
   return (
     <section className={`file-browser ${side}`} aria-label={`${label}文件`}>
       <div className="browser-heading">
@@ -544,6 +567,25 @@ function FileBrowser({
                 onDoubleClick={() => {
                   if (!disabled) open(f);
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  showContextMenu(f, e.currentTarget, e.clientX, e.clientY);
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "ContextMenu" ||
+                    (e.shiftKey && e.key === "F10")
+                  ) {
+                    e.preventDefault();
+                    const bounds = e.currentTarget.getBoundingClientRect();
+                    showContextMenu(
+                      f,
+                      e.currentTarget,
+                      bounds.left + 40,
+                      bounds.bottom,
+                    );
+                  }
+                }}
                 aria-rowindex={start + index + 2}
               >
                 <td className="file-check">
@@ -653,6 +695,20 @@ function FileBrowser({
               : "隐藏文件已折叠"}
         </span>
       </div>
+      {contextMenu && (
+        <FileContextMenu
+          file={contextMenu.file}
+          remote={side === "remote"}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onOpen={() => open(contextMenu.file)}
+          onClose={(restoreFocus) => {
+            if (restoreFocus)
+              contextMenu.trigger?.focus({ preventScroll: true });
+            setContextMenu(null);
+          }}
+        />
+      )}
     </section>
   );
 }

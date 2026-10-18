@@ -715,6 +715,12 @@ textarea {
   padding-right: 8px;
   scroll-margin-inline-end: 48px;
 }
+.host-tab {
+  flex-shrink: 0;
+}
+.host-tab > button:first-child {
+  max-width: 200px;
+}
 .session-tab > button:first-child {
   display: flex;
   align-items: center;
@@ -1751,6 +1757,44 @@ textarea {
   flex: 1;
   min-height: 0;
   background: var(--surface);
+}
+.session-switcher {
+  display: flex;
+  align-items: stretch;
+  height: 38px;
+  min-height: 38px;
+  padding-left: 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-soft);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.session-switcher .session-tab {
+  flex-shrink: 0;
+  min-width: 114px;
+  border-right: 0;
+  margin: 4px 3px;
+  padding-right: 4px;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.session-switcher .session-tab > button:first-child {
+  padding: 0 9px;
+}
+.session-switcher .session-tab:hover {
+  background: var(--line);
+}
+.session-switcher .session-tab.selected {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.session-switcher .session-tab.selected:before {
+  display: none;
+}
+.session-switcher .tab-add {
+  width: 36px;
+  min-width: 36px;
+  background: var(--surface-soft);
 }
 .terminal-toolbar {
   height: 46px;

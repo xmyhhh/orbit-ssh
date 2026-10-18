@@ -4,7 +4,7 @@
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.3.7.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.3.8.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
 - 双击主机卡片快速连接，网格和列表视图均支持；已连接的主机双击会新开一个独立终端。已保存的凭据自动使用，未保存时提示输入。
@@ -13,8 +13,9 @@ Windows 可直接运行 `build/bin/OrbitSSH-v0.3.7.exe`，需要系统已安装 
 - 终端支持多标签、搜索、命令片段、多行粘贴确认。浅色终端使用灰绿色背景，支持 Ctrl +/−、Ctrl 0、Ctrl + 滚轮缩放，偏好设置可调字号和行距。
 - 内置 40 条常用 Linux 命令片段，覆盖系统、磁盘文件、进程、网络、日志服务、Docker 和 Git；支持分类、搜索、自定义和编辑。点击可复制或插入终端，按 Enter 才执行。旧配置升级时追加新片段，保留自定义内容并跳过重复命令，之后删除的预置不会在重启时恢复。
 - 同一主机可打开多个独立终端：点击工具栏“新建终端”、终端标签旁的“＋”，或按 Ctrl / ⌘ Shift T。标签按 #1、#2 编号，关闭一个终端不影响其他终端；已保存的密码或私钥口令自动用于新终端。
+- 同一主机的会话收在一个主机标签内，下面切换各个终端；切换主机时记住上次使用的终端。主机标签的关闭按钮可关闭该主机全部会话，多会话时先确认。
 - “文件”打开双栏文件管理器：左侧本地，右侧远程。支持路径跳转、隐藏文件、筛选、多选、新建文件夹。
-- 双击远程文本直接编辑，Ctrl / ⌘ S 保存到服务器。支持 Shell、JSON、YAML、Nginx、Python、JS/TS、HTML/CSS、SQL、Markdown、XML、INI、TOML、Dockerfile、Go、Rust、C/C++、Java 高亮，可自动识别或手动切换；提供行号、折叠、撤销、查找替换和自动换行。本地文本可只读预览并高亮。
+- 右键远程文件选择“编辑”，或双击远程文本直接编辑，Ctrl / ⌘ S 保存到服务器。支持 Shell、JSON、YAML、Nginx、Python、JS/TS、HTML/CSS、SQL、Markdown、XML、INI、TOML、Dockerfile、Go、Rust、C/C++、Java 高亮，可自动识别或手动切换；提供行号、折叠、撤销、查找替换和自动换行。本地文本可只读预览并高亮。文件菜单也支持 Shift F10 / 菜单键打开，Esc 关闭。
 - 关闭或重新载入未保存的文件时会确认，退出应用也会提醒。保存失败或检测到远端文件变化时保留当前修改，确认后可重新载入远端版本。
 - 左侧选中项目后点击“上传”，发送到右侧当前目录；右侧选中项目后点击“下载”，保存到左侧当前目录。支持多文件与递归文件夹传输，同名文件默认跳过，可切换为替换。
 - 传输队列显示进度、速度和失败原因，支持取消。切回终端或切换标签不影响后台传输；关闭连接或退出应用会中断传输。队列记录保留在本次运行中。
@@ -55,7 +56,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.7.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.3.8.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。

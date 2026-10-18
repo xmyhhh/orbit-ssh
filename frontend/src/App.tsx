@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Activity,
   ArrowRight,
@@ -81,6 +82,30 @@ const pageNames = {
   snippets: "命令片段",
 };
 
+function moveTabFocus(e: ReactKeyboardEvent<HTMLDivElement>) {
+  if (
+    e.altKey ||
+    e.ctrlKey ||
+    e.metaKey ||
+    (e.target as HTMLElement).getAttribute("role") !== "tab" ||
+    !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)
+  )
+    return;
+  e.preventDefault();
+  const tabs = [
+    ...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+  ];
+  const index = tabs.indexOf(e.target as HTMLButtonElement);
+  const next =
+    e.key === "Home"
+      ? 0
+      : e.key === "End"
+        ? tabs.length - 1
+        : (index + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+          tabs.length;
+  tabs[next]?.focus();
+}
+
 export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>(defaults);
   const [loading, setLoading] = useState(true);
@@ -121,7 +146,9 @@ export default function App() {
   const preferenceWrites = useRef<Promise<void>>(Promise.resolve());
   const connectingID = useRef<string | null>(null);
   const terminalNumbers = useRef(new Map<string, number>());
+  const lastActiveSessions = useRef(new Map<string, string>());
   const tabbarRef = useRef<HTMLDivElement>(null);
+  const sessionbarRef = useRef<HTMLDivElement>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -130,6 +157,15 @@ export default function App() {
   const stateRef = useRef(workspace);
   stateRef.current = workspace;
   const activeSession = sessions.find((s) => s.id === active);
+  const sessionGroups = new Map<string, Session[]>();
+  for (const session of sessions) {
+    const items = sessionGroups.get(session.host.id);
+    if (items) items.push(session);
+    else sessionGroups.set(session.host.id, [session]);
+  }
+  const hostSessions = activeSession
+    ? (sessionGroups.get(activeSession.host.id) ?? [])
+    : [];
   const dark =
     workspace.preferences.theme === "dark" ||
     (workspace.preferences.theme === "system" && systemDark);
@@ -170,9 +206,19 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
   useEffect(() => {
-    tabbarRef.current
-      ?.querySelector(".selected")
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (activeSession)
+      lastActiveSessions.current.set(activeSession.host.id, active);
+    const bars = [tabbarRef.current, sessionbarRef.current];
+    function revealSelected() {
+      for (const bar of bars)
+        bar
+          ?.querySelector(".selected")
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    revealSelected();
+    const observer = new ResizeObserver(revealSelected);
+    for (const bar of bars) if (bar) observer.observe(bar);
+    return () => observer.disconnect();
   }, [active]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -434,14 +480,64 @@ export default function App() {
     }
   }
   async function removeSession(id: string) {
-    if (isDesktop()) await backend().Disconnect(id);
+    const session = sessionsRef.current.find((s) => s.id === id);
+    if (session) await removeSessions([session]);
+  }
+  async function removeSessions(closing: Session[]) {
+    const results = await Promise.allSettled(
+      closing.map((s) =>
+        isDesktop() && !s.demo ? backend().Disconnect(s.id) : Promise.resolve(),
+      ),
+    );
+    const removed = new Set(
+      closing
+        .filter((_, i) => results[i].status === "fulfilled")
+        .map((s) => s.id),
+    );
     const items = sessionsRef.current;
-    const index = items.findIndex((s) => s.id === id);
-    const remaining = items.filter((s) => s.id !== id);
-    const next =
-      remaining[Math.min(index, remaining.length - 1)]?.id ?? "workspace";
-    setSessions((s) => s.filter((item) => item.id !== id));
-    setActive((current) => (current === id ? next : current));
+    const remaining = items.filter((s) => !removed.has(s.id));
+    setSessions((s) => s.filter((item) => !removed.has(item.id)));
+    setActive((current) => {
+      if (!removed.has(current)) return current;
+      const session = items.find((s) => s.id === current);
+      const siblings = items.filter((s) => s.host.id === session?.host.id);
+      const survivingSiblings = remaining.filter(
+        (s) => s.host.id === session?.host.id,
+      );
+      return (
+        survivingSiblings[
+          Math.min(
+            siblings.findIndex((s) => s.id === current),
+            survivingSiblings.length - 1,
+          )
+        ]?.id ??
+        remaining[
+          Math.min(
+            items.findIndex((s) => s.id === current),
+            remaining.length - 1,
+          )
+        ]?.id ??
+        "workspace"
+      );
+    });
+    const failed = results.find((r) => r.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+  }
+  function selectHostSessions(items: Session[]) {
+    const remembered = lastActiveSessions.current.get(items[0].host.id);
+    setActive(items.find((s) => s.id === remembered)?.id ?? items[0].id);
+  }
+  function closeHostSessions(items: Session[]) {
+    if (items.length === 1) {
+      closeSession(items[0]);
+      return;
+    }
+    setConfirmation({
+      title: "关闭这台主机的全部会话？",
+      message: `将关闭 ${items[0].host.name} 的 ${items.length} 个终端，这些终端的文件传输和前台任务会中断。`,
+      action: "关闭全部会话",
+      run: () => removeSessions(items),
+    });
   }
   function closeSession(session: Session) {
     if (
@@ -673,7 +769,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.7</span>
+          <span>v0.3.8</span>
         </div>
       </aside>
 
@@ -719,6 +815,7 @@ export default function App() {
           className="tabbar"
           role="tablist"
           aria-label="工作区标签"
+          onKeyDown={moveTabFocus}
         >
           <button
             role="tab"
@@ -729,59 +826,65 @@ export default function App() {
             <LayoutList size={15} />
             工作空间
           </button>
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              className={`session-tab ${s.id === active ? "selected" : ""}`}
-            >
-              <button
-                role="tab"
-                aria-selected={s.id === active}
-                aria-label={`${s.host.name} · 终端 #${s.terminalNumber}`}
-                title={`${s.host.username}@${s.host.address}:${s.host.port} · 终端 #${s.terminalNumber}`}
-                onClick={() => setActive(s.id)}
+          {[...sessionGroups].map(([hostID, items]) => {
+            const host = items[0].host;
+            const selected = activeSession?.host.id === hostID;
+            return (
+              <div
+                key={hostID}
+                className={`session-tab host-tab ${selected ? "selected" : ""}`}
               >
-                {s.status === "connecting" ? (
-                  <LoaderCircle size={13} className="spin" />
-                ) : (
-                  <span
-                    className={`status-dot ${s.status === "closed" ? "offline" : ""}`}
-                  />
-                )}
-                <span>{s.host.name}</span>
-                <span className="tab-number" aria-hidden="true">
-                  #{s.terminalNumber}
-                </span>
-                {s.demo && <span className="tab-demo">体验</span>}
-              </button>
-              <button
-                className="tab-close"
-                aria-label={`关闭 ${s.host.name} 终端 #${s.terminalNumber}`}
-                title={`关闭终端 #${s.terminalNumber}`}
-                onClick={() => closeSession(s)}
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
+                <button
+                  role="tab"
+                  aria-selected={selected}
+                  aria-label={`${host.name} · ${items.length} 个会话`}
+                  title={`${host.username}@${host.address}:${host.port} · ${items.length} 个会话`}
+                  onClick={() => selectHostSessions(items)}
+                >
+                  {items.some((s) => s.status === "connecting") ? (
+                    <LoaderCircle
+                      size={13}
+                      className="spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <span
+                      className={`status-dot ${items.some((s) => s.status === "connected") ? "" : "offline"}`}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span>{host.name}</span>
+                  <span className="tab-number" aria-hidden="true">
+                    {items.length}
+                  </span>
+                  {items[0].demo && <span className="tab-demo">体验</span>}
+                </button>
+                <button
+                  className="tab-close"
+                  aria-label={`关闭 ${host.name} 的全部会话`}
+                  title="关闭这台主机的全部会话"
+                  onClick={() => closeHostSessions(items)}
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
           <button
             className="tab-add"
-            aria-label={
-              activeSession ? "为当前主机新建终端" : "选择主机新建终端"
+            aria-label="选择主机新建终端"
+            title="选择主机连接"
+            onClick={() =>
+              workspace.hosts.length ? setPaletteOpen(true) : newHost()
             }
-            title={
-              activeSession
-                ? "为当前主机新建终端 · Ctrl Shift T"
-                : "选择主机新建终端"
-            }
-            disabled={activeSession?.status === "connecting"}
-            onClick={newTerminal}
           >
             <Plus size={17} />
           </button>
           <span className="tabbar-space" />
           <span className="tabbar-end">
-            {sessions.length ? `${sessions.length} 个会话` : "无活动会话"}
+            {sessions.length
+              ? `${sessionGroups.size} 台主机 · ${sessions.length} 个会话`
+              : "无活动会话"}
           </span>
         </div>
         <main id="main-content" className="main-content" tabIndex={-1}>
@@ -1190,6 +1293,61 @@ export default function App() {
                 className={`terminal-workspace ${filesOpen ? "file-mode" : ""}`}
                 hidden={!activeSession}
               >
+                {activeSession && (
+                  <div
+                    ref={sessionbarRef}
+                    className="session-switcher"
+                    role="tablist"
+                    aria-label={`${activeSession.host.name} 的终端会话`}
+                    onKeyDown={moveTabFocus}
+                  >
+                    {hostSessions.map((s) => (
+                      <div
+                        key={s.id}
+                        className={`session-tab ${s.id === active ? "selected" : ""}`}
+                      >
+                        <button
+                          role="tab"
+                          aria-selected={s.id === active}
+                          aria-label={`${s.host.name} · 终端 #${s.terminalNumber}`}
+                          title={`终端 #${s.terminalNumber} · ${s.status === "connected" ? "已连接" : s.status === "connecting" ? "连接中" : "已断开"}`}
+                          onClick={() => setActive(s.id)}
+                        >
+                          {s.status === "connecting" ? (
+                            <LoaderCircle
+                              size={13}
+                              className="spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <span
+                              className={`status-dot ${s.status === "closed" ? "offline" : ""}`}
+                              aria-hidden="true"
+                            />
+                          )}
+                          <span>终端 #{s.terminalNumber}</span>
+                        </button>
+                        <button
+                          className="tab-close"
+                          aria-label={`关闭 ${s.host.name} 终端 #${s.terminalNumber}`}
+                          title={`关闭终端 #${s.terminalNumber}`}
+                          onClick={() => closeSession(s)}
+                        >
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      className="tab-add"
+                      aria-label="为当前主机新建终端"
+                      title="新建终端 · Ctrl Shift T"
+                      disabled={activeSession.status === "connecting"}
+                      onClick={newTerminal}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
                 <div className="terminal-toolbar">
                   <div>
                     <span
