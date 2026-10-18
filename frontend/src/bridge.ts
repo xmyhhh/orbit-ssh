@@ -17,9 +17,17 @@ import type {
   Snippet,
   TerminalSize,
   Workspace,
+  WSLInfo,
 } from "./types";
 
 interface Backend {
+  GetPlatform(): Promise<string>;
+  GetWSLInfo(): Promise<WSLInfo>;
+  ConnectWSL(
+    id: string,
+    distribution: string,
+    size: TerminalSize,
+  ): Promise<void>;
   LoadState(): Promise<Workspace>;
   SaveHost(host: Host): Promise<void>;
   DeleteHost(id: string): Promise<void>;

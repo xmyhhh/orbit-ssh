@@ -140,8 +140,15 @@ export interface Session {
   host: Host;
   terminalNumber: number;
   demo: boolean;
+  wslDistribution?: string;
   status: "connecting" | "connected" | "closed";
   error?: string;
+}
+export interface WSLInfo {
+  supported: boolean;
+  installed: boolean;
+  distributions: { name: string; running: boolean }[];
+  message: string;
 }
 export interface TerminalHandle {
   send: (text: string) => void;

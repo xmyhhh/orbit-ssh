@@ -11,18 +11,19 @@ import (
 )
 
 type App struct {
-	ctx          context.Context
-	store        *Store
-	storeErr     error
-	mu           sync.Mutex
-	sessions     map[string]*remoteSession
-	pending      map[string]context.CancelFunc
-	emit         func(string, ...interface{})
-	transferMu   sync.Mutex
-	transfers    []*transferJob
-	transferRuns map[string]bool
-	fileEditMu   sync.Mutex
-	dirtyEditors map[string]bool
+	ctx           context.Context
+	store         *Store
+	storeErr      error
+	mu            sync.Mutex
+	sessions      map[string]*remoteSession
+	localSessions map[string]*localSession
+	pending       map[string]context.CancelFunc
+	emit          func(string, ...interface{})
+	transferMu    sync.Mutex
+	transfers     []*transferJob
+	transferRuns  map[string]bool
+	fileEditMu    sync.Mutex
+	dirtyEditors  map[string]bool
 }
 
 func NewApp() *App {
@@ -145,7 +146,7 @@ func (a *App) DataDirectory() (string, error) {
 
 func (a *App) beforeClose(ctx context.Context) bool {
 	a.mu.Lock()
-	count := len(a.sessions) + len(a.pending)
+	count := len(a.sessions) + len(a.localSessions) + len(a.pending)
 	dirty := len(a.dirtyEditors) > 0
 	a.mu.Unlock()
 	if dirty {
@@ -155,7 +156,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	if a.store == nil || count == 0 || !a.store.snapshot().Preferences.ConfirmClose {
 		return false
 	}
-	confirmed, err := confirmAction(ctx, "关闭 Orbit SSH？", "仍有 SSH 会话，关闭窗口将断开所有连接。", "断开并退出")
+	confirmed, err := confirmAction(ctx, "关闭 Orbit SSH？", "仍有终端会话，关闭窗口将结束这些会话。", "结束并退出")
 	return err != nil || !confirmed
 }
 
@@ -180,14 +181,19 @@ func (a *App) shutdown(_ context.Context) {
 	a.transferMu.Unlock()
 	a.mu.Lock()
 	sessions := a.sessions
+	locals := a.localSessions
 	pending := a.pending
 	a.sessions = map[string]*remoteSession{}
+	a.localSessions = map[string]*localSession{}
 	a.pending = map[string]context.CancelFunc{}
 	a.mu.Unlock()
 	for _, cancel := range pending {
 		cancel()
 	}
 	for _, s := range sessions {
+		s.close()
+	}
+	for _, s := range locals {
 		s.close()
 	}
 }

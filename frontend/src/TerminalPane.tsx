@@ -313,7 +313,9 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       const offClosed = session.demo
         ? () => {}
         : listen(`ssh:closed:${session.id}`, (message) => {
-            term.writeln(`\r\n\x1b[90m[连接已断开]\x1b[0m`);
+            term.writeln(
+              `\r\n\x1b[90m[${session.wslDistribution ? "终端已结束" : "连接已断开"}]\x1b[0m`,
+            );
             latest.current.onClosed(session.id, String(message));
           });
       if (session.demo) {
@@ -323,7 +325,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         prompt();
       } else
         term.writeln(
-          `\x1b[90m正在连接 ${session.host.username}@${session.host.address}:${session.host.port} …\x1b[0m\r\n`,
+          `\x1b[90m${session.wslDistribution ? `正在启动 WSL · ${session.wslDistribution}` : `正在连接 ${session.host.username}@${session.host.address}:${session.host.port}`} …\x1b[0m\r\n`,
         );
       resize();
       const element = container.current!;

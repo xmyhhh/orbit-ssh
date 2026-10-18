@@ -27,6 +27,7 @@ import {
   ShieldCheck,
   Star,
   Sun,
+  TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
@@ -59,6 +60,7 @@ import {
 import { TerminalPane } from "./TerminalPane";
 import FilesPane from "./FilesPane";
 import MonitorPanel from "./MonitorPanel";
+import WSLDialog from "./WSLDialog";
 import { snippetCategories, snippetCategory } from "./snippets";
 
 type Page = "workspace" | "hosts" | "snippets";
@@ -109,7 +111,9 @@ export default function App() {
   const [groupsOpen, setGroupsOpen] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<HostFilter>("all");
-  const [layout, setLayout] = useState<"grid" | "list">("grid");
+  const [layout, setLayout] = useState<"grid" | "list">("list");
+  const [platform, setPlatform] = useState("");
+  const [wslOpen, setWSLOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [active, setActive] = useState("workspace");
   const [hostEditor, setHostEditor] = useState<{
@@ -173,7 +177,8 @@ export default function App() {
     preferencesOpen ||
     paletteOpen ||
     helpOpen ||
-    confirmation,
+    confirmation ||
+    wslOpen,
   );
 
   function notify(message: string) {
@@ -194,12 +199,22 @@ export default function App() {
   }
   useEffect(() => {
     void load();
+    if (isDesktop())
+      void backend()
+        .GetPlatform()
+        .then(setPlatform)
+        .catch(() => {});
     return () => clearTimeout(toastTimer.current);
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
   useEffect(() => {
+    if (activeSession?.wslDistribution) {
+      setFilesOpen(false);
+      setMonitorOpen(false);
+      setMonitorExpanded(false);
+    }
     if (activeSession)
       lastActiveSessions.current.set(activeSession.host.id, active);
     const bars = [tabbarRef.current, sessionbarRef.current];
@@ -364,7 +379,9 @@ export default function App() {
     setFilesOpen(false);
     setMonitorExpanded(false);
     setTerminalSearch(null);
-    if (activeSession)
+    if (activeSession?.wslDistribution)
+      void openWSLTerminal(activeSession.wslDistribution);
+    else if (activeSession)
       chooseHost(
         workspace.hosts.find((h) => h.id === activeSession.host.id) ??
           activeSession.host,
@@ -461,6 +478,56 @@ export default function App() {
       if (connectingID.current === id) connectingID.current = null;
     }
   }
+  async function openWSLTerminal(distribution: string) {
+    setWSLOpen(false);
+    const host: Host = {
+      id: `wsl:${distribution}`,
+      name: distribution,
+      address: distribution,
+      port: 0,
+      username: "",
+      group: "WSL",
+      authType: "password",
+      keyPath: "",
+      color: "mint",
+      favorite: false,
+      lastConnected: "",
+    };
+    const session = { ...allocateSession(host), wslDistribution: distribution };
+    const previousActive = active;
+    setSessions((items) => [...items, session]);
+    setActive(session.id);
+    setSidebarOpen(false);
+    setTerminalSearch(null);
+    try {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      if (!sessionsRef.current.some((item) => item.id === session.id)) return;
+      await backend().ConnectWSL(
+        session.id,
+        distribution,
+        handles.current.get(session.id)?.size() ?? { cols: 100, rows: 30 },
+      );
+      setSessions((items) =>
+        items.map((item) =>
+          item.id === session.id && item.status !== "closed"
+            ? { ...item, status: "connected" }
+            : item,
+        ),
+      );
+    } catch (e) {
+      setSessions((items) => items.filter((item) => item.id !== session.id));
+      setActive((current) =>
+        current === session.id
+          ? sessionsRef.current.some((item) => item.id === previousActive)
+            ? previousActive
+            : "workspace"
+          : current,
+      );
+      notify(errorText(e));
+    }
+  }
   async function removeSession(id: string) {
     const session = sessionsRef.current.find((s) => s.id === id);
     if (session) await removeSessions([session]);
@@ -516,7 +583,9 @@ export default function App() {
     }
     setConfirmation({
       title: "关闭这台主机的全部会话？",
-      message: `将关闭 ${items[0].host.name} 的 ${items.length} 个终端，这些终端的文件传输和前台任务会中断。`,
+      message: items[0].wslDistribution
+        ? `将结束 ${items[0].host.name} 的 ${items.length} 个 WSL 终端。`
+        : `将关闭 ${items[0].host.name} 的 ${items.length} 个终端，这些终端的文件传输和前台任务会中断。`,
       action: "关闭全部会话",
       run: () => removeSessions(items),
     });
@@ -528,8 +597,12 @@ export default function App() {
       workspace.preferences.confirmClose
     )
       setConfirmation({
-        title: "断开这次连接？",
-        message: `将关闭 ${session.host.name} 的终端 #${session.terminalNumber}，此终端的文件传输和前台任务会中断。`,
+        title: session.wslDistribution
+          ? "结束这个 WSL 终端？"
+          : "断开这次连接？",
+        message: session.wslDistribution
+          ? `将结束 ${session.host.name} 的终端 #${session.terminalNumber}。`
+          : `将关闭 ${session.host.name} 的终端 #${session.terminalNumber}，此终端的文件传输和前台任务会中断。`,
         action: "断开连接",
         run: () => removeSession(session.id),
       });
@@ -669,6 +742,12 @@ export default function App() {
             <span>全部主机</span>
             <span className="count">{workspace.hosts.length}</span>
           </button>
+          {platform === "windows" && (
+            <button onClick={() => setWSLOpen(true)}>
+              <TerminalSquare size={18} />
+              <span>WSL</span>
+            </button>
+          )}
           <button
             className={
               page === "snippets" && active === "workspace" ? "active" : ""
@@ -740,7 +819,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.13</span>
+          <span>v0.4.0</span>
         </div>
       </aside>
 
@@ -800,7 +879,7 @@ export default function App() {
                   role="tab"
                   aria-selected={selected}
                   aria-label={`${host.name} · ${items.length} 个会话`}
-                  title={`${host.username}@${host.address}:${host.port} · ${items.length} 个会话`}
+                  title={`${items[0].wslDistribution ? `WSL · ${host.name}` : `${host.username}@${host.address}:${host.port}`} · ${items.length} 个会话`}
                   onClick={() => selectHostSessions(items)}
                 >
                   {items.some((s) => s.status === "connecting") ? (
@@ -868,27 +947,21 @@ export default function App() {
             <>
               <div className="dashboard-scroll" hidden={active !== "workspace"}>
                 <div className="dashboard">
-                  <section className="page-heading">
-                    <div>
-                      <h1>
-                        {page === "hosts"
-                          ? group || "全部主机"
-                          : pageNames[page]}
-                      </h1>
-                    </div>
-                    <button
-                      className="button primary"
-                      onClick={
-                        page === "snippets"
-                          ? () => setSnippetEditor({})
-                          : newHost
-                      }
-                    >
-                      <Plus size={17} />
-                      {page === "snippets" ? "新建片段" : "新建连接"}
-                      <kbd>{page === "snippets" ? "+" : "⌃ T"}</kbd>
-                    </button>
-                  </section>
+                  {page === "snippets" && (
+                    <section className="page-heading">
+                      <div>
+                        <h1>命令片段</h1>
+                      </div>
+                      <button
+                        className="button primary"
+                        onClick={() => setSnippetEditor({})}
+                      >
+                        <Plus size={17} />
+                        新建片段
+                        <kbd>+</kbd>
+                      </button>
+                    </section>
+                  )}
                   {page === "snippets" ? (
                     <section
                       className="snippets-library"
@@ -1012,35 +1085,19 @@ export default function App() {
                   ) : (
                     <div className="workspace-columns">
                       <div className="hosts-section">
-                        <div className="section-heading">
+                        <div className="section-heading hosts-heading">
                           <div>
-                            <h2>
-                              {page === "hosts" ? "主机列表" : "我的主机"}
-                            </h2>
+                            <h1>
+                              {page === "hosts" ? group || "全部主机" : "主机"}
+                            </h1>
                             <span className="subtle-count">
                               {workspace.hosts.length}
                             </span>
                           </div>
-                          <div className="layout-switch" aria-label="主机布局">
-                            <button
-                              className={layout === "grid" ? "selected" : ""}
-                              aria-label="卡片视图"
-                              aria-pressed={layout === "grid"}
-                              title="卡片视图"
-                              onClick={() => setLayout("grid")}
-                            >
-                              <Grid2X2 size={15} />
-                            </button>
-                            <button
-                              className={layout === "list" ? "selected" : ""}
-                              aria-label="列表视图"
-                              aria-pressed={layout === "list"}
-                              title="列表视图"
-                              onClick={() => setLayout("list")}
-                            >
-                              <LayoutList size={16} />
-                            </button>
-                          </div>
+                          <button className="button primary" onClick={newHost}>
+                            <Plus size={16} />
+                            新建连接
+                          </button>
                         </div>
                         <div className="host-filters">
                           <div className="filter-buttons">
@@ -1057,29 +1114,53 @@ export default function App() {
                                 key={f.value}
                                 onClick={() => setFilter(f.value)}
                               >
-                                {f.value === "favorite" && <Star size={12} />}
                                 {f.label}
                               </button>
                             ))}
                           </div>
-                          <label className="host-search">
-                            <Search size={14} />
-                            <input
-                              aria-label="筛选主机"
-                              placeholder="搜索主机…"
-                              value={query}
-                              onChange={(e) => setQuery(e.target.value)}
-                            />
-                            {query && (
+                          <div className="host-controls">
+                            <div
+                              className="layout-switch"
+                              aria-label="主机布局"
+                            >
                               <button
-                                className="clear-search"
-                                aria-label="清空搜索"
-                                onClick={() => setQuery("")}
+                                className={layout === "grid" ? "selected" : ""}
+                                aria-label="卡片视图"
+                                aria-pressed={layout === "grid"}
+                                title="卡片视图"
+                                onClick={() => setLayout("grid")}
                               >
-                                <X size={12} />
+                                <Grid2X2 size={15} />
                               </button>
-                            )}
-                          </label>
+                              <button
+                                className={layout === "list" ? "selected" : ""}
+                                aria-label="列表视图"
+                                aria-pressed={layout === "list"}
+                                title="列表视图"
+                                onClick={() => setLayout("list")}
+                              >
+                                <LayoutList size={16} />
+                              </button>
+                            </div>
+                            <label className="host-search">
+                              <Search size={14} />
+                              <input
+                                aria-label="筛选主机"
+                                placeholder="搜索主机…"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                              />
+                              {query && (
+                                <button
+                                  className="clear-search"
+                                  aria-label="清空搜索"
+                                  onClick={() => setQuery("")}
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </label>
+                          </div>
                         </div>
                         {workspace.hosts.length === 0 ? (
                           <div className="hosts-empty">
@@ -1216,17 +1297,19 @@ export default function App() {
                       className={`status-dot ${activeSession?.status === "closed" ? "offline" : ""}`}
                     />
                     <code>
-                      {activeSession?.host.username}@
-                      {activeSession?.host.address}
+                      {activeSession?.wslDistribution ||
+                        `${activeSession?.host.username}@${activeSession?.host.address}`}
                     </code>
                     <span className="tag neutral">
-                      {activeSession?.demo
-                        ? "本地演示"
-                        : activeSession?.status === "connected"
-                          ? "SSH · 已连接"
-                          : activeSession?.status === "connecting"
-                            ? "连接中"
-                            : "已断开"}
+                      {activeSession?.wslDistribution
+                        ? "WSL · 本地"
+                        : activeSession?.demo
+                          ? "本地演示"
+                          : activeSession?.status === "connected"
+                            ? "SSH · 已连接"
+                            : activeSession?.status === "connecting"
+                              ? "连接中"
+                              : "已断开"}
                     </span>
                   </div>
                   <div>
@@ -1284,30 +1367,34 @@ export default function App() {
                     >
                       <Settings2 size={16} />
                     </button>
-                    <span className="toolbar-divider" />
-                    <button
-                      className={`button toolbar-button ${monitorOpen ? "selected" : ""}`}
-                      aria-pressed={monitorOpen}
-                      onClick={() => {
-                        setMonitorOpen(!monitorOpen);
-                        setFilesOpen(false);
-                      }}
-                    >
-                      <Activity size={16} />
-                      监控
-                    </button>
-                    <button
-                      className={`button toolbar-button ${filesOpen ? "selected" : ""}`}
-                      aria-pressed={filesOpen}
-                      disabled={activeSession?.status !== "connected"}
-                      onClick={() => {
-                        setFilesOpen(!filesOpen);
-                        setMonitorOpen(false);
-                      }}
-                    >
-                      <FolderOpen size={16} />
-                      文件
-                    </button>
+                    {!activeSession?.wslDistribution && (
+                      <>
+                        <span className="toolbar-divider" />
+                        <button
+                          className={`button toolbar-button ${monitorOpen ? "selected" : ""}`}
+                          aria-pressed={monitorOpen}
+                          onClick={() => {
+                            setMonitorOpen(!monitorOpen);
+                            setFilesOpen(false);
+                          }}
+                        >
+                          <Activity size={16} />
+                          监控
+                        </button>
+                        <button
+                          className={`button toolbar-button ${filesOpen ? "selected" : ""}`}
+                          aria-pressed={filesOpen}
+                          disabled={activeSession?.status !== "connected"}
+                          onClick={() => {
+                            setFilesOpen(!filesOpen);
+                            setMonitorOpen(false);
+                          }}
+                        >
+                          <FolderOpen size={16} />
+                          文件
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div
@@ -1409,7 +1496,11 @@ export default function App() {
                             </span>
                             <button
                               className="button secondary compact"
-                              onClick={() => chooseHost(s.host)}
+                              onClick={() =>
+                                s.wslDistribution
+                                  ? void openWSLTerminal(s.wslDistribution)
+                                  : chooseHost(s.host)
+                              }
                             >
                               重新连接
                               <ArrowRight size={13} />
@@ -1419,28 +1510,36 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  {monitorOpen && activeSession && (
-                    <MonitorPanel
-                      key={activeSession.id}
-                      session={activeSession}
-                      expanded={monitorExpanded}
-                      onExpand={() => setMonitorExpanded((v) => !v)}
-                      onClose={() => setMonitorOpen(false)}
-                    />
-                  )}
-                  {filesOpen && activeSession && (
-                    <FilesPane
-                      key={activeSession.id}
-                      session={activeSession}
-                      onClose={() => setFilesOpen(false)}
-                      notify={notify}
-                    />
-                  )}
+                  {monitorOpen &&
+                    activeSession &&
+                    !activeSession.wslDistribution && (
+                      <MonitorPanel
+                        key={activeSession.id}
+                        session={activeSession}
+                        expanded={monitorExpanded}
+                        onExpand={() => setMonitorExpanded((v) => !v)}
+                        onClose={() => setMonitorOpen(false)}
+                      />
+                    )}
+                  {filesOpen &&
+                    activeSession &&
+                    !activeSession.wslDistribution && (
+                      <FilesPane
+                        key={activeSession.id}
+                        session={activeSession}
+                        onClose={() => setFilesOpen(false)}
+                        notify={notify}
+                      />
+                    )}
                 </div>
                 <div className="terminal-status">
                   <span>
                     <ShieldCheck size={12} />
-                    {activeSession?.demo ? "本地体验终端" : "SSH 加密通道"}
+                    {activeSession?.wslDistribution
+                      ? "WSL 本地终端"
+                      : activeSession?.demo
+                        ? "本地体验终端"
+                        : "SSH 加密通道"}
                   </span>
                   <span>
                     UTF-8<span>·</span>xterm-256color<span>·</span>
@@ -1480,6 +1579,12 @@ export default function App() {
           )}
         </main>
       </div>
+      {wslOpen && (
+        <WSLDialog
+          onSelect={(name) => void openWSLTerminal(name)}
+          onClose={() => setWSLOpen(false)}
+        />
+      )}
       {hostEditor && (
         <HostDialog
           host={hostEditor.host}
@@ -1659,7 +1764,7 @@ function HostCard({
           <button onClick={(e) => e.detail < 2 && onConnect()}>
             <h3>{host.name}</h3>
           </button>
-          <span>{host.group}</span>
+          {host.group && host.group !== "默认分组" && <span>{host.group}</span>}
         </div>
         <button
           className={`icon-button favorite ${host.favorite ? "is-favorite" : ""}`}

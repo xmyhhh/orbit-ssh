@@ -150,7 +150,7 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 	a.mu.Lock()
 	_, exists := a.sessions[id]
 	_, connecting := a.pending[id]
-	if exists || connecting {
+	if exists || connecting || a.localSessions[id] != nil {
 		a.mu.Unlock()
 		cancel()
 		return errors.New("会话已存在")
@@ -330,6 +330,15 @@ func (a *App) WriteTerminal(id, data string) error {
 	if len(data) > 1024*1024 {
 		return errors.New("单次输入过大")
 	}
+	a.mu.Lock()
+	local := a.localSessions[id]
+	a.mu.Unlock()
+	if local != nil {
+		local.writeMu.Lock()
+		defer local.writeMu.Unlock()
+		_, err := io.WriteString(local.terminal, data)
+		return err
+	}
 	s, e := a.session(id)
 	if e != nil {
 		return e
@@ -340,6 +349,13 @@ func (a *App) WriteTerminal(id, data string) error {
 	return e
 }
 func (a *App) ResizeTerminal(id string, size TerminalSize) error {
+	a.mu.Lock()
+	local := a.localSessions[id]
+	a.mu.Unlock()
+	if local != nil {
+		size = validSize(size)
+		return local.terminal.Resize(size.Cols, size.Rows)
+	}
 	s, e := a.session(id)
 	if e != nil {
 		return e
@@ -350,7 +366,9 @@ func (a *App) ResizeTerminal(id string, size TerminalSize) error {
 func (a *App) Disconnect(id string) error {
 	a.mu.Lock()
 	s := a.sessions[id]
+	local := a.localSessions[id]
 	delete(a.sessions, id)
+	delete(a.localSessions, id)
 	cancel := a.pending[id]
 	delete(a.pending, id)
 	a.mu.Unlock()
@@ -359,6 +377,9 @@ func (a *App) Disconnect(id string) error {
 	}
 	if s != nil {
 		s.close()
+	}
+	if local != nil {
+		local.close()
 	}
 	return nil
 }
