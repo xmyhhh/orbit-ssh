@@ -692,7 +692,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.3</span>
+          <span>v0.3.4</span>
         </div>
       </aside>
 
@@ -711,11 +711,6 @@ export default function App() {
             <strong>{activeSession ? "终端会话" : pageNames[page]}</strong>
           </div>
           <div className="topbar-actions">
-            <span className="local-badge">
-              <ShieldCheck size={14} />
-              本地优先
-            </span>
-            <span className="topbar-divider" />
             <button
               className="icon-button"
               aria-label={dark ? "切换浅色模式" : "切换深色模式"}

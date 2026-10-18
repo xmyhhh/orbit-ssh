@@ -659,22 +659,6 @@ textarea {
   align-items: center;
   gap: 12px;
 }
-.local-badge {
-  display: flex;
-  gap: 5px;
-  font-size: 10px;
-  align-items: center;
-  color: var(--muted);
-}
-.local-badge svg {
-  color: var(--accent);
-}
-.topbar-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--line);
-  margin: 0 3px;
-}
 .profile-button {
   width: 28px;
   height: 28px;
@@ -3095,14 +3079,8 @@ textarea {
   .page-heading > .button svg {
     width: 14px;
   }
-  .local-badge {
-    font-size: 9px;
-  }
   .topbar-actions {
     gap: 8px;
-  }
-  .topbar-divider {
-    margin: 0;
   }
   .demo-art {
     right: -70px;
