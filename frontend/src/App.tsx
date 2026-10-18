@@ -245,6 +245,7 @@ export default function App() {
       )
         return;
       const target = e.target as HTMLElement | null;
+      if (target?.closest(".terminal-context-menu")) return;
       const editing =
         target?.closest('input, textarea, select, [contenteditable="true"]') &&
         !target.closest(".xterm");
@@ -285,12 +286,16 @@ export default function App() {
         e.preventDefault();
         setTerminalSearch("");
       }
-      if (e.shiftKey && e.code === "KeyV" && activeSession && !filesOpen) {
+      if (
+        e.shiftKey &&
+        e.code === "KeyV" &&
+        activeSession &&
+        !filesOpen &&
+        !editing
+      ) {
         e.preventDefault();
-        void navigator.clipboard
-          .readText()
-          .then(pasteToTerminal)
-          .catch(() => notify("无法读取剪贴板，请使用终端中的粘贴操作。"));
+        e.stopPropagation();
+        handles.current.get(active)?.pasteFromClipboard();
       }
     }
     window.addEventListener("keydown", key, true);
@@ -628,21 +633,22 @@ export default function App() {
     handles.current.get(current.id)?.focus();
     notify("命令已插入终端，按 Enter 执行");
   }
-  function pasteToTerminal(text: string) {
-    if (!activeSession || activeSession.status !== "connected" || !text) return;
+  function pasteToTerminal(sessionId: string, text: string) {
+    const target = sessionsRef.current.find((s) => s.id === sessionId);
+    if (!target || target.status !== "connected" || !text) return;
+    const paste = () => {
+      handles.current.get(sessionId)?.paste(text);
+      if (sessionId === active) handles.current.get(sessionId)?.focus();
+    };
     if (/[\r\n\x1b]/.test(text)) {
       setConfirmation({
         title: "粘贴多行内容？",
         message: `剪贴板包含换行或控制字符，可能立即执行命令。请先核对内容：\n\n${text.slice(0, 800)}${text.length > 800 ? "\n…" : ""}`,
         action: "确认粘贴",
-        run: () => {
-          handles.current.get(active)?.send(text);
-          handles.current.get(active)?.focus();
-        },
+        run: paste,
       });
     } else {
-      handles.current.get(active)?.send(text);
-      handles.current.get(active)?.focus();
+      paste();
     }
   }
   function deleteHost(host: Host) {
@@ -819,7 +825,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.4.0</span>
+          <span>v0.4.1</span>
         </div>
       </aside>
 
@@ -1339,14 +1345,7 @@ export default function App() {
                       aria-label="粘贴剪贴板"
                       disabled={activeSession?.status !== "connected"}
                       onClick={() =>
-                        void navigator.clipboard
-                          .readText()
-                          .then(pasteToTerminal)
-                          .catch(() =>
-                            notify(
-                              "无法读取剪贴板。请使用 Ctrl Shift V 粘贴。",
-                            ),
-                          )
+                        handles.current.get(active)?.pasteFromClipboard()
                       }
                     >
                       <Clipboard size={16} />
@@ -1466,6 +1465,7 @@ export default function App() {
                           session={s}
                           active={
                             active === s.id &&
+                            !modalOpen &&
                             !filesOpen &&
                             !(monitorOpen && monitorExpanded)
                           }
@@ -1487,7 +1487,17 @@ export default function App() {
                             )
                           }
                           onError={notify}
-                          onPaste={pasteToTerminal}
+                          onPaste={(text) => pasteToTerminal(s.id, text)}
+                          onSearch={() => {
+                            setTerminalSearch("");
+                            requestAnimationFrame(() =>
+                              document
+                                .querySelector<HTMLInputElement>(
+                                  ".terminal-search input",
+                                )
+                                ?.focus(),
+                            );
+                          }}
                         />
                         {s.status === "closed" && (
                           <div className="reconnect-bar">
@@ -1661,8 +1671,16 @@ export default function App() {
               <kbd>Ctrl / ⌘ Shift T</kbd>
             </div>
             <div>
-              <span>复制 / 粘贴</span>
+              <span>复制选中 / 粘贴</span>
+              <kbd>Ctrl / ⌘ C / V</kbd>
+            </div>
+            <div>
+              <span>复制 / 粘贴（终端）</span>
               <kbd>Ctrl Shift C / V</kbd>
+            </div>
+            <div>
+              <span>全选终端</span>
+              <kbd>Ctrl Shift A / ⌘ A</kbd>
             </div>
             <div>
               <span>保存文件</span>

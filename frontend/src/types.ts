@@ -152,6 +152,8 @@ export interface WSLInfo {
 }
 export interface TerminalHandle {
   send: (text: string) => void;
+  paste: (text: string) => void;
+  pasteFromClipboard: () => void;
   clear: () => void;
   focus: () => void;
   search: (text: string) => boolean;

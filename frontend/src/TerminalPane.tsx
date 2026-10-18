@@ -1,8 +1,24 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
-import { backend, errorText, listen } from "./bridge";
+import {
+  backend,
+  errorText,
+  listen,
+  readClipboard,
+  writeClipboard,
+} from "./bridge";
+import TerminalContextMenu, {
+  type TerminalAction,
+} from "./TerminalContextMenu";
 import type { Session, TerminalHandle } from "./types";
 import "@xterm/xterm/css/xterm.css";
 
@@ -16,6 +32,7 @@ interface Props {
   onClosed: (id: string, message: string) => void;
   onError: (message: string) => void;
   onPaste: (text: string) => void;
+  onSearch: () => void;
 }
 const terminalTheme = (dark: boolean) =>
   dark
@@ -80,6 +97,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       onClosed,
       onError,
       onPaste,
+      onSearch,
     },
     ref,
   ) {
@@ -90,8 +108,79 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     const demoInput = useRef("");
     const writes = useRef<Promise<void>>(Promise.resolve());
     const requestFit = useRef(() => {});
-    const latest = useRef({ session, onClosed, onError, onPaste, onZoom });
-    latest.current = { session, onClosed, onError, onPaste, onZoom };
+    const [menu, setMenu] = useState<{
+      x: number;
+      y: number;
+      hasSelection: boolean;
+    } | null>(null);
+    const latest = useRef({
+      session,
+      active,
+      onClosed,
+      onError,
+      onPaste,
+      onZoom,
+      onSearch,
+    });
+    latest.current = {
+      session,
+      active,
+      onClosed,
+      onError,
+      onPaste,
+      onZoom,
+      onSearch,
+    };
+    const closeMenu = useCallback((restoreFocus = false) => {
+      setMenu(null);
+      if (restoreFocus && latest.current.active) terminal.current?.focus();
+    }, []);
+
+    function copy(text: string) {
+      if (!text) return;
+      void writeClipboard(text).catch(() =>
+        latest.current.onError("无法写入剪贴板，请重试。"),
+      );
+    }
+    function pasteFromClipboard() {
+      if (latest.current.session.status !== "connected") return;
+      void readClipboard()
+        .then((text) => {
+          if (terminal.current && latest.current.session.status === "connected")
+            latest.current.onPaste(text);
+        })
+        .catch(() =>
+          latest.current.onError("无法读取剪贴板，请重试或使用系统粘贴。"),
+        );
+    }
+    function showMenu(x: number, y: number) {
+      if (!latest.current.active) return;
+      setMenu({
+        x,
+        y,
+        hasSelection: terminal.current?.hasSelection() ?? false,
+      });
+    }
+    function menuAction(action: TerminalAction) {
+      const term = terminal.current;
+      closeMenu(action !== "search");
+      if (!term) return;
+      if (action === "copy") copy(term.getSelection());
+      else if (action === "paste") pasteFromClipboard();
+      else if (action === "selectAll") term.selectAll();
+      else if (action === "clear") term.clear();
+      else if (action === "search") latest.current.onSearch();
+      else if (action === "copyAll") {
+        const lines: string[] = [];
+        for (let i = 0; i < term.buffer.active.length; i++) {
+          const line = term.buffer.active.getLine(i)!;
+          const text = line.translateToString(true);
+          if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
+          else lines.push(text);
+        }
+        copy(lines.join("\n").replace(/\n+$/, ""));
+      }
+    }
 
     function send(text: string) {
       if (session.demo) demoType(text);
@@ -170,6 +259,11 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
 
     useImperativeHandle(ref, () => ({
       send,
+      paste: (text) => {
+        if (latest.current.session.status === "connected")
+          terminal.current?.paste(text);
+      },
+      pasteFromClipboard,
       clear: () => terminal.current?.clear(),
       focus: () => terminal.current?.focus(),
       search: (text) =>
@@ -217,6 +311,22 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         );
       };
       container.current!.addEventListener("paste", paste, true);
+      const contextMenu = (event: MouseEvent) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const bounds = container.current!.getBoundingClientRect();
+        showMenu(
+          event.clientX || bounds.left + 24,
+          event.clientY || bounds.top + 24,
+        );
+      };
+      const preserveSelection = (event: MouseEvent) => {
+        if (event.button !== 2) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+      container.current!.addEventListener("contextmenu", contextMenu, true);
+      container.current!.addEventListener("mousedown", preserveSelection, true);
       let disposed = false;
       let fitFrame: number | undefined;
       let lastSize = "";
@@ -279,29 +389,48 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       const input = term.onData(send);
       term.attachCustomKeyEventHandler((e) => {
         if (e.type !== "keydown") return true;
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyC") {
-          void navigator.clipboard
-            .writeText(term.getSelection())
-            .catch(() => {});
+        if (e.altKey) return true;
+        const modifier = e.ctrlKey || e.metaKey;
+        const consume = () => {
+          e.preventDefault();
+          e.stopPropagation();
           return false;
+        };
+        if (
+          e.code === "ContextMenu" ||
+          (e.shiftKey && !modifier && e.code === "F10")
+        ) {
+          const bounds = container.current!.getBoundingClientRect();
+          showMenu(bounds.left + 24, bounds.top + 24);
+          return consume();
+        }
+        if (
+          (modifier &&
+            e.code === "KeyC" &&
+            (e.shiftKey || e.metaKey || term.hasSelection())) ||
+          (e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "Insert")
+        ) {
+          copy(term.getSelection());
+          return consume();
+        }
+        if (
+          (modifier && e.code === "KeyV") ||
+          (e.shiftKey && !modifier && e.code === "Insert")
+        ) {
+          pasteFromClipboard();
+          return consume();
+        }
+        if (modifier && e.code === "KeyA" && (e.shiftKey || e.metaKey)) {
+          term.selectAll();
+          return consume();
         }
         if (
           (e.ctrlKey || e.metaKey) &&
           (e.code === "KeyK" ||
             e.code === "KeyT" ||
-            (e.shiftKey && ["KeyF", "KeyV"].includes(e.code)))
+            (e.shiftKey && e.code === "KeyF"))
         )
           return false;
-        if (
-          (e.ctrlKey || e.metaKey) &&
-          e.code === "KeyC" &&
-          term.hasSelection()
-        ) {
-          void navigator.clipboard
-            .writeText(term.getSelection())
-            .catch(() => {});
-          return false;
-        }
         return true;
       });
       const offData = session.demo
@@ -335,6 +464,8 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
         requestFit.current = () => {};
         element.removeEventListener("paste", paste, true);
+        element.removeEventListener("contextmenu", contextMenu, true);
+        element.removeEventListener("mousedown", preserveSelection, true);
         element.removeEventListener("wheel", wheel, true);
         reducedMotion.removeEventListener("change", motionChanged);
         observer.disconnect();
@@ -357,6 +488,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       }
     }, [dark, fontSize, lineHeight]);
     useEffect(() => {
+      if (!active) closeMenu();
       if (active) {
         const frame = requestAnimationFrame(() => {
           requestFit.current();
@@ -364,13 +496,23 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         });
         return () => cancelAnimationFrame(frame);
       }
-    }, [active, session.status]);
+    }, [active, session.status, closeMenu]);
     return (
-      <div
-        className="terminal-mount"
-        ref={container}
-        aria-label={`${session.host.name} 终端 #${session.terminalNumber}`}
-      />
+      <>
+        <div
+          className="terminal-mount"
+          ref={container}
+          aria-label={`${session.host.name} 终端 #${session.terminalNumber}`}
+        />
+        {active && menu && (
+          <TerminalContextMenu
+            {...menu}
+            connected={session.status === "connected"}
+            onAction={menuAction}
+            onClose={closeMenu}
+          />
+        )}
+      </>
     );
   },
 );

@@ -4,7 +4,7 @@
 
 ## 使用
 
-Windows 可直接运行 `build/bin/OrbitSSH-v0.4.0.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
+Windows 可直接运行 `build/bin/OrbitSSH-v0.4.1.exe`，需要系统已安装 WebView2 Runtime（Windows 11 通常自带）。
 
 - 添加主机，保存地址、端口、用户名；支持密码和 PEM / OpenSSH 私钥认证。
 - 首页默认使用紧凑主机列表，支持搜索、收藏、最近连接和卡片视图切换。
@@ -13,6 +13,7 @@ Windows 可直接运行 `build/bin/OrbitSSH-v0.4.0.exe`，需要系统已安装 
 - 用户名和私钥文件路径自动保存。密码登录勾选“记住密码”后，连接成功时加密保存，下次连接免输入；加密私钥也可记住私钥口令。密码与口令使用 Windows 凭据管理器 / macOS Keychain / Linux Secret Service 保存在本机。
 - 首次连接核对 SHA-256 服务器指纹，之后自动验证；指纹变化时拒绝连接。
 - 终端支持多标签、搜索、命令片段、多行粘贴确认。浅色终端使用灰绿色背景，支持 Ctrl +/−、Ctrl 0、Ctrl + 滚轮缩放，偏好设置可调字号和行距。
+- SSH / WSL 终端支持系统剪贴板：选中文本后 Ctrl C 复制，无选中时仍中断命令；Ctrl V 粘贴，也支持 Ctrl Shift C / V、Ctrl Insert / Shift Insert，macOS 支持 ⌘ C / V。Ctrl Shift A（macOS ⌘ A）全选；右键提供复制、粘贴、全选、复制全部、查找和清屏，支持 Shift F10 / 菜单键及方向键操作。所有粘贴入口保留多行确认，并按终端的括号粘贴模式发送。
 - 内置 40 条常用 Linux 命令片段，覆盖系统、磁盘文件、进程、网络、日志服务、Docker 和 Git；支持分类、搜索、自定义和编辑。点击可复制或插入终端，按 Enter 才执行。旧配置升级时追加新片段，保留自定义内容并跳过重复命令，之后删除的预置不会在重启时恢复。
 - 同一主机可打开多个独立终端：点击工具栏“新建终端”、终端标签旁的“＋”，或按 Ctrl / ⌘ Shift T。标签按 #1、#2 编号，关闭一个终端不影响其他终端；已保存的密码或私钥口令自动用于新终端。
 - 同一主机的会话收在一个主机标签内，下面切换各个终端；切换主机时记住上次使用的终端。主机标签的关闭按钮可关闭该主机全部会话，多会话时先确认。
@@ -58,7 +59,7 @@ go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 Windows 打包：
 
 ```powershell
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.4.0.exe -platform windows/amd64 -webview2 browser
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 build -o OrbitSSH-v0.4.1.exe -platform windows/amd64 -webview2 browser
 ```
 
 macOS、Linux 在对应系统执行 Wails build。当前交付已在 Windows 编译与验证，其他平台仍需原生构建验证。

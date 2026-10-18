@@ -83,6 +83,8 @@ declare global {
   interface Window {
     go?: { main: { App: Backend } };
     runtime?: {
+      ClipboardGetText?: () => Promise<string>;
+      ClipboardSetText?: (text: string) => Promise<boolean>;
       EventsOnMultiple: (
         name: string,
         callback: (...data: unknown[]) => void,
@@ -92,6 +94,17 @@ declare global {
   }
 }
 export const isDesktop = () => Boolean(window.go?.main?.App);
+export async function readClipboard(): Promise<string> {
+  if (window.runtime?.ClipboardGetText)
+    return window.runtime.ClipboardGetText();
+  return navigator.clipboard.readText();
+}
+export async function writeClipboard(text: string): Promise<void> {
+  if (window.runtime?.ClipboardSetText) {
+    if (!(await window.runtime.ClipboardSetText(text)))
+      throw new Error("无法写入剪贴板");
+  } else await navigator.clipboard.writeText(text);
+}
 export const backend = () => {
   if (!window.go?.main?.App)
     throw new Error("真实 SSH 连接需要在桌面应用中使用");
