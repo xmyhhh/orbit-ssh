@@ -120,6 +120,10 @@ export default function App() {
   const handles = useRef(new Map<string, TerminalHandle>());
   const preferenceWrites = useRef<Promise<void>>(Promise.resolve());
   const connectingID = useRef<string | null>(null);
+  const terminalNumbers = useRef(new Map<string, number>());
+  const tabbarRef = useRef<HTMLDivElement>(null);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -165,6 +169,11 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+  useEffect(() => {
+    tabbarRef.current
+      ?.querySelector(".selected")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const listener = () => setSystemDark(media.matches);
@@ -214,7 +223,8 @@ export default function App() {
       }
       if (e.code === "KeyT") {
         e.preventDefault();
-        setHostEditor({ isNew: true });
+        if (e.shiftKey) newTerminal();
+        else newHost();
       }
       if (e.shiftKey && e.code === "KeyF" && activeSession && !filesOpen) {
         e.preventDefault();
@@ -298,18 +308,40 @@ export default function App() {
     }
     setConnectHost(host);
   }
-  function openDemo() {
-    const existing = sessions.find((s) => s.demo);
+  function allocateSession(host: Host, demo: boolean): Session {
+    const terminalNumber = (terminalNumbers.current.get(host.id) ?? 0) + 1;
+    terminalNumbers.current.set(host.id, terminalNumber);
+    return {
+      id: crypto.randomUUID(),
+      host,
+      terminalNumber,
+      demo,
+      status: demo ? "connected" : "connecting",
+    };
+  }
+  function newTerminal() {
+    if (activeSession?.status === "connecting") return;
+    setFilesOpen(false);
+    setMonitorExpanded(false);
+    setTerminalSearch(null);
+    if (activeSession?.demo) openDemo(true);
+    else if (activeSession)
+      chooseHost(
+        workspace.hosts.find((h) => h.id === activeSession.host.id) ??
+          activeSession.host,
+      );
+    else if (workspace.hosts.length) setPaletteOpen(true);
+    else newHost();
+  }
+  function openDemo(forceNew = false) {
+    const existing = !forceNew && sessions.find((s) => s.demo);
     if (existing) {
       setActive(existing.id);
       return;
     }
-    const id = crypto.randomUUID();
-    setSessions((s) => [
-      ...s,
-      { id, host: demoHost, demo: true, status: "connected" },
-    ]);
-    setActive(id);
+    const session = allocateSession(demoHost, true);
+    setSessions((s) => [...s, session]);
+    setActive(session.id);
     setSidebarOpen(false);
   }
   async function connect(
@@ -317,9 +349,11 @@ export default function App() {
     credentials: Credentials,
     fingerprint: string,
   ) {
-    const id = crypto.randomUUID();
+    const session = allocateSession(host, false);
+    const id = session.id;
+    const previousActive = active;
     connectingID.current = id;
-    setSessions((s) => [...s, { id, host, demo: false, status: "connecting" }]);
+    setSessions((s) => [...s, session]);
     setActive(id);
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
@@ -384,8 +418,16 @@ export default function App() {
       await backend()
         .Disconnect(id)
         .catch(() => {});
+      if (terminalNumbers.current.get(host.id) === session.terminalNumber)
+        terminalNumbers.current.set(host.id, session.terminalNumber - 1);
       setSessions((s) => s.filter((item) => item.id !== id));
-      setActive((current) => (current === id ? "workspace" : current));
+      setActive((current) =>
+        current === id
+          ? sessionsRef.current.some((s) => s.id === previousActive)
+            ? previousActive
+            : "workspace"
+          : current,
+      );
       throw e;
     } finally {
       if (connectingID.current === id) connectingID.current = null;
@@ -393,8 +435,13 @@ export default function App() {
   }
   async function removeSession(id: string) {
     if (isDesktop()) await backend().Disconnect(id);
+    const items = sessionsRef.current;
+    const index = items.findIndex((s) => s.id === id);
+    const remaining = items.filter((s) => s.id !== id);
+    const next =
+      remaining[Math.min(index, remaining.length - 1)]?.id ?? "workspace";
     setSessions((s) => s.filter((item) => item.id !== id));
-    if (active === id) setActive("workspace");
+    setActive((current) => (current === id ? next : current));
   }
   function closeSession(session: Session) {
     if (
@@ -404,7 +451,7 @@ export default function App() {
     )
       setConfirmation({
         title: "断开这次连接？",
-        message: `将关闭 ${session.host.name} 的终端会话，未完成的文件传输和前台任务会中断。`,
+        message: `将关闭 ${session.host.name} 的终端 #${session.terminalNumber}，此终端的文件传输和前台任务会中断。`,
         action: "断开连接",
         run: () => removeSession(session.id),
       });
@@ -645,7 +692,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.2</span>
+          <span>v0.3.3</span>
         </div>
       </aside>
 
@@ -691,7 +738,12 @@ export default function App() {
             </button>
           </div>
         </header>
-        <div className="tabbar" role="tablist" aria-label="工作区标签">
+        <div
+          ref={tabbarRef}
+          className="tabbar"
+          role="tablist"
+          aria-label="工作区标签"
+        >
           <button
             role="tab"
             aria-selected={active === "workspace"}
@@ -709,6 +761,8 @@ export default function App() {
               <button
                 role="tab"
                 aria-selected={s.id === active}
+                aria-label={`${s.host.name} · 终端 #${s.terminalNumber}`}
+                title={`${s.host.username}@${s.host.address}:${s.host.port} · 终端 #${s.terminalNumber}`}
                 onClick={() => setActive(s.id)}
               >
                 {s.status === "connecting" ? (
@@ -719,12 +773,15 @@ export default function App() {
                   />
                 )}
                 <span>{s.host.name}</span>
+                <span className="tab-number" aria-hidden="true">
+                  #{s.terminalNumber}
+                </span>
                 {s.demo && <span className="tab-demo">体验</span>}
               </button>
               <button
                 className="tab-close"
-                aria-label={`关闭 ${s.host.name} 标签`}
-                title="关闭标签"
+                aria-label={`关闭 ${s.host.name} 终端 #${s.terminalNumber}`}
+                title={`关闭终端 #${s.terminalNumber}`}
                 onClick={() => closeSession(s)}
               >
                 <X size={13} />
@@ -733,9 +790,16 @@ export default function App() {
           ))}
           <button
             className="tab-add"
-            aria-label="新建连接"
-            title="新建连接 · Ctrl T"
-            onClick={newHost}
+            aria-label={
+              activeSession ? "为当前主机新建终端" : "选择主机新建终端"
+            }
+            title={
+              activeSession
+                ? "为当前主机新建终端 · Ctrl Shift T"
+                : "选择主机新建终端"
+            }
+            disabled={activeSession?.status === "connecting"}
+            onClick={newTerminal}
           >
             <Plus size={17} />
           </button>
@@ -1091,7 +1155,10 @@ export default function App() {
                               <TerminalSquare size={18} />
                               本地演示
                             </span>
-                            <button className="text-button" onClick={openDemo}>
+                            <button
+                              className="text-button"
+                              onClick={() => openDemo()}
+                            >
                               体验终端 <ArrowUpRight size={15} />
                             </button>
                           </div>
@@ -1204,6 +1271,16 @@ export default function App() {
                     </span>
                   </div>
                   <div>
+                    <button
+                      className="button toolbar-button new-terminal-button"
+                      title="为当前主机新建终端 · Ctrl Shift T"
+                      disabled={activeSession?.status === "connecting"}
+                      onClick={newTerminal}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                      新建终端
+                    </button>
+                    <span className="toolbar-divider" />
                     <button
                       className="icon-button"
                       title="搜索终端 · Ctrl Shift F"
@@ -1465,6 +1542,7 @@ export default function App() {
                 .Disconnect(id)
                 .catch(() => {});
             setConnectHost(null);
+            requestAnimationFrame(() => handles.current.get(active)?.focus());
           }}
         />
       )}
@@ -1540,6 +1618,10 @@ export default function App() {
             <div>
               <span>搜索终端</span>
               <kbd>Ctrl / ⌘ Shift F</kbd>
+            </div>
+            <div>
+              <span>同主机新建终端</span>
+              <kbd>Ctrl / ⌘ Shift T</kbd>
             </div>
             <div>
               <span>复制 / 粘贴</span>
@@ -1698,7 +1780,7 @@ function HostCard({
               : "密码认证"}
         </span>
         <button onClick={onConnect}>
-          连接
+          {online ? "新建终端" : "连接"}
           <ArrowUpRight size={14} />
         </button>
       </div>

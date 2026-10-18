@@ -367,7 +367,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       <div
         className="terminal-mount"
         ref={container}
-        aria-label={`${session.host.name} 终端`}
+        aria-label={`${session.host.name} 终端 #${session.terminalNumber}`}
       />
     );
   },

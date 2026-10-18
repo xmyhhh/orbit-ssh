@@ -729,6 +729,7 @@ textarea {
   min-width: 130px;
   max-width: 230px;
   padding-right: 8px;
+  scroll-margin-inline-end: 48px;
 }
 .session-tab > button:first-child {
   display: flex;
@@ -747,6 +748,15 @@ textarea {
 .session-tab .status-dot {
   width: 5px;
   height: 5px;
+}
+.tab-number {
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 .tab-demo {
   font-size: 9px;
@@ -769,6 +779,11 @@ textarea {
   opacity: 1;
 }
 .tab-add {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  flex-shrink: 0;
+  background: var(--sidebar);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1837,6 +1852,12 @@ textarea {
 }
 .terminal-toolbar > div:first-child {
   overflow: hidden;
+}
+.terminal-toolbar > div:last-child {
+  flex-shrink: 0;
+}
+.toolbar-button.new-terminal-button {
+  color: var(--accent);
 }
 .terminal-toolbar code {
   font-size: 11px;

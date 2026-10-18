@@ -129,6 +129,7 @@ export interface Transfer {
 export interface Session {
   id: string;
   host: Host;
+  terminalNumber: number;
   demo: boolean;
   status: "connecting" | "connected" | "closed";
   error?: string;
