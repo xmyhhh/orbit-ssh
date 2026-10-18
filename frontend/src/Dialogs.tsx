@@ -870,7 +870,7 @@ export function PreferencesDialog({
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.4.2</span>
+        <span className="version-label">Orbit SSH · v1.0</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>
