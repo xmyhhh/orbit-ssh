@@ -31,7 +31,6 @@ import {
   Sun,
   TerminalSquare,
   Trash2,
-  Wifi,
   X,
   Zap,
 } from "lucide-react";
@@ -65,6 +64,7 @@ import {
 import { TerminalPane } from "./TerminalPane";
 import FilesPane from "./FilesPane";
 import MonitorPanel from "./MonitorPanel";
+import { snippetCategories, snippetCategory } from "./snippets";
 
 type Page = "workspace" | "hosts" | "snippets";
 type HostFilter = "all" | "favorite" | "recent";
@@ -115,8 +115,8 @@ export default function App() {
   const [terminalSearch, setTerminalSearch] = useState<string | null>(null);
   const [searchFound, setSearchFound] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [quick, setQuick] = useState("");
-  const [quickError, setQuickError] = useState("");
+  const [snippetQuery, setSnippetQuery] = useState("");
+  const [snippetFilter, setSnippetFilter] = useState("全部");
   const handles = useRef(new Map<string, TerminalHandle>());
   const preferenceWrites = useRef<Promise<void>>(Promise.resolve());
   const connectingID = useRef<string | null>(null);
@@ -510,36 +510,6 @@ export default function App() {
       },
     });
   }
-  function quickConnect() {
-    const value = quick.trim().replace(/^ssh\s+/, "");
-    const match = value.match(
-      /^(?:([^\s@]+)@)?(\[[^\]]+\]|[^\s:]+)(?::(\d+)|\s+-p\s+(\d+))?$/,
-    );
-    if (!match) {
-      setQuickError("试试 root@192.168.1.10 或 ssh root@example.com -p 22");
-      return;
-    }
-    const port = Number(match[3] || match[4] || 22);
-    if (port < 1 || port > 65535) {
-      setQuickError("端口应在 1–65535 之间");
-      return;
-    }
-    setQuickError("");
-    const address = match[2].replace(/^\[|\]$/g, "");
-    setHostEditor({
-      isNew: true,
-      host: {
-        ...demoHost,
-        id: crypto.randomUUID(),
-        name: address,
-        address,
-        port,
-        username: match[1] || "root",
-        group: "默认分组",
-      },
-    });
-  }
-
   let filtered = workspace.hosts.filter(
     (h) =>
       (!group || h.group === group) &&
@@ -552,9 +522,20 @@ export default function App() {
     filtered = filtered
       .filter((h) => h.lastConnected)
       .sort((a, b) => b.lastConnected.localeCompare(a.lastConnected));
-  const connectedCount = sessions.filter(
-    (s) => !s.demo && s.status === "connected",
-  ).length;
+  const filteredSnippets = workspace.snippets.filter(
+    (snippet) =>
+      (snippetFilter === "全部" ||
+        snippetCategory(snippet) === snippetFilter) &&
+      `${snippet.name} ${snippet.command} ${snippet.description} ${snippetCategory(snippet)}`
+        .toLowerCase()
+        .includes(snippetQuery.trim().toLowerCase()),
+  );
+  const availableSnippetCategories = [
+    ...new Set([
+      ...snippetCategories,
+      ...workspace.snippets.map(snippetCategory),
+    ]),
+  ];
 
   return (
     <div className={`app ${sidebarOpen ? "sidebar-open" : ""}`}>
@@ -692,7 +673,7 @@ export default function App() {
         </div>
         <div className="sidebar-version">
           <span>ORBIT SSH</span>
-          <span>v0.3.5</span>
+          <span>v0.3.6</span>
         </div>
       </aside>
 
@@ -843,167 +824,130 @@ export default function App() {
                       <kbd>{page === "snippets" ? "+" : "⌃ T"}</kbd>
                     </button>
                   </section>
-                  {page === "workspace" && (
-                    <>
-                      <div className="overview-strip">
-                        <div>
-                          <span className="metric-icon">
-                            <Server size={19} />
-                          </span>
-                          <div>
-                            <span>已保存主机</span>
-                            <strong>
-                              {workspace.hosts.length
-                                .toString()
-                                .padStart(2, "0")}
-                              <small>台</small>
-                            </strong>
-                          </div>
-                        </div>
-                        <span className="metric-divider" />
-                        <div>
-                          <span className="metric-icon mint">
-                            <Wifi size={19} />
-                          </span>
-                          <div>
-                            <span>正在连接</span>
-                            <strong>
-                              {connectedCount.toString().padStart(2, "0")}
-                              <small>个会话</small>
-                            </strong>
-                          </div>
-                          <span
-                            className={`status-pill ${connectedCount ? "online" : ""}`}
-                          >
-                            {connectedCount ? "连接中" : "未连接"}
-                          </span>
-                        </div>
-                        <span className="metric-divider" />
-                        <div>
-                          <span className="metric-icon violet">
-                            <Code2 size={19} />
-                          </span>
-                          <div>
-                            <span>命令片段</span>
-                            <strong>
-                              {workspace.snippets.length
-                                .toString()
-                                .padStart(2, "0")}
-                              <small>个</small>
-                            </strong>
-                          </div>
-                          <button
-                            className="metric-link"
-                            aria-label="管理命令片段"
-                            title="管理片段"
-                            onClick={() => navigate("snippets")}
-                          >
-                            <ArrowUpRight size={17} />
-                          </button>
-                        </div>
-                      </div>
-                      <form
-                        className="quick-connect"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          quickConnect();
-                        }}
-                      >
-                        <span className="quick-icon">
-                          <TerminalSquare size={19} />
-                        </span>
-                        <span className="quick-label">快速连接</span>
-                        <span className="quick-separator" />
-                        <input
-                          aria-label="快速连接地址"
-                          value={quick}
-                          onChange={(e) => {
-                            setQuick(e.target.value);
-                            setQuickError("");
-                          }}
-                          placeholder="ssh root@192.168.1.10"
-                          spellCheck={false}
-                        />
-                        <button
-                          type="submit"
-                          title="填写主机连接信息"
-                          aria-label="填写主机连接信息"
-                        >
-                          <ArrowRight size={18} />
-                        </button>
-                      </form>
-                      {quickError && (
-                        <p className="form-error quick-error" role="alert">
-                          {quickError}
-                        </p>
-                      )}
-                    </>
-                  )}
-
                   {page === "snippets" ? (
-                    <section className="snippets-grid">
-                      {workspace.snippets.map((s) => (
-                        <article className="snippet-card" key={s.id}>
-                          <div className="snippet-card-heading">
-                            <span className="snippet-icon">
-                              <Code2 size={20} />
-                            </span>
-                            <div>
-                              <h2>{s.name}</h2>
-                              <p>{s.description || "自定义命令片段"}</p>
+                    <section
+                      className="snippets-library"
+                      aria-label="命令片段库"
+                    >
+                      <div className="snippet-filters">
+                        <label className="snippet-search">
+                          <Search size={16} aria-hidden="true" />
+                          <input
+                            aria-label="搜索命令片段"
+                            placeholder="搜索名称、命令或说明…"
+                            value={snippetQuery}
+                            onChange={(e) => setSnippetQuery(e.target.value)}
+                          />
+                        </label>
+                        <select
+                          aria-label="片段分类"
+                          value={snippetFilter}
+                          onChange={(e) => setSnippetFilter(e.target.value)}
+                        >
+                          <option value="全部">全部分类</option>
+                          {availableSnippetCategories.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </select>
+                        <span role="status">
+                          {filteredSnippets.length} /{" "}
+                          {workspace.snippets.length} 条
+                        </span>
+                      </div>
+                      {!filteredSnippets.length && (
+                        <div className="snippet-empty">
+                          <Search size={24} aria-hidden="true" />
+                          <strong>
+                            {workspace.snippets.length
+                              ? "没有匹配的片段"
+                              : "暂无命令片段"}
+                          </strong>
+                          <span>
+                            {workspace.snippets.length
+                              ? "换个关键词或分类试试"
+                              : "点击新建片段添加常用命令"}
+                          </span>
+                          {(snippetQuery || snippetFilter !== "全部") && (
+                            <button
+                              className="button secondary compact"
+                              onClick={() => {
+                                setSnippetQuery("");
+                                setSnippetFilter("全部");
+                              }}
+                            >
+                              清除筛选
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <div className="snippets-grid">
+                        {filteredSnippets.map((s) => (
+                          <article className="snippet-card" key={s.id}>
+                            <div className="snippet-card-heading">
+                              <span className="snippet-icon">
+                                <Code2 size={20} />
+                              </span>
+                              <div>
+                                <h2>{s.name}</h2>
+                                <span className="snippet-category">
+                                  {snippetCategory(s)}
+                                </span>
+                                <p>{s.description || "自定义命令片段"}</p>
+                              </div>
+                              <button
+                                className="icon-button"
+                                aria-label={`编辑 ${s.name}`}
+                                title="编辑片段"
+                                onClick={() => setSnippetEditor({ snippet: s })}
+                              >
+                                <Pencil size={16} />
+                              </button>
                             </div>
-                            <button
-                              className="icon-button"
-                              aria-label={`编辑 ${s.name}`}
-                              title="编辑片段"
-                              onClick={() => setSnippetEditor({ snippet: s })}
-                            >
-                              <Pencil size={16} />
-                            </button>
-                          </div>
-                          <pre>{s.command}</pre>
-                          <div className="snippet-card-footer">
-                            <button
-                              className="text-button"
-                              onClick={() => insertSnippet(s)}
-                            >
-                              <Clipboard size={14} />
-                              {sessions.some((t) => t.status === "connected")
-                                ? "插入终端"
-                                : "复制命令"}
-                            </button>
-                            <button
-                              className="icon-button"
-                              aria-label={`删除 ${s.name}`}
-                              title="删除片段"
-                              onClick={() =>
-                                setConfirmation({
-                                  title: "删除这条片段？",
-                                  message: `“${s.name}”将从命令片段中移除。`,
-                                  action: "删除片段",
-                                  danger: true,
-                                  run: () =>
-                                    saveSnippets(
-                                      stateRef.current.snippets.filter(
-                                        (item) => item.id !== s.id,
+                            <pre>{s.command}</pre>
+                            <div className="snippet-card-footer">
+                              <button
+                                className="text-button"
+                                onClick={() => insertSnippet(s)}
+                              >
+                                <Clipboard size={14} />
+                                {sessions.some((t) => t.status === "connected")
+                                  ? "插入终端"
+                                  : "复制命令"}
+                              </button>
+                              <button
+                                className="icon-button"
+                                aria-label={`删除 ${s.name}`}
+                                title="删除片段"
+                                onClick={() =>
+                                  setConfirmation({
+                                    title: "删除这条片段？",
+                                    message: `“${s.name}”将从命令片段中移除。`,
+                                    action: "删除片段",
+                                    danger: true,
+                                    run: () =>
+                                      saveSnippets(
+                                        stateRef.current.snippets.filter(
+                                          (item) => item.id !== s.id,
+                                        ),
                                       ),
-                                    ),
-                                })
-                              }
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                      <button
-                        className="add-snippet-card"
-                        onClick={() => setSnippetEditor({})}
-                      >
-                        <Plus size={24} />
-                        <strong>保存你的常用命令</strong>
-                        <span>少敲几次，多一点专注</span>
-                      </button>
+                                  })
+                                }
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                        <button
+                          className="add-snippet-card"
+                          onClick={() => setSnippetEditor({})}
+                        >
+                          <Plus size={24} />
+                          <strong>新建片段</strong>
+                        </button>
+                      </div>
                     </section>
                   ) : (
                     <div

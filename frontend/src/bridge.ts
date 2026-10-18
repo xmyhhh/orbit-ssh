@@ -1,3 +1,8 @@
+import {
+  builtinSnippets,
+  snippetCatalogVersion,
+  upgradeSnippetCatalog,
+} from "./snippets";
 import type {
   Credentials,
   Directory,
@@ -93,26 +98,8 @@ export function listen(
 const storageKey = "orbit-ssh-preview-v1";
 export const defaults: Workspace = {
   hosts: [],
-  snippets: [
-    {
-      id: "system",
-      name: "系统概览",
-      command: "uname -a",
-      description: "查看系统与内核信息",
-    },
-    {
-      id: "disk",
-      name: "磁盘用量",
-      command: "df -h",
-      description: "以易读格式查看磁盘空间",
-    },
-    {
-      id: "process",
-      name: "进程快照",
-      command: "ps aux | head -20",
-      description: "查看前 20 个进程",
-    },
-  ],
+  snippets: builtinSnippets,
+  snippetCatalogVersion,
   preferences: {
     theme: "light",
     fontSize: 14,
@@ -129,11 +116,18 @@ export async function loadWorkspace(): Promise<Workspace> {
       const value = JSON.parse(stored) as Workspace;
       if (!Array.isArray(value.hosts) || !Array.isArray(value.snippets))
         throw new Error("invalid");
-      return {
+      const upgraded = upgradeSnippetCatalog({
         ...defaults,
         ...value,
+        snippetCatalogVersion: value.snippetCatalogVersion ?? 0,
         preferences: { ...defaults.preferences, ...value.preferences },
-      };
+      });
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(upgraded));
+      } catch {
+        /* Keep this session usable if storage is unavailable. */
+      }
+      return upgraded;
     }
   } catch {
     /* An invalid preview cache may be reset without touching desktop data. */

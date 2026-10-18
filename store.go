@@ -29,6 +29,7 @@ type Snippet struct {
 	Name        string `json:"name"`
 	Command     string `json:"command"`
 	Description string `json:"description"`
+	Category    string `json:"category,omitempty"`
 }
 
 type Preferences struct {
@@ -39,10 +40,11 @@ type Preferences struct {
 }
 
 type State struct {
-	Hosts       []Host            `json:"hosts"`
-	Snippets    []Snippet         `json:"snippets"`
-	Preferences Preferences       `json:"preferences"`
-	KnownHosts  map[string]string `json:"knownHosts"`
+	Hosts                 []Host            `json:"hosts"`
+	Snippets              []Snippet         `json:"snippets"`
+	Preferences           Preferences       `json:"preferences"`
+	KnownHosts            map[string]string `json:"knownHosts"`
+	SnippetCatalogVersion int               `json:"snippetCatalogVersion"`
 }
 
 type Store struct {
@@ -52,11 +54,9 @@ type Store struct {
 }
 
 func defaultState() State {
-	return State{Hosts: []Host{}, Snippets: []Snippet{
-		{ID: "system", Name: "系统概览", Command: "uname -a", Description: "查看系统与内核信息"},
-		{ID: "disk", Name: "磁盘用量", Command: "df -h", Description: "以易读格式查看磁盘空间"},
-		{ID: "process", Name: "进程快照", Command: "ps aux | head -20", Description: "查看前 20 个进程"},
-	}, Preferences: Preferences{Theme: "light", FontSize: 14, LineHeight: 1.35, ConfirmClose: true}, KnownHosts: map[string]string{}}
+	return State{Hosts: []Host{}, Snippets: append([]Snippet{}, builtinSnippets.Snippets...),
+		SnippetCatalogVersion: builtinSnippets.Version,
+		Preferences:           Preferences{Theme: "light", FontSize: 14, LineHeight: 1.35, ConfirmClose: true}, KnownHosts: map[string]string{}}
 }
 
 func openStore(path string) (*Store, error) {
@@ -68,6 +68,10 @@ func openStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A missing version belongs to the original three-snippet catalog.
+	s.state.SnippetCatalogVersion = 0
+	// Decode into a fresh slice so omitted fields cannot inherit preset values.
+	s.state.Snippets = nil
 	if err = json.Unmarshal(data, &s.state); err != nil {
 		return nil, fmt.Errorf("配置文件无法读取，原文件已保留：%w", err)
 	}
@@ -79,6 +83,11 @@ func openStore(path string) (*Store, error) {
 	}
 	if s.state.KnownHosts == nil {
 		s.state.KnownHosts = map[string]string{}
+	}
+	if upgradeSnippetCatalog(&s.state) {
+		if err = s.persistLocked(); err != nil {
+			return nil, fmt.Errorf("常用片段无法保存，原配置已保留：%w", err)
+		}
 	}
 	return s, nil
 }

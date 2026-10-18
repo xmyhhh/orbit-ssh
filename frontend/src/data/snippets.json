@@ -1,0 +1,285 @@
+{
+  "version": 1,
+  "snippets": [
+    {
+      "id": "system",
+      "name": "系统概览",
+      "command": "uname -a",
+      "description": "查看系统与内核信息",
+      "category": "系统"
+    },
+    {
+      "id": "disk",
+      "name": "磁盘用量",
+      "command": "df -h",
+      "description": "以易读格式查看磁盘空间",
+      "category": "磁盘与文件"
+    },
+    {
+      "id": "process",
+      "name": "进程快照",
+      "command": "ps aux | head -20",
+      "description": "查看前 20 个进程",
+      "category": "进程"
+    },
+    {
+      "id": "orbit-os-release",
+      "name": "系统发行版",
+      "command": "cat /etc/os-release",
+      "description": "查看 Linux 发行版与版本",
+      "category": "系统"
+    },
+    {
+      "id": "orbit-uptime",
+      "name": "运行时间与负载",
+      "command": "uptime",
+      "description": "查看开机时长和系统平均负载",
+      "category": "系统"
+    },
+    {
+      "id": "orbit-cpu-info",
+      "name": "CPU 信息",
+      "command": "lscpu",
+      "description": "查看核心数、架构与 CPU 型号",
+      "category": "系统"
+    },
+    {
+      "id": "orbit-memory",
+      "name": "内存用量",
+      "command": "free -h",
+      "description": "查看内存与交换空间",
+      "category": "系统"
+    },
+    {
+      "id": "orbit-login-users",
+      "name": "在线用户",
+      "command": "w",
+      "description": "查看当前登录用户和正在运行的任务",
+      "category": "系统"
+    },
+    {
+      "id": "orbit-disk-inodes",
+      "name": "Inode 用量",
+      "command": "df -ih",
+      "description": "排查磁盘有空间却无法创建文件的问题",
+      "category": "磁盘与文件"
+    },
+    {
+      "id": "orbit-directory-size",
+      "name": "当前目录大小",
+      "command": "du -h --max-depth=1 . 2>/dev/null | sort -h",
+      "description": "按大小查看当前目录下的空间占用",
+      "category": "磁盘与文件"
+    },
+    {
+      "id": "orbit-file-list",
+      "name": "文件与权限",
+      "command": "ls -lah",
+      "description": "查看隐藏文件、大小、所有者和权限",
+      "category": "磁盘与文件"
+    },
+    {
+      "id": "orbit-large-files",
+      "name": "查找大文件",
+      "command": "find . -type f -size +100M -printf '%s %p\\n' 2>/dev/null | sort -nr | head -20",
+      "description": "查找当前目录下大于 100 MB 的文件",
+      "category": "磁盘与文件"
+    },
+    {
+      "id": "orbit-block-devices",
+      "name": "磁盘与挂载",
+      "command": "lsblk -f",
+      "description": "查看分区、文件系统和挂载位置",
+      "category": "磁盘与文件"
+    },
+    {
+      "id": "orbit-process-cpu",
+      "name": "CPU 占用排行",
+      "command": "ps -eo pid,ppid,user,%cpu,%mem,etime,args --sort=-%cpu | head -21",
+      "description": "查看 CPU 占用最高的 20 个进程",
+      "category": "进程"
+    },
+    {
+      "id": "orbit-process-memory",
+      "name": "内存占用排行",
+      "command": "ps -eo pid,ppid,user,%cpu,%mem,etime,args --sort=-%mem | head -21",
+      "description": "查看内存占用最高的 20 个进程",
+      "category": "进程"
+    },
+    {
+      "id": "orbit-process-tree",
+      "name": "进程树",
+      "command": "ps -ejH",
+      "description": "查看进程与父子关系",
+      "category": "进程"
+    },
+    {
+      "id": "orbit-ip-address",
+      "name": "IP 地址",
+      "command": "ip -br addr",
+      "description": "查看网卡状态和 IP 地址",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-ip-route",
+      "name": "路由表",
+      "command": "ip route",
+      "description": "查看默认网关与路由",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-listen-ports",
+      "name": "监听端口",
+      "command": "ss -lntup",
+      "description": "查看 TCP / UDP 监听端口与对应进程",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-connections",
+      "name": "网络连接",
+      "command": "ss -tunap | head -60",
+      "description": "查看网络连接和进程信息",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-ping",
+      "name": "网络连通性",
+      "command": "ping -c 4 1.1.1.1",
+      "description": "向目标地址发送 4 次探测，可修改目标 IP",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-dns",
+      "name": "域名解析",
+      "command": "getent ahosts example.com",
+      "description": "使用系统解析器查询域名，可修改域名",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-http-headers",
+      "name": "HTTP 响应头",
+      "command": "curl -I --max-time 10 https://example.com",
+      "description": "检查网站响应状态与响应头，可修改网址",
+      "category": "网络"
+    },
+    {
+      "id": "orbit-system-logs",
+      "name": "最近系统日志",
+      "command": "journalctl -n 100 --no-pager",
+      "description": "查看最近 100 条系统日志",
+      "category": "日志与服务"
+    },
+    {
+      "id": "orbit-error-logs",
+      "name": "系统错误日志",
+      "command": "journalctl -p err -n 50 --no-pager",
+      "description": "查看最近 50 条错误及更严重的日志",
+      "category": "日志与服务"
+    },
+    {
+      "id": "orbit-ssh-logs",
+      "name": "SSH 服务日志",
+      "command": "journalctl -u sshd -n 100 --no-pager",
+      "description": "查看 SSH 日志，部分发行版服务名为 ssh",
+      "category": "日志与服务"
+    },
+    {
+      "id": "orbit-failed-services",
+      "name": "失败的服务",
+      "command": "systemctl --failed --no-pager",
+      "description": "查看启动或运行失败的 systemd 单元",
+      "category": "日志与服务"
+    },
+    {
+      "id": "orbit-running-services",
+      "name": "运行中的服务",
+      "command": "systemctl list-units --type=service --state=running --no-pager",
+      "description": "查看正在运行的 systemd 服务",
+      "category": "日志与服务"
+    },
+    {
+      "id": "orbit-nginx-test",
+      "name": "Nginx 配置检查",
+      "command": "nginx -t",
+      "description": "检查 Nginx 配置语法与引用文件",
+      "category": "日志与服务"
+    },
+    {
+      "id": "orbit-docker-containers",
+      "name": "容器状态",
+      "command": "docker ps -a",
+      "description": "查看运行中与已停止的 Docker 容器",
+      "category": "Docker"
+    },
+    {
+      "id": "orbit-docker-stats",
+      "name": "容器资源用量",
+      "command": "docker stats --no-stream",
+      "description": "获取一次容器 CPU、内存和网络用量",
+      "category": "Docker"
+    },
+    {
+      "id": "orbit-docker-images",
+      "name": "镜像列表",
+      "command": "docker images",
+      "description": "查看本机 Docker 镜像",
+      "category": "Docker"
+    },
+    {
+      "id": "orbit-docker-disk",
+      "name": "Docker 磁盘用量",
+      "command": "docker system df",
+      "description": "查看镜像、容器与卷的空间占用",
+      "category": "Docker"
+    },
+    {
+      "id": "orbit-docker-logs",
+      "name": "容器日志",
+      "command": "docker logs --tail 100 CONTAINER",
+      "description": "将 CONTAINER 换成容器名称或 ID",
+      "category": "Docker"
+    },
+    {
+      "id": "orbit-compose-status",
+      "name": "Compose 项目状态",
+      "command": "docker compose ps",
+      "description": "查看当前 Compose 项目的容器状态",
+      "category": "Docker"
+    },
+    {
+      "id": "orbit-git-status",
+      "name": "Git 工作区状态",
+      "command": "git status --short --branch",
+      "description": "查看分支与已修改文件",
+      "category": "Git"
+    },
+    {
+      "id": "orbit-git-log",
+      "name": "Git 最近提交",
+      "command": "git log --oneline -15",
+      "description": "查看最近 15 条提交记录",
+      "category": "Git"
+    },
+    {
+      "id": "orbit-git-diff",
+      "name": "Git 未暂存修改",
+      "command": "git diff",
+      "description": "查看工作区尚未暂存的差异",
+      "category": "Git"
+    },
+    {
+      "id": "orbit-git-remotes",
+      "name": "Git 远程仓库",
+      "command": "git remote -v",
+      "description": "查看拉取与推送地址",
+      "category": "Git"
+    },
+    {
+      "id": "orbit-git-branches",
+      "name": "Git 分支列表",
+      "command": "git branch -av",
+      "description": "查看本地与远程分支",
+      "category": "Git"
+    }
+  ]
+}

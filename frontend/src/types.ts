@@ -17,6 +17,7 @@ export interface Snippet {
   name: string;
   command: string;
   description: string;
+  category?: string;
 }
 export interface Preferences {
   theme: Theme;
@@ -29,6 +30,7 @@ export interface Workspace {
   snippets: Snippet[];
   preferences: Preferences;
   knownHosts: Record<string, string>;
+  snippetCatalogVersion?: number;
 }
 export interface Credentials {
   password: string;

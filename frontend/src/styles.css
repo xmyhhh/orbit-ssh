@@ -836,155 +836,6 @@ textarea {
 .page-heading > .button {
   margin-top: 14px;
 }
-.overview-strip {
-  display: flex;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 9px;
-  padding: 23px 26px;
-  box-shadow: 0 2px 3px #23302302;
-  margin-bottom: 23px;
-}
-.overview-strip > div {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-.metric-icon {
-  height: 41px;
-  width: 41px;
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  color: var(--muted);
-}
-.metric-icon.mint {
-  background: var(--mint-bg);
-  color: var(--mint-fg);
-  border-color: transparent;
-}
-.metric-icon.violet {
-  background: var(--violet-bg);
-  color: var(--violet-fg);
-  border-color: transparent;
-}
-.overview-strip > div > div {
-  display: flex;
-  flex-direction: column;
-}
-.overview-strip > div > div > span {
-  font-size: 10px;
-  color: var(--muted);
-  margin-bottom: 3px;
-}
-.overview-strip strong {
-  font-size: 26px;
-  font-weight: 550;
-  line-height: 1.25;
-  letter-spacing: -0.5px;
-  font-variant-numeric: tabular-nums;
-}
-.overview-strip strong small {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--faint);
-  margin-left: 9px;
-  letter-spacing: 0;
-}
-.metric-divider {
-  width: 1px;
-  background: var(--line);
-  margin: 1px 31px;
-}
-.status-pill {
-  font-size: 9px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  padding: 2px 6px;
-  border-radius: 5px;
-  margin-left: auto;
-  margin-right: 5px;
-  align-self: flex-start;
-  margin-top: 2px;
-}
-.status-pill.online {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-}
-.metric-link {
-  color: var(--faint);
-  margin-left: auto;
-  width: 26px;
-  height: 26px;
-  border-radius: 5px;
-}
-.metric-link:hover {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.quick-connect {
-  display: flex;
-  align-items: center;
-  height: 47px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 8px;
-  padding: 0 11px 0 16px;
-  gap: 12px;
-  margin-bottom: 33px;
-}
-.quick-connect:focus-within {
-  border-color: var(--accent-bright);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.quick-icon {
-  color: var(--accent);
-}
-.quick-label {
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.quick-separator {
-  height: 15px;
-  width: 1px;
-  background: var(--line);
-  margin: 0 3px;
-}
-.quick-connect input {
-  background: transparent;
-  border: none;
-  outline: none;
-  flex: 1;
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 11px;
-  height: 100%;
-}
-.quick-connect input:focus-visible {
-  outline: none;
-}
-.quick-connect > button {
-  background: var(--surface-soft);
-  width: 28px;
-  height: 27px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  border-radius: 5px;
-}
-.quick-connect > button:hover {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.quick-error {
-  margin: -22px 0 20px !important;
-}
 .workspace-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 245px;
@@ -1703,6 +1554,88 @@ textarea {
 .dashboard-footer .status-dot {
   width: 4px;
   height: 4px;
+}
+.snippets-library {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+  min-width: 0;
+}
+.snippet-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.snippet-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 12px;
+  height: 38px;
+  flex: 1;
+  max-width: 420px;
+  min-width: 0;
+  color: var(--muted);
+}
+.snippet-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.snippet-search input {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+.snippet-search input:focus-visible {
+  outline: none;
+}
+.snippet-filters > select {
+  height: 38px;
+  padding: 0 28px 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.snippet-filters > span {
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+  font-size: 11px;
+}
+.snippet-category {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 10px;
+}
+.snippet-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 16px;
+  color: var(--muted);
+}
+.snippet-empty strong {
+  font-weight: 500;
+  color: var(--text);
+}
+.snippet-empty > span {
+  font-size: 12px;
 }
 .snippets-grid {
   display: grid;
@@ -2767,15 +2700,6 @@ textarea {
   .dashboard-rail {
     padding-left: 20px;
   }
-  .overview-strip {
-    padding: 19px 21px;
-  }
-  .metric-divider {
-    margin: 1px 20px;
-  }
-  .status-pill {
-    display: none;
-  }
   .demo-art {
     opacity: 0.8;
     right: -30px;
@@ -2824,20 +2748,6 @@ textarea {
   }
   .page-heading h1 {
     font-size: 25px;
-  }
-  .metric-divider {
-    margin: 1px 17px;
-  }
-  .overview-strip > div {
-    gap: 10px;
-  }
-  .metric-icon {
-    width: 35px;
-    height: 35px;
-    border-radius: 9px;
-  }
-  .overview-strip strong {
-    font-size: 23px;
   }
   .toast {
     left: calc(50% + 102px);
@@ -2905,12 +2815,6 @@ textarea {
   .skip-link {
     left: 20px;
   }
-  .overview-strip strong small {
-    margin-left: 5px;
-  }
-  .overview-strip > div {
-    gap: 10px;
-  }
   .demo-art {
     opacity: 0.45;
     right: -60px;
@@ -2957,39 +2861,6 @@ textarea {
     letter-spacing: 1.2px;
   }
   .page-heading > div > p:last-child {
-    font-size: 10px;
-  }
-  .overview-strip {
-    padding: 16px 15px;
-  }
-  .metric-icon {
-    display: none;
-  }
-  .overview-strip > div {
-    gap: 0;
-  }
-  .overview-strip > div > div > span {
-    font-size: 9px;
-  }
-  .metric-divider {
-    margin: 0 17px;
-  }
-  .overview-strip strong {
-    font-size: 23px;
-  }
-  .metric-link {
-    display: none;
-  }
-  .quick-label {
-    display: none;
-  }
-  .quick-separator {
-    display: none;
-  }
-  .quick-connect {
-    margin-bottom: 26px;
-  }
-  .quick-connect input {
     font-size: 10px;
   }
   .demo-art {

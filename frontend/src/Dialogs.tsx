@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { Credentials, Host, Preferences, Snippet } from "./types";
 import { backend, errorText, isDesktop } from "./bridge";
+import { snippetCategories, snippetCategory } from "./snippets";
 
 export function Modal({
   title,
@@ -667,19 +668,20 @@ export function SnippetDialog({
   onSave: (value: Snippet) => Promise<void>;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState(
+  const [form, setForm] = useState<Snippet>(
     snippet ?? {
       id: crypto.randomUUID(),
       name: "",
       command: "",
       description: "",
+      category: "自定义",
     },
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
     <Modal
-      title={snippet ? "编辑命令片段" : "保存一段好用的命令"}
+      title={snippet ? "编辑命令片段" : "新建命令片段"}
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -707,6 +709,21 @@ export function SnippetDialog({
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例如：查看容器状态"
           />
+        </label>
+        <label className="field">
+          分类
+          <select
+            value={snippetCategory(form)}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+          >
+            {[...new Set([...snippetCategories, snippetCategory(form)])].map(
+              (category) => (
+                <option value={category} key={category}>
+                  {category}
+                </option>
+              ),
+            )}
+          </select>
         </label>
         <label className="field">
           命令
@@ -880,7 +897,7 @@ export function PreferencesDialog({
         </p>
       )}
       <div className="modal-footer">
-        <span className="version-label">Orbit SSH · v0.3.5</span>
+        <span className="version-label">Orbit SSH · v0.3.6</span>
         <button className="button primary" onClick={onClose}>
           完成
         </button>
