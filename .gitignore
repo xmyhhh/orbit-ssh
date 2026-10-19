@@ -2,6 +2,8 @@ node_modules/
 frontend/dist/
 frontend/wailsjs/
 build/bin/
+build/windows/installer/payload/
+build/windows/installer/OrbitSSH-setup.exe
 *.log
 .DS_Store
 test-results/

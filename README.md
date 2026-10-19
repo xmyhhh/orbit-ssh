@@ -4,7 +4,7 @@
 
 Orbit SSH 是一款面向 Windows 和 Android 的个人 SSH 工具，适合日常连接 Linux 服务器、维护文件、配置 SSH 隧道，以及在 Windows 上使用本地 Shell 和 WSL。无需注册账号，主机配置和登录凭据保存在当前设备。
 
-**v2.0：[Windows x64 · EXE](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64.exe) · [Android ARM64 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
+**v2.0：[Windows x64 · 安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-setup.exe) · [便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-portable.zip) · [Android ARM64 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
 ![Orbit SSH v2.0 首页：主机卡片、分组、收藏和搜索](docs/images/v2-home.png)
 
@@ -43,12 +43,13 @@ Orbit SSH 是一款面向 Windows 和 Android 的个人 SSH 工具，适合日�
 
 | 平台 | 下载 | 运行要求 |
 | --- | --- | --- |
-| Windows x64 | [OrbitSSH-v2.0-windows-x64.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64.exe) | 下载后双击运行；需要 Microsoft Edge WebView2 Runtime。 |
+| Windows x64 · 安装版 | [OrbitSSH-v2.0-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
+| Windows x64 · 便携版 | [OrbitSSH-v2.0-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
 | Android ARM64 | [OrbitSSH-v2.0-android-arm64.apk](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk) | Android 9+；将 APK 传到手机，按系统提示允许安装。 |
 
-两个安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/SHA256SUMS.txt) 核对下载文件。
+所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/SHA256SUMS.txt) 核对下载文件。
 
-Windows 11 通常自带 WebView2。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。WSL 是可选功能，使用时需另外安装 WSL 和 Linux 发行版。
+Windows 安装版会把程序安装到当前用户目录（默认 `%LOCALAPPDATA%\Programs\Orbit SSH`），卸载入口在 Windows 设置或开始菜单中；主机配置、凭据和终端历史保存在 `%APPDATA%\OrbitSSH`，覆盖安装和卸载都不会删除。安装版会检测并安装 Microsoft Edge WebView2 Runtime；便携版需要系统已有 WebView2，Windows 11 通常已自带。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。WSL 是可选功能，使用时需另外安装 WSL 和 Linux 发行版。
 
 Android 安装、文件导入导出、软键盘和本地构建见 [Android 说明](docs/ANDROID.md)。手机端主要面向前台使用，系统回收应用会结束会话和传输。Windows 本地 Shell、WSL、托盘和 MCP 集成用于桌面端。
 
