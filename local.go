@@ -31,6 +31,7 @@ type localTerminal interface {
 type localSession struct {
 	terminal localTerminal
 	name     string
+	output   *terminalOutputBuffer
 	writeMu  sync.Mutex
 	closed   sync.Once
 }
@@ -86,7 +87,7 @@ func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start fun
 		_ = terminal.Close()
 		return errors.New("启动已取消")
 	}
-	s := &localSession{terminal: terminal, name: name}
+	s := &localSession{terminal: terminal, name: name, output: &terminalOutputBuffer{}}
 	if a.localSessions == nil {
 		a.localSessions = map[string]*localSession{}
 	}
@@ -105,8 +106,11 @@ func (a *App) streamLocalTerminal(id string, s *localSession) {
 		buffer := make([]byte, 16384)
 		for {
 			n, err := s.terminal.Read(buffer)
-			if n > 0 && a.emit != nil {
-				a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
+			if n > 0 {
+				s.output.append(buffer[:n])
+				if a.emit != nil {
+					a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
+				}
 			}
 			if err != nil {
 				return

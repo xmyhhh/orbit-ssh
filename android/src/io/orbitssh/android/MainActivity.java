@@ -19,6 +19,7 @@ import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
@@ -68,6 +69,7 @@ public final class MainActivity extends Activity {
     private final Object pipeLock = new Object();
     private WebView webView;
     private FrameLayout webContainer;
+    private TerminalActionMode terminalActions;
     private TextView loading;
     private boolean darkAppearance;
     private int surfaceColor = Color.WHITE;
@@ -93,7 +95,12 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+            // Insets below resize the WebView once. Do not also let Android
+            // resize/pan its viewport around xterm's hidden input textarea.
+            getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        }
         SharedPreferences appearance = getSharedPreferences(APPEARANCE_PREFS, MODE_PRIVATE);
         darkAppearance = appearance.getBoolean("dark", false);
         surfaceColor = appearance.getInt("surface", surfaceColor);
@@ -145,12 +152,28 @@ public final class MainActivity extends Activity {
     }
 
     @SuppressWarnings("SetJavaScriptEnabled") private void createWebView() {
-        webView = new WebView(this);
+        webView = new WebView(this) {
+            @Override protected void onScrollChanged(int x, int y, int oldX, int oldY) {
+                super.onScrollChanged(x, y, oldX, oldY);
+                // The document is an app shell. Only its inner scroll areas
+                // move; focusing the terminal must never pan the whole page.
+                if (x != 0 || y != 0) scrollTo(0, 0);
+            }
+        };
+        terminalActions = new TerminalActionMode(webView, (session, action, text) -> {
+            try {
+                deliver(new JSONObject().put("type", "event").put("name", "android:terminalAction")
+                    .put("args", new JSONArray().put(session).put(action).put(text)));
+            } catch (Exception ignored) { }
+        });
         webContainer = new FrameLayout(this);
         webContainer.addView(webView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -285,7 +308,7 @@ public final class MainActivity extends Activity {
                 String method = request.getString("method");
                 JSONArray args = request.optJSONArray("args");
                 final String requestID = id;
-                if (method.equals("ClipboardGetText") || method.equals("ClipboardSetText") || method.equals("ShowKeyboard") || method.equals("SetSystemAppearance")) {
+                if (method.equals("ClipboardGetText") || method.equals("ClipboardSetText") || method.equals("ShowKeyboard") || method.equals("SetSystemAppearance") || method.equals("ShowTerminalActions") || method.equals("HideTerminalActions")) {
                     runOnUiThread(() -> frontendAction(requestID, method, args));
                 } else if (method.equals("ExportLocalFile")) {
                     File source = new File(args.getString(0)).getCanonicalFile();
@@ -309,6 +332,12 @@ public final class MainActivity extends Activity {
                 reply(id, false, data == null || data.getItemCount() == 0 ? "" : data.getItemAt(0).coerceToText(this).toString(), null);
             } else if (method.equals("ClipboardSetText")) {
                 clipboard.setPrimaryClip(ClipData.newPlainText("Orbit SSH", args.getString(0)));
+                reply(id, false, true, null);
+            } else if (method.equals("ShowTerminalActions")) {
+                terminalActions.show(args.getString(0), args.getString(1), args.getJSONObject(2), args.getBoolean(3));
+                reply(id, false, true, null);
+            } else if (method.equals("HideTerminalActions")) {
+                terminalActions.hide(args.getString(0));
                 reply(id, false, true, null);
             } else if (method.equals("SetSystemAppearance")) {
                 boolean dark = args.getBoolean(0);
@@ -540,6 +569,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         closing = true;
+        if (terminalActions != null) terminalActions.finish();
         synchronized (pipeLock) {
             try { if (backendInput != null) backendInput.close(); } catch (Exception ignored) { }
         }

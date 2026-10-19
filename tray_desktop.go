@@ -10,7 +10,18 @@ import (
 )
 
 func (a *App) desktopStartup(ctx context.Context) {
+	a.desktop = true
 	a.startup(ctx)
+	if a.store != nil {
+		preferences := a.store.snapshot().Preferences
+		if preferences.MCPEnabled {
+			if err := a.configureMCP(preferences); err != nil {
+				a.mcpMu.Lock()
+				a.mcpError = err.Error()
+				a.mcpMu.Unlock()
+			}
+		}
+	}
 	a.tray.mu.Lock()
 	a.tray.showWindow = func() {
 		minimised := runtime.WindowIsMinimised(ctx)

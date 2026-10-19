@@ -1,9 +1,4 @@
 import "./android";
-import {
-  builtinSnippets,
-  snippetCatalogVersion,
-  upgradeSnippetCatalog,
-} from "./snippets";
 import type {
   Credentials,
   Directory,
@@ -15,12 +10,13 @@ import type {
   TransferRequest,
   Host,
   Metrics,
+  MCPStatus,
   Preferences,
-  Snippet,
   TerminalSize,
   Workspace,
   WSLInfo,
 } from "./types";
+import { defaultShortcuts } from "./shortcuts";
 
 interface Backend {
   GetPlatform(): Promise<string>;
@@ -39,7 +35,6 @@ interface Backend {
   LoadState(): Promise<Workspace>;
   SaveHost(host: Host): Promise<void>;
   DeleteHost(id: string): Promise<void>;
-  SaveSnippets(snippets: Snippet[]): Promise<void>;
   SavePreferences(preferences: Preferences): Promise<void>;
   SelectKeyFile(): Promise<string>;
   SaveKeyPassphrase(hostID: string, passphrase: string): Promise<void>;
@@ -86,6 +81,15 @@ interface Backend {
   DownloadFile(id: string, path: string): Promise<boolean>;
   MakeDirectory(id: string, dir: string, name: string): Promise<void>;
   DataDirectory(): Promise<string>;
+  GetMCPStatus(): Promise<MCPStatus>;
+  SyncTerminalHistory(records: import("./terminalHistory").TerminalHistoryRecord[]): Promise<void>;
+  UpsertTerminalHistory(record: import("./terminalHistory").TerminalHistoryRecord, retainedIDs: string[]): Promise<void>;
+  AppendTerminalHistory(
+    record: import("./terminalHistory").TerminalHistoryRecord,
+    outputDelta: string,
+    retainedIDs: string[],
+  ): Promise<void>;
+  DeleteTerminalHistory(id: string): Promise<void>;
 }
 declare global {
   interface Window {
@@ -127,8 +131,6 @@ export function listen(
 const storageKey = "orbit-ssh-preview-v1";
 export const defaults: Workspace = {
   hosts: [],
-  snippets: builtinSnippets,
-  snippetCatalogVersion,
   preferences: {
     theme: "light",
     hostLayout: "grid",
@@ -136,6 +138,12 @@ export const defaults: Workspace = {
     lineHeight: 1.35,
     confirmClose: true,
     closeToTray: true,
+    terminalHistoryEnabled: true,
+    terminalHistoryLimit: 20,
+    mcpEnabled: false,
+    mcpAllowTerminalInput: false,
+    mcpPort: 8765,
+    shortcuts: defaultShortcuts,
   },
   knownHosts: {},
 };
@@ -144,21 +152,31 @@ export async function loadWorkspace(): Promise<Workspace> {
   try {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
-      const value = JSON.parse(stored) as Workspace;
-      if (!Array.isArray(value.hosts) || !Array.isArray(value.snippets))
-        throw new Error("invalid");
-      const upgraded = upgradeSnippetCatalog({
+      const value = JSON.parse(stored) as Workspace & {
+        snippets?: unknown;
+        snippetCatalogVersion?: unknown;
+      };
+      if (!Array.isArray(value.hosts)) throw new Error("invalid");
+      delete value.snippets;
+      delete value.snippetCatalogVersion;
+      const restored: Workspace = {
         ...defaults,
         ...value,
-        snippetCatalogVersion: value.snippetCatalogVersion ?? 0,
-        preferences: { ...defaults.preferences, ...value.preferences },
-      });
+        preferences: {
+          ...defaults.preferences,
+          ...value.preferences,
+          shortcuts: {
+            ...defaultShortcuts,
+            ...value.preferences?.shortcuts,
+          },
+        },
+      };
       try {
-        localStorage.setItem(storageKey, JSON.stringify(upgraded));
+        localStorage.setItem(storageKey, JSON.stringify(restored));
       } catch {
         /* Keep this session usable if storage is unavailable. */
       }
-      return upgraded;
+      return restored;
     }
   } catch {
     /* An invalid preview cache may be reset without touching desktop data. */

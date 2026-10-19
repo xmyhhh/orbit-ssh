@@ -54,7 +54,7 @@ func (a *App) ConnectWSL(id, distribution string, size TerminalSize) error {
 	if runtime.GOOS != "windows" {
 		return errors.New("WSL 仅支持 Windows")
 	}
-	return a.connectLocalTerminal(id, "WSL", size, func(ctx context.Context, size TerminalSize) (localTerminal, error) {
+	return a.connectLocalTerminal(id, "WSL · "+distribution, size, func(ctx context.Context, size TerminalSize) (localTerminal, error) {
 		info := inspectWSL(ctx)
 		if !info.Installed {
 			return nil, errors.New(info.Message)

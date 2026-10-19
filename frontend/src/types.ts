@@ -12,12 +12,20 @@ export interface Host {
   favorite: boolean;
   lastConnected: string;
 }
-export interface Snippet {
-  id: string;
-  name: string;
-  command: string;
-  description: string;
-  category?: string;
+export interface ShortcutBinding {
+  code: string;
+  primary: boolean;
+  ctrl: boolean;
+  meta: boolean;
+  alt: boolean;
+  shift: boolean;
+}
+export interface WindowShortcuts {
+  closeSession: ShortcutBinding;
+  newTerminal: ShortcutBinding;
+  nextSession: ShortcutBinding;
+  previousSession: ShortcutBinding;
+  switchSession: ShortcutBinding;
 }
 export interface Preferences {
   theme: Theme;
@@ -26,13 +34,26 @@ export interface Preferences {
   lineHeight: number;
   confirmClose: boolean;
   closeToTray: boolean;
+  terminalHistoryEnabled: boolean;
+  terminalHistoryLimit: number;
+  mcpEnabled: boolean;
+  mcpAllowTerminalInput: boolean;
+  mcpPort: number;
+  shortcuts: WindowShortcuts;
+}
+export interface MCPStatus {
+  enabled: boolean;
+  running: boolean;
+  allowInput: boolean;
+  endpoint: string;
+  token: string;
+  error: string;
+  historyError: string;
 }
 export interface Workspace {
   hosts: Host[];
-  snippets: Snippet[];
   preferences: Preferences;
   knownHosts: Record<string, string>;
-  snippetCatalogVersion?: number;
 }
 export interface Credentials {
   password: string;
@@ -169,6 +190,8 @@ export interface TerminalHandle {
   pasteFromClipboard: () => void;
   clear: () => void;
   focus: () => void;
+  readBuffer: () => string;
+  flushHistory: () => void;
   search: (text: string) => boolean;
   size: () => TerminalSize;
 }

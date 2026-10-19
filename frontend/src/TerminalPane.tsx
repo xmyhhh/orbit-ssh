@@ -21,6 +21,7 @@ import TerminalContextMenu, {
 } from "./TerminalContextMenu";
 import type { Session, TerminalHandle } from "./types";
 import { androidCall, isAndroid } from "./android";
+import { installAndroidTerminalTouch } from "./androidTerminal";
 import "@xterm/xterm/css/xterm.css";
 
 interface Props {
@@ -32,9 +33,25 @@ interface Props {
   onZoom: (direction: -1 | 1) => void;
   onClosed: (id: string, message: string) => void;
   onError: (message: string) => void;
+  historyEnabled: boolean;
+  onHistoryOutput: (session: Session, output: string) => void;
   onPaste: (text: string) => void;
   onSearch: () => void;
 }
+
+function terminalBufferText(term: Terminal) {
+  const lines: string[] = [];
+  const buffer = term.buffer.active;
+  for (let i = 0; i < buffer.length; i++) {
+    const line = buffer.getLine(i);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  return lines.join("\n").replace(/\n+$/, "");
+}
+
 const terminalTheme = (dark: boolean) =>
   dark
     ? {
@@ -97,6 +114,8 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       onZoom,
       onClosed,
       onError,
+      historyEnabled,
+      onHistoryOutput,
       onPaste,
       onSearch,
     },
@@ -108,6 +127,9 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     const search = useRef<SearchAddon | null>(null);
     const demoInput = useRef("");
     const writes = useRef<Promise<void>>(Promise.resolve());
+    const outputDecoder = useRef(new TextDecoder());
+    const historyOutput = useRef("");
+    const historyOutputTimer = useRef<number | undefined>(undefined);
     const requestFit = useRef(() => {});
     const [menu, setMenu] = useState<{
       x: number;
@@ -121,6 +143,8 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       active,
       onClosed,
       onError,
+      historyEnabled,
+      onHistoryOutput,
       onPaste,
       onZoom,
       onSearch,
@@ -130,6 +154,8 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       active,
       onClosed,
       onError,
+      historyEnabled,
+      onHistoryOutput,
       onPaste,
       onZoom,
       onSearch,
@@ -138,6 +164,38 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       setMenu(null);
       if (restoreFocus && latest.current.active) terminal.current?.focus();
     }, []);
+
+    function flushHistoryOutput() {
+      if (historyOutputTimer.current !== undefined) {
+        clearTimeout(historyOutputTimer.current);
+        historyOutputTimer.current = undefined;
+      }
+      const output = historyOutput.current;
+      historyOutput.current = "";
+      if (output && latest.current.historyEnabled)
+        latest.current.onHistoryOutput(latest.current.session, output);
+    }
+    function captureHistoryOutput(data: string | Uint8Array) {
+      const output =
+        typeof data === "string"
+          ? outputDecoder.current.decode() + data
+          : outputDecoder.current.decode(data, { stream: true });
+      if (!output || !latest.current.historyEnabled) return;
+      historyOutput.current += output;
+      if (historyOutputTimer.current === undefined)
+        historyOutputTimer.current = window.setTimeout(
+          flushHistoryOutput,
+          350,
+        );
+    }
+    function writeOutput(term: Terminal, data: string | Uint8Array) {
+      captureHistoryOutput(data);
+      term.write(data);
+    }
+    function writeLine(term: Terminal, data: string) {
+      captureHistoryOutput(`${data}\r\n`);
+      term.writeln(data);
+    }
 
     function copy(text: string) {
       if (!text) return;
@@ -157,7 +215,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         );
     }
     function showMenu(x: number, y: number) {
-      if (!latest.current.active) return;
+      if (isAndroid() || !latest.current.active) return;
       setMenu({
         x,
         y,
@@ -174,14 +232,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       else if (action === "clear") term.clear();
       else if (action === "search") latest.current.onSearch();
       else if (action === "copyAll") {
-        const lines: string[] = [];
-        for (let i = 0; i < term.buffer.active.length; i++) {
-          const line = term.buffer.active.getLine(i)!;
-          const text = line.translateToString(true);
-          if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
-          else lines.push(text);
-        }
-        copy(lines.join("\n").replace(/\n+$/, ""));
+        copy(terminalBufferText(term));
       }
     }
 
@@ -200,7 +251,10 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       }
     }
     function prompt() {
-      terminal.current?.write(
+      const term = terminal.current;
+      if (!term) return;
+      writeOutput(
+        term,
         "\x1b[32mexplorer\x1b[0m \x1b[90m@\x1b[0m \x1b[36morbit\x1b[0m \x1b[90m~\x1b[0m\r\n\x1b[32m❯\x1b[0m ",
       );
     }
@@ -209,7 +263,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       if (!term || data.startsWith("\x1b")) return;
       for (const ch of data) {
         if (ch === "\r" || ch === "\n") {
-          term.write("\r\n");
+          writeOutput(term, "\r\n");
           const command = demoInput.current.trim();
           demoInput.current = "";
           const outputs: Record<string, string> = {
@@ -240,12 +294,14 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           };
           if (command === "clear") term.clear();
           else if (command === "date")
-            term.writeln(new Date().toLocaleString("zh-CN"));
+            writeLine(term, new Date().toLocaleString("zh-CN"));
           else if (command === "exit")
-            term.writeln("体验空间会一直在这里。关闭标签即可退出。");
-          else if (command.startsWith("echo ")) term.writeln(command.slice(5));
+            writeLine(term, "体验空间会一直在这里。关闭标签即可退出。");
+          else if (command.startsWith("echo "))
+            writeLine(term, command.slice(5));
           else if (command)
-            term.writeln(
+            writeLine(
+              term,
               outputs[command] ??
                 `演示环境暂不支持：${command}\r\n输入 help 查看可用命令。`,
             );
@@ -253,15 +309,15 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         } else if (ch === "\x7f" || ch === "\b") {
           if (demoInput.current) {
             demoInput.current = [...demoInput.current].slice(0, -1).join("");
-            term.write("\b \b");
+            writeOutput(term, "\b \b");
           }
         } else if (ch === "\x03") {
           demoInput.current = "";
-          term.write("^C\r\n");
+          writeOutput(term, "^C\r\n");
           prompt();
         } else if (ch >= " " && ch !== "\x7f") {
           demoInput.current += ch;
-          term.write(ch);
+          writeOutput(term, ch);
         }
       }
     }
@@ -275,6 +331,9 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       pasteFromClipboard,
       clear: () => terminal.current?.clear(),
       focus: () => terminal.current?.focus(),
+      readBuffer: () =>
+        terminal.current ? terminalBufferText(terminal.current) : "",
+      flushHistory: flushHistoryOutput,
       search: (text) =>
         search.current?.findNext(text, { incremental: true }) ?? false,
       size: () => ({
@@ -334,8 +393,10 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         event.preventDefault();
         event.stopImmediatePropagation();
       };
-      container.current!.addEventListener("contextmenu", contextMenu, true);
-      container.current!.addEventListener("mousedown", preserveSelection, true);
+      if (!isAndroid()) {
+        container.current!.addEventListener("contextmenu", contextMenu, true);
+        container.current!.addEventListener("mousedown", preserveSelection, true);
+      }
       let disposed = false;
       let fitFrame: number | undefined;
       let lastSize = "";
@@ -370,9 +431,19 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       requestFit.current = resize;
       const observer = new ResizeObserver(resize);
       observer.observe(container.current!);
+      let disposeAndroidTouch = () => {};
       const openFrame = requestAnimationFrame(() => {
         if (!disposed && container.current) {
           term.open(container.current);
+          if (isAndroid()) disposeAndroidTouch = installAndroidTerminalTouch(container.current, term, {
+            sessionID: session.id,
+            active: () => latest.current.active,
+            connected: () => latest.current.session.status === "connected",
+            fit: resize,
+            zoom: (direction) => latest.current.onZoom(direction),
+            paste: (text) => latest.current.onPaste(text),
+            error: (message) => latest.current.onError(message),
+          });
           resize();
         }
       });
@@ -446,18 +517,23 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         ? () => {}
         : listen(`ssh:data:${session.id}`, (data) => {
             const binary = atob(String(data));
-            term.write(Uint8Array.from(binary, (ch) => ch.charCodeAt(0)));
+            writeOutput(
+              term,
+              Uint8Array.from(binary, (ch) => ch.charCodeAt(0)),
+            );
           });
       const offClosed = session.demo
         ? () => {}
         : listen(`ssh:closed:${session.id}`, (message) => {
-            term.writeln(
+            writeLine(
+              term,
               `\r\n\x1b[90m[${session.localShell || session.wslDistribution ? "终端已结束" : "连接已断开"}]\x1b[0m`,
             );
             latest.current.onClosed(session.id, String(message));
           });
       if (session.demo) {
-        term.writeln(
+        writeLine(
+          term,
           "\x1b[32mOrbit SSH\x1b[0m · 本地演示\r\n输入 help 查看命令，colors 预览配色。\r\n",
         );
         prompt();
@@ -467,12 +543,17 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           : session.wslDistribution
             ? `正在启动 WSL · ${session.wslDistribution}`
             : `正在连接 ${session.host.username}@${session.host.address}:${session.host.port}`;
-        term.writeln(`\x1b[90m${message} …\x1b[0m\r\n`);
+        writeLine(term, `\x1b[90m${message} …\x1b[0m\r\n`);
       }
       resize();
       const element = container.current!;
       return () => {
         disposed = true;
+        disposeAndroidTouch();
+        const trailing = outputDecoder.current.decode();
+        if (trailing && latest.current.historyEnabled)
+          historyOutput.current += trailing;
+        flushHistoryOutput();
         cancelAnimationFrame(openFrame);
         if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
         requestFit.current = () => {};
@@ -493,6 +574,16 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     }, [session.id]);
 
     useEffect(() => {
+      if (historyEnabled) return;
+      historyOutput.current = "";
+      if (historyOutputTimer.current !== undefined) {
+        clearTimeout(historyOutputTimer.current);
+        historyOutputTimer.current = undefined;
+      }
+      outputDecoder.current.decode();
+    }, [historyEnabled]);
+
+    useEffect(() => {
       if (terminal.current) {
         terminal.current.options.theme = terminalTheme(dark);
         terminal.current.options.fontSize = fontSize;
@@ -501,7 +592,10 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       }
     }, [dark, fontSize, lineHeight]);
     useEffect(() => {
-      if (!active) closeMenu();
+      if (!active) {
+        closeMenu();
+        if (isAndroid()) void androidCall("HideTerminalActions", session.id).catch(() => {});
+      }
       if (active) {
         const frame = requestAnimationFrame(() => {
           requestFit.current();
@@ -568,7 +662,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
             </button>
           </div>
         )}
-        {active && menu && (
+        {!isAndroid() && active && menu && (
           <TerminalContextMenu
             {...menu}
             connected={session.status === "connected"}

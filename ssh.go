@@ -29,6 +29,8 @@ type remoteSession struct {
 	shell       *ssh.Session
 	stdin       io.WriteCloser
 	files       *sftp.Client
+	host        Host
+	output      *terminalOutputBuffer
 	mu          sync.Mutex
 	writeMu     sync.Mutex
 	once        sync.Once
@@ -248,7 +250,7 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 		shell.Close()
 		return fmt.Errorf("无法保存主机信任信息：%w", err)
 	}
-	s := &remoteSession{client: client, shell: shell, stdin: stdin, done: make(chan struct{})}
+	s := &remoteSession{client: client, shell: shell, stdin: stdin, host: host, output: &terminalOutputBuffer{}, done: make(chan struct{})}
 	a.mu.Lock()
 	if ctx.Err() != nil {
 		a.mu.Unlock()
@@ -269,8 +271,11 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 			buffer := make([]byte, 16384)
 			for {
 				n, e := r.Read(buffer)
-				if n > 0 && a.emit != nil {
-					a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
+				if n > 0 {
+					s.output.append(buffer[:n])
+					if a.emit != nil {
+						a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
+					}
 				}
 				if e != nil {
 					return

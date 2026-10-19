@@ -2,13 +2,18 @@
   overscroll-behavior: none;
 }
 [data-platform="android"] .app {
-  height: 100dvh;
+  /* The native host already removes the system bars and keyboard. */
+  height: 100%;
+  min-height: 0;
 }
 [data-platform="android"] .terminal-session {
   padding: 4px 4px 0;
 }
 [data-platform="android"] .terminal-mount {
   min-height: 0;
+  overflow: hidden;
+  /* Keep single-finger terminal scrolling; pinch is font size, not page zoom. */
+  touch-action: pan-y;
 }
 .android-terminal-keys {
   display: flex;

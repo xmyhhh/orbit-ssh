@@ -76,7 +76,7 @@ var mobileMethods = map[string]bool{}
 func init() {
 	for _, name := range []string{
 		"GetPlatform", "GetWSLInfo", "LoadState", "SaveHost", "DeleteHost",
-		"SaveSnippets", "SavePreferences", "SelectKeyFile", "DataDirectory",
+		"SavePreferences", "SelectKeyFile", "DataDirectory",
 		"SaveKeyPassphrase", "ForgetKeyPassphrase", "HasSavedPassword", "SavePassword", "ForgetPassword",
 		"Connect", "Disconnect", "WriteTerminal", "ResizeTerminal", "Monitor",
 		"ListDirectory", "ListLocalDirectory", "SelectLocalDirectory", "MakeLocalDirectory", "MakeDirectory",

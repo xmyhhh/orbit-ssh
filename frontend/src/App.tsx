@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type {
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   Activity,
   ArrowRight,
@@ -8,14 +12,21 @@ import {
   ChevronDown,
   CircleHelp,
   Clipboard,
-  Code2,
+  Columns2,
   Ellipsis,
   FolderClosed,
   FolderOpen,
+  Github,
+  History,
+  GripVertical,
   LoaderCircle,
+  Maximize2,
   Menu,
+  Minimize2,
   Moon,
   Orbit,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   Search,
@@ -33,7 +44,6 @@ import type {
   LocalShell,
   Preferences,
   Session,
-  Snippet,
   TerminalHandle,
   Workspace,
   Credentials,
@@ -53,17 +63,43 @@ import {
   HostDialog,
   Modal,
   PreferencesDialog,
-  SnippetDialog,
 } from "./Dialogs";
 import { TerminalPane } from "./TerminalPane";
+import TerminalLayoutPicker from "./TerminalLayoutPicker";
+import TerminalDropTarget from "./TerminalDropTarget";
 import FilesPane from "./FilesPane";
 import MonitorPanel from "./MonitorPanel";
-import WSLDialog from "./WSLDialog";
+import WSLPage from "./WSLPage";
 import LocalShellPage from "./LocalShellPage";
 import LayoutSwitch from "./LayoutSwitch";
-import { snippetCategories, snippetCategory } from "./snippets";
+import { matchesShortcut, usesMacShortcuts } from "./shortcuts";
+import TerminalHistoryPage from "./TerminalHistoryPage";
+import {
+  deleteTerminalHistory,
+  saveTerminalHistory,
+  trimTerminalHistory,
+  trimTerminalHistoryOutput,
+  type TerminalHistoryRecord,
+} from "./terminalHistory";
+import { BrowserOpenURL } from "../wailsjs/runtime/runtime";
+import {
+  createSplitLayout,
+  equalizeSplitLayout,
+  insertSplitPane,
+  removeSplitPane,
+  replaceSplitPane,
+  splitLayoutGeometry,
+  splitLayoutIds,
+  splitLayoutPreset,
+  updateSplitRatio,
+  type DividerGeometry,
+  type PanePlacement,
+  type SplitDirection,
+  type SplitLayout,
+  type SplitPreset,
+} from "./splitLayout";
 
-type Page = "hosts" | "local" | "snippets";
+type Page = "hosts" | "local" | "wsl" | "history";
 type HostFilter = "all" | "favorite" | "recent";
 type LocalSessionTarget =
   | { localShell: LocalShell; wslDistribution?: never }
@@ -88,9 +124,11 @@ interface Confirmation {
 const pageNames: Record<Page, string> = {
   hosts: "远程主机",
   local: "本地 Shell",
-  snippets: "命令片段",
+  wsl: "WSL",
+  history: "终端历史",
 };
-
+const appVersion = "1.0";
+const projectURL = "https://github.com/xmyhhh/orbit-ssh";
 function moveTabFocus(e: ReactKeyboardEvent<HTMLDivElement>) {
   if (
     e.altKey ||
@@ -127,18 +165,32 @@ export default function App() {
   const [filter, setFilter] = useState<HostFilter>("all");
   const layout = workspace.preferences.hostLayout === "list" ? "list" : "grid";
   const [platform, setPlatform] = useState("");
-  const [wslOpen, setWSLOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [terminalHistory, setTerminalHistory] = useState<
+    TerminalHistoryRecord[]
+  >([]);
   const [active, setActive] = useState("home");
+  const [splitLayout, setSplitLayout] = useState<SplitLayout | null>(null);
+  const [paneMaximized, setPaneMaximized] = useState(false);
+  const [splitPickerOpen, setSplitPickerOpen] = useState(false);
+  const [compactSplit, setCompactSplit] = useState(
+    () => window.innerWidth <= 720,
+  );
+  const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
+  const [splitResize, setSplitResize] = useState<{
+    path: string;
+    axis: "x" | "y";
+    start: number;
+    span: number;
+    ratio: number;
+  } | null>(null);
   const [hostEditor, setHostEditor] = useState<{
     host?: Host;
     isNew?: boolean;
   } | null>(null);
   const [connectHost, setConnectHost] = useState<Host | null>(null);
-  const [snippetEditor, setSnippetEditor] = useState<{
-    snippet?: Snippet;
-  } | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -152,9 +204,25 @@ export default function App() {
   const [terminalSearch, setTerminalSearch] = useState<string | null>(null);
   const [searchFound, setSearchFound] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [snippetQuery, setSnippetQuery] = useState("");
-  const [snippetFilter, setSnippetFilter] = useState("全部");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("orbit-ssh-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const handles = useRef(new Map<string, TerminalHandle>());
+  const historyOutputCache = useRef(
+    new Map<string, TerminalHistoryRecord>(),
+  );
+  const historySuppressed = useRef(new Set<string>());
+  const historyFailureNotified = useRef(false);
+  const splitControlRef = useRef<HTMLDivElement>(null);
+  const pendingSplitRef = useRef<{
+    targetId: string;
+    direction: SplitDirection;
+  } | null>(null);
+  const terminalAreaRef = useRef<HTMLDivElement>(null);
   const preferenceWrites = useRef<Promise<void>>(Promise.resolve());
   const connectingID = useRef<string | null>(null);
   const terminalNumbers = useRef(new Map<string, number>());
@@ -163,12 +231,33 @@ export default function App() {
   const sessionbarRef = useRef<HTMLDivElement>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+  const activeSessionIdRef = useRef(active);
+  activeSessionIdRef.current = active;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
   const stateRef = useRef(workspace);
   stateRef.current = workspace;
   const activeSession = sessions.find((s) => s.id === active);
+  const splitSessionIds = splitLayoutIds(splitLayout);
+  const splitMode = splitSessionIds.length > 1;
+  const maximized = splitMode && paneMaximized;
+  const splitSelection = splitMode
+    ? splitSessionIds
+    : activeSession
+      ? [activeSession.id]
+      : [];
+  const paneSessions = splitMode
+    ? splitSessionIds
+        .map((id) => sessions.find((session) => session.id === id))
+        .filter((session): session is Session => Boolean(session))
+    : activeSession
+      ? [activeSession]
+      : [];
+  const splitGeometry = splitLayoutGeometry(splitLayout, compactSplit);
+  const paneGeometryById = new Map(
+    splitGeometry.panes.map((pane) => [pane.id, pane]),
+  );
   const sessionGroups = new Map<string, Session[]>();
   for (const session of sessions) {
     const items = sessionGroups.get(session.host.id);
@@ -187,12 +276,11 @@ export default function App() {
   const modalOpen = Boolean(
     hostEditor ||
     connectHost ||
-    snippetEditor ||
     preferencesOpen ||
+    aboutOpen ||
     paletteOpen ||
     helpOpen ||
-    confirmation ||
-    wslOpen,
+    confirmation,
   );
 
   function notify(message: string) {
@@ -220,6 +308,154 @@ export default function App() {
         .catch(() => {});
     return () => clearTimeout(toastTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    void trimTerminalHistory(workspace.preferences.terminalHistoryLimit)
+      .then((records) => {
+        if (cancelled) return;
+        for (const record of records)
+          if (!historyOutputCache.current.has(record.id))
+            historyOutputCache.current.set(record.id, record);
+        setTerminalHistory(records);
+        if (isDesktop())
+          void backend().SyncTerminalHistory(records).catch(reportHistoryFailure);
+      })
+      .catch((error) => {
+        if (cancelled || historyFailureNotified.current) return;
+        historyFailureNotified.current = true;
+        notify(`读取终端历史失败：${errorText(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, workspace.preferences.terminalHistoryLimit]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "orbit-ssh-sidebar-collapsed",
+        String(sidebarCollapsed),
+      );
+    } catch {
+      // The sidebar remains usable when browser storage is unavailable.
+    }
+  }, [sidebarCollapsed]);
+  useEffect(() => {
+    const terminalArea = terminalAreaRef.current;
+    if (!terminalArea) return;
+    function updateCompactLayout() {
+      setCompactSplit((terminalAreaRef.current?.clientWidth ?? 0) < 720);
+    }
+    updateCompactLayout();
+    const observer = new ResizeObserver(updateCompactLayout);
+    observer.observe(terminalArea);
+    return () => observer.disconnect();
+  }, [Boolean(activeSession)]);
+  useEffect(() => {
+    if (!splitLayout) return;
+    const splitSessionIds = splitLayoutIds(splitLayout);
+    const openIds = new Set(sessions.map((session) => session.id));
+    const remaining = splitSessionIds.filter((id) => openIds.has(id));
+    if (remaining.length === splitSessionIds.length) return;
+    let nextLayout: SplitLayout | null = splitLayout;
+    for (const id of splitSessionIds)
+      if (!openIds.has(id) && nextLayout)
+        nextLayout = removeSplitPane(nextLayout, id);
+    const nextIds = splitLayoutIds(nextLayout);
+    if (nextIds.length > 1) setSplitLayout(nextLayout);
+    else {
+      setSplitLayout(null);
+      if (nextIds.length === 1) setActive(nextIds[0]);
+    }
+  }, [sessions, splitLayout]);
+  useEffect(() => {
+    if (!splitMode) setPaneMaximized(false);
+  }, [splitMode]);
+  useEffect(() => {
+    if (!compactSplit || !splitMode || maximized || filesOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const area = terminalAreaRef.current;
+      const pane = area?.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(active)}"]`);
+      if (!area || !pane) return;
+      if (pane.offsetTop < area.scrollTop)
+        area.scrollTop = pane.offsetTop;
+      else if (pane.offsetTop + pane.offsetHeight > area.scrollTop + area.clientHeight)
+        area.scrollTop = pane.offsetTop + pane.offsetHeight - area.clientHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, compactSplit, splitMode, maximized, filesOpen]);
+  useEffect(() => {
+    if (!draggedSessionId) return;
+    function finish() { setDraggedSessionId(null); }
+    function cancel(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish();
+      }
+    }
+    window.addEventListener("dragend", finish);
+    window.addEventListener("drop", finish);
+    window.addEventListener("blur", finish);
+    window.addEventListener("keydown", cancel, true);
+    return () => {
+      window.removeEventListener("dragend", finish);
+      window.removeEventListener("drop", finish);
+      window.removeEventListener("blur", finish);
+      window.removeEventListener("keydown", cancel, true);
+    };
+  }, [draggedSessionId]);
+  useEffect(() => {
+    if (!splitResize) return;
+    const resizeState = splitResize;
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = resizeState.axis === "x" ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
+    function resize(event: PointerEvent) {
+      const position = resizeState.axis === "x" ? event.clientX : event.clientY;
+      const ratio =
+        resizeState.ratio +
+        (position - resizeState.start) / resizeState.span;
+      setSplitLayout((current) =>
+        current ? updateSplitRatio(current, resizeState.path, ratio) : current,
+      );
+    }
+    function finish() {
+      setSplitResize(null);
+    }
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [splitResize]);
+  useEffect(() => {
+    if (!splitPickerOpen) return;
+    function closeOutside(event: PointerEvent) {
+      if (!splitControlRef.current?.contains(event.target as Node))
+        setSplitPickerOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSplitPickerOpen(false);
+        splitControlRef.current?.querySelector<HTMLButtonElement>(".split-toggle")?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [splitPickerOpen]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
@@ -252,14 +488,65 @@ export default function App() {
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (
-        !(e.metaKey || e.ctrlKey) ||
-        e.altKey ||
         modalOpen ||
         document.querySelector('.file-workspace [role="dialog"]')
       )
         return;
       const target = e.target as HTMLElement | null;
       if (target?.closest(".terminal-context-menu")) return;
+      const shortcuts = workspace.preferences.shortcuts;
+      if (matchesShortcut(e, shortcuts.closeSession, platform) && activeSession) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) closeSession(activeSession);
+        return;
+      }
+      if (matchesShortcut(e, shortcuts.newTerminal, platform)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) newTerminal();
+        return;
+      }
+      if (
+        (matchesShortcut(e, shortcuts.nextSession, platform) ||
+          matchesShortcut(e, shortcuts.previousSession, platform)) &&
+        sessions.length
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        const direction = matchesShortcut(
+          e,
+          shortcuts.previousSession,
+          platform,
+        )
+          ? -1
+          : 1;
+        const currentIndex = sessions.findIndex(
+          (session) => session.id === active,
+        );
+        const nextIndex =
+          currentIndex < 0
+            ? direction > 0
+              ? 0
+              : sessions.length - 1
+            : (currentIndex + direction + sessions.length) % sessions.length;
+        activateSession(sessions[nextIndex].id);
+        return;
+      }
+      if (matchesShortcut(e, shortcuts.switchSession, platform)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const number = Number(e.code.slice(-1));
+        const index = number === 9 ? sessions.length - 1 : number - 1;
+        if (sessions[index]) {
+          activateSession(sessions[index].id);
+        }
+        return;
+      }
+      const primaryModifier = usesMacShortcuts(platform)
+        ? e.metaKey
+        : e.ctrlKey;
+      if (!primaryModifier || e.altKey) return;
       const editing =
         target?.closest('input, textarea, select, [contenteditable="true"]') &&
         !target.closest(".xterm");
@@ -267,6 +554,7 @@ export default function App() {
         activeSession &&
         !filesOpen &&
         !editing &&
+        primaryModifier &&
         [
           "Equal",
           "Minus",
@@ -287,20 +575,26 @@ export default function App() {
         );
         return;
       }
-      if (e.code === "KeyK") {
+      if (primaryModifier && !e.shiftKey && e.code === "KeyK") {
         e.preventDefault();
         setPaletteOpen(true);
       }
-      if (e.code === "KeyT") {
+      if (primaryModifier && !e.shiftKey && e.code === "KeyT") {
         e.preventDefault();
-        if (e.shiftKey) newTerminal();
-        else newHost();
+        newHost();
       }
-      if (e.shiftKey && e.code === "KeyF" && activeSession && !filesOpen) {
+      if (
+        primaryModifier &&
+        e.shiftKey &&
+        e.code === "KeyF" &&
+        activeSession &&
+        !filesOpen
+      ) {
         e.preventDefault();
         setTerminalSearch("");
       }
       if (
+        primaryModifier &&
         e.shiftKey &&
         e.code === "KeyV" &&
         activeSession &&
@@ -349,6 +643,111 @@ export default function App() {
       throw e;
     }
   }
+  function reportHistoryFailure(error: unknown) {
+    if (historyFailureNotified.current) return;
+    historyFailureNotified.current = true;
+    notify(`保存终端历史失败：${errorText(error)}`);
+  }
+  function persistTerminalHistory(
+    record: TerminalHistoryRecord,
+    outputDelta?: string,
+  ) {
+    historyOutputCache.current.set(record.id, record);
+    setTerminalHistory((records) =>
+      [record, ...records.filter((item) => item.id !== record.id)].sort(
+        (a, b) => b.updatedAt - a.updatedAt,
+      ),
+    );
+    void saveTerminalHistory(
+      record,
+      stateRef.current.preferences.terminalHistoryLimit,
+    )
+      .then((records) => {
+        historyFailureNotified.current = false;
+        setTerminalHistory(records);
+        if (isDesktop()) {
+          const retainedIDs = records.map((item) => item.id);
+          const sync = outputDelta === undefined
+            ? backend().UpsertTerminalHistory(record, retainedIDs)
+            : backend().AppendTerminalHistory(
+                record,
+                outputDelta,
+                retainedIDs,
+              );
+          void sync.catch(reportHistoryFailure);
+        }
+      })
+      .catch(reportHistoryFailure);
+  }
+  function recordTerminalOutput(session: Session, output: string) {
+    if (
+      !stateRef.current.preferences.terminalHistoryEnabled ||
+      historySuppressed.current.has(session.id)
+    )
+      return;
+    const previous = historyOutputCache.current.get(session.id);
+    const now = Date.now();
+    const bounded = trimTerminalHistoryOutput(
+      `${previous?.output ?? ""}${output}`,
+    );
+    persistTerminalHistory({
+      id: session.id,
+      title:
+        session.localShell?.name ||
+        (session.wslDistribution
+          ? `WSL · ${session.wslDistribution}`
+          : session.host.name),
+      subtitle: sessionAddress(session),
+      terminalNumber: session.terminalNumber,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      output: bounded.output,
+      pinned: previous?.pinned ?? false,
+      truncated: (previous?.truncated ?? false) || bounded.truncated,
+    }, output);
+  }
+  function setHistoryPinned(record: TerminalHistoryRecord, pinned: boolean) {
+    historySuppressed.current.delete(record.id);
+    const current = historyOutputCache.current.get(record.id) ?? record;
+    persistTerminalHistory({ ...current, pinned });
+  }
+  function toggleSessionHistory(session: Session) {
+    const terminal = handles.current.get(session.id);
+    terminal?.flushHistory();
+    const previous = historyOutputCache.current.get(session.id);
+    const current = previous ??
+      terminalHistory.find((record) => record.id === session.id);
+    const now = Date.now();
+    const liveBuffer = terminal?.readBuffer() ?? "";
+    const buffer = stateRef.current.preferences.terminalHistoryEnabled
+      ? current?.output ?? liveBuffer
+      : liveBuffer || current?.output || "";
+    const bounded = trimTerminalHistoryOutput(buffer);
+    historySuppressed.current.delete(session.id);
+    persistTerminalHistory({
+      id: session.id,
+      title:
+        session.localShell?.name ||
+        (session.wslDistribution
+          ? `WSL · ${session.wslDistribution}`
+          : session.host.name),
+      subtitle: sessionAddress(session),
+      terminalNumber: session.terminalNumber,
+      createdAt: current?.createdAt ?? now,
+      updatedAt: current?.updatedAt ?? now,
+      output: bounded.output,
+      pinned: !(current?.pinned ?? false),
+      truncated: (current?.truncated ?? false) || bounded.truncated,
+    });
+  }
+  function removeTerminalHistory(record: TerminalHistoryRecord) {
+    if (sessionsRef.current.some((session) => session.id === record.id))
+      historySuppressed.current.add(record.id);
+    historyOutputCache.current.delete(record.id);
+    setTerminalHistory((records) => records.filter((item) => item.id !== record.id));
+    void deleteTerminalHistory(record.id).catch(reportHistoryFailure);
+    if (isDesktop()) void backend().DeleteTerminalHistory(record.id).catch(reportHistoryFailure);
+  }
   function zoomTerminal(direction: -1 | 0 | 1) {
     const preferences = stateRef.current.preferences;
     const fontSize =
@@ -366,9 +765,200 @@ export default function App() {
       (e) => notify(`视图保存失败：${errorText(e)}`),
     );
   }
-  async function saveSnippets(snippets: Snippet[]) {
-    if (isDesktop()) await backend().SaveSnippets(snippets);
-    update({ ...stateRef.current, snippets });
+  function startSessionDrag(event: ReactDragEvent<HTMLElement>, id: string) {
+    event.dataTransfer.setData("application/x-orbit-terminal-session", id);
+    event.dataTransfer.setData("text/plain", id);
+    event.dataTransfer.effectAllowed = "move";
+    setSplitPickerOpen(false);
+    setPaneMaximized(false);
+    setDraggedSessionId(id);
+  }
+  function placeSessionInSplit(
+    id: string,
+    targetId: string,
+    direction: PanePlacement,
+  ) {
+    if (id === targetId) return;
+    if (!sessions.some((session) => session.id === id)) return;
+    const baseLayout = splitLayout ?? activeSession?.id ?? null;
+    if (!baseLayout) return;
+    if (direction === "center") {
+      const next = replaceSplitPane(baseLayout, targetId, id);
+      setSplitLayout(typeof next === "string" ? null : next);
+      setActive(id);
+      return;
+    }
+    const placementDirection =
+      compactSplit && (direction === "left" || direction === "right")
+        ? direction === "left"
+          ? "top"
+          : "bottom"
+        : direction;
+    const ids = splitLayoutIds(baseLayout);
+    const movingPane = ids.includes(id);
+    if (!movingPane && ids.length >= 4) {
+      notify("并列终端最多显示 4 个");
+      return;
+    }
+    const withoutMovingPane = movingPane
+      ? removeSplitPane(baseLayout, id)
+      : baseLayout;
+    if (
+      !withoutMovingPane ||
+      !splitLayoutIds(withoutMovingPane).includes(targetId)
+    )
+      return;
+    const next = insertSplitPane(
+      withoutMovingPane,
+      targetId,
+      id,
+      placementDirection,
+    );
+    if (next === withoutMovingPane) return;
+    setSplitLayout(next);
+    setPaneMaximized(false);
+    setActive(id);
+  }
+  function startSplitResize(
+    event: ReactPointerEvent<HTMLDivElement>,
+    divider: DividerGeometry,
+  ) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = terminalAreaRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const span =
+      (divider.axis === "x" ? bounds.width : bounds.height) *
+      (divider.axis === "x" ? divider.parentWidth : divider.parentHeight);
+    if (span < 1) return;
+    setSplitResize({
+      path: divider.path,
+      axis: divider.axis,
+      start: divider.axis === "x" ? event.clientX : event.clientY,
+      span,
+      ratio: divider.ratio,
+    });
+  }
+  function adjustSplitResize(divider: DividerGeometry, delta: number) {
+    setSplitLayout((current) =>
+      current
+        ? updateSplitRatio(current, divider.path, divider.ratio + delta)
+        : current,
+    );
+  }
+  function activateSession(id: string) {
+    setActive(id);
+    setSplitLayout((current) => {
+      if (!current) return current;
+      const ids = splitLayoutIds(current);
+      if (ids.length < 2 || ids.includes(id)) return current;
+      return replaceSplitPane(
+        current,
+        ids.includes(active) ? active : ids[0],
+        id,
+      );
+    });
+    if (!modalOpen && !filesOpen) {
+      if (active === id) handles.current.get(id)?.focus();
+      else {
+        requestAnimationFrame(() => {
+          if (activeSessionIdRef.current === id) handles.current.get(id)?.focus();
+        });
+      }
+    }
+  }
+  function activateNewSession(id: string) {
+    const pending = pendingSplitRef.current;
+    if (
+      !pending ||
+      !sessions.some((session) => session.id === pending.targetId)
+    ) {
+      activateSession(id);
+      return;
+    }
+    setSplitLayout((current) => {
+      const base = current ?? pending.targetId;
+      if (
+        !splitLayoutIds(base).includes(pending.targetId) ||
+        splitLayoutIds(base).length >= 4
+      )
+        return current;
+      return insertSplitPane(base, pending.targetId, id, pending.direction);
+    });
+    setPaneMaximized(false);
+    setActive(id);
+  }
+  function applySplitPreset(preset: SplitPreset | "single") {
+    if (!activeSession) return;
+    setSplitPickerOpen(false);
+    setPaneMaximized(false);
+    if (preset === "single") {
+      setSplitLayout(null);
+      return;
+    }
+    const candidates = [
+      ...splitSelection,
+      ...hostSessions.map((session) => session.id),
+      ...sessions.map((session) => session.id),
+    ].filter((id, index, ids) => ids.indexOf(id) === index);
+    const count = preset === "grid" ? 4 : Math.max(2, splitSelection.length);
+    const selected = candidates.slice(0, count);
+    if (selected.length === 1) {
+      if (!isDesktop()) {
+        notify("请先打开另一个终端");
+        return;
+      }
+      pendingSplitRef.current = {
+        targetId: activeSession.id,
+        direction: preset === "rows" ? "bottom" : "right",
+      };
+      newTerminal();
+      return;
+    }
+    setSplitLayout(createSplitLayout(selected, preset));
+  }
+  function equalizePanes() {
+    setSplitLayout((current) =>
+      current ? equalizeSplitLayout(current) : current,
+    );
+  }
+  function togglePaneMaximize(id: string) {
+    setActive(id);
+    setPaneMaximized((current) => !current);
+    requestAnimationFrame(() => handles.current.get(id)?.focus());
+  }
+  function toggleSplitSession(id: string) {
+    const current = splitMode ? splitSessionIds : splitSelection;
+    if (current.includes(id)) {
+      const remaining = current.filter((sessionId) => sessionId !== id);
+      if (remaining.length < 2) {
+        setSplitLayout(null);
+        if (remaining.length === 1) setActive(remaining[0]);
+      } else {
+        if (splitLayout) setSplitLayout(removeSplitPane(splitLayout, id));
+        if (active === id) setActive(remaining[0]);
+      }
+      return;
+    }
+    if (current.length >= 4) return;
+    const baseLayout = splitLayout ?? activeSession?.id;
+    if (!baseLayout) return;
+    const preset = compactSplit
+      ? "rows"
+      : (splitLayoutPreset(baseLayout) ?? "grid");
+    setPaneMaximized(false);
+    setSplitLayout(createSplitLayout([...current, id], preset));
+  }
+  function removeSplitSession(id: string) {
+    const remaining = splitSessionIds.filter((sessionId) => sessionId !== id);
+    if (remaining.length < 2) {
+      setSplitLayout(null);
+      if (remaining.length === 1) setActive(remaining[0]);
+    } else {
+      if (splitLayout) setSplitLayout(removeSplitPane(splitLayout, id));
+      if (active === id) setActive(remaining[0]);
+    }
   }
   function navigate(next: Page, nextGroup = "") {
     setPage(next);
@@ -426,7 +1016,7 @@ export default function App() {
     const previousActive = active;
     connectingID.current = id;
     setSessions((s) => [...s, session]);
-    setActive(id);
+    activateNewSession(id);
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
@@ -451,6 +1041,7 @@ export default function App() {
             : item,
         ),
       );
+      pendingSplitRef.current = null;
       update({
         ...stateRef.current,
         hosts: stateRef.current.hosts.map((h) =>
@@ -506,7 +1097,6 @@ export default function App() {
     }
   }
   async function openWSLTerminal(distribution: string) {
-    setWSLOpen(false);
     await openLocalSession({ wslDistribution: distribution });
   }
   async function openLocalShell(shell: LocalShell) {
@@ -534,7 +1124,7 @@ export default function App() {
     const session = { ...allocateSession(host), ...target };
     const previousActive = active;
     setSessions((items) => [...items, session]);
-    setActive(session.id);
+    activateNewSession(session.id);
     setSidebarOpen(false);
     setFilesOpen(false);
     setMonitorOpen(false);
@@ -582,6 +1172,8 @@ export default function App() {
           : current,
       );
       notify(errorText(e));
+    } finally {
+      pendingSplitRef.current = null;
     }
   }
   async function removeSession(id: string) {
@@ -604,6 +1196,9 @@ export default function App() {
     setSessions((s) => s.filter((item) => !removed.has(item.id)));
     setActive((current) => {
       if (!removed.has(current)) return current;
+      const visibleRemaining = splitSessionIds.filter((id) => !removed.has(id));
+      if (splitSessionIds.includes(current) && visibleRemaining.length)
+        return visibleRemaining[0];
       const session = items.find((s) => s.id === current);
       const siblings = items.filter((s) => s.host.id === session?.host.id);
       const survivingSiblings = remaining.filter(
@@ -630,7 +1225,7 @@ export default function App() {
   }
   function selectHostSessions(items: Session[]) {
     const remembered = lastActiveSessions.current.get(items[0].host.id);
-    setActive(items.find((s) => s.id === remembered)?.id ?? items[0].id);
+    activateSession(items.find((s) => s.id === remembered)?.id ?? items[0].id);
   }
   function closeHostSessions(items: Session[]) {
     if (items.length === 1) {
@@ -665,26 +1260,6 @@ export default function App() {
         run: () => removeSession(session.id),
       });
     else void removeSession(session.id).catch((e) => notify(errorText(e)));
-  }
-  function insertSnippet(snippet: Snippet) {
-    const current =
-      activeSession?.status === "connected"
-        ? activeSession
-        : sessions.find((s) => s.status === "connected");
-    if (!current) {
-      void navigator.clipboard
-        .writeText(snippet.command)
-        .then(() => notify("命令已复制"))
-        .catch(() => notify("复制失败，请在片段详情中手动复制。"));
-      return;
-    }
-    setActive(current.id);
-    const text = snippet.command
-      .replace(/[\r\n]+/g, " ")
-      .replace(/[\x00-\x1f\x7f]/g, "");
-    handles.current.get(current.id)?.send(text);
-    handles.current.get(current.id)?.focus();
-    notify("命令已插入终端，按 Enter 执行");
   }
   function pasteToTerminal(sessionId: string, text: string) {
     const target = sessionsRef.current.find((s) => s.id === sessionId);
@@ -732,23 +1307,10 @@ export default function App() {
     filtered = filtered
       .filter((h) => h.lastConnected)
       .sort((a, b) => b.lastConnected.localeCompare(a.lastConnected));
-  const filteredSnippets = workspace.snippets.filter(
-    (snippet) =>
-      (snippetFilter === "全部" ||
-        snippetCategory(snippet) === snippetFilter) &&
-      `${snippet.name} ${snippet.command} ${snippet.description} ${snippetCategory(snippet)}`
-        .toLowerCase()
-        .includes(snippetQuery.trim().toLowerCase()),
-  );
-  const availableSnippetCategories = [
-    ...new Set([
-      ...snippetCategories,
-      ...workspace.snippets.map(snippetCategory),
-    ]),
-  ];
-
   return (
-    <div className={`app ${sidebarOpen ? "sidebar-open" : ""}`}>
+    <div
+      className={`app ${sidebarOpen ? "sidebar-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
+    >
       <a className="skip-link" href="#main-content">
         跳转到工作区
       </a>
@@ -760,19 +1322,38 @@ export default function App() {
         />
       )}
       <aside className="sidebar">
+        <div className="sidebar-brand-row">
+          <button
+            className="brand"
+            onClick={() => navigate("hosts")}
+            aria-label="Orbit SSH 首页"
+          >
+            <span className="brand-symbol">
+              <Orbit size={27} strokeWidth={1.6} />
+            </span>
+            <span>
+              orbit<span className="brand-ssh">SSH</span>
+            </span>
+          </button>
+          <button
+            className="icon-button sidebar-collapse"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? "展开导航栏" : "收窄导航栏"}
+            aria-label={sidebarCollapsed ? "展开导航栏" : "收窄导航栏"}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={17} />
+            ) : (
+              <PanelLeftClose size={17} />
+            )}
+          </button>
+        </div>
         <button
-          className="brand"
-          onClick={() => navigate("hosts")}
-          aria-label="Orbit SSH 首页"
+          className="sidebar-search"
+          onClick={() => setPaletteOpen(true)}
+          title="搜索或快速切换"
+          aria-label="搜索或快速切换"
         >
-          <span className="brand-symbol">
-            <Orbit size={27} strokeWidth={1.6} />
-          </span>
-          <span>
-            orbit<span className="brand-ssh">SSH</span>
-          </span>
-        </button>
-        <button className="sidebar-search" onClick={() => setPaletteOpen(true)}>
           <Search size={16} />
           <span>搜索或快速切换</span>
           <kbd>⌃ K</kbd>
@@ -784,6 +1365,8 @@ export default function App() {
               page === "hosts" && !group && active === "home" ? "active" : ""
             }
             onClick={() => navigate("hosts")}
+            title="远程主机"
+            aria-label="远程主机"
           >
             <Server size={18} />
             <span>远程主机</span>
@@ -796,30 +1379,44 @@ export default function App() {
                   page === "local" && active === "home" ? "active" : ""
                 }
                 onClick={() => navigate("local")}
+                title="本地 Shell"
+                aria-label="本地 Shell"
               >
                 <TerminalSquare size={18} />
                 <span>本地 Shell</span>
               </button>
-              <button onClick={() => setWSLOpen(true)}>
+              <button
+                className={
+                  page === "wsl" && active === "home" ? "active" : ""
+                }
+                onClick={() => navigate("wsl")}
+                title="WSL"
+                aria-label="WSL"
+              >
                 <TerminalSquare size={18} />
                 <span>WSL</span>
               </button>
             </>
           )}
           <button
-            className={page === "snippets" && active === "home" ? "active" : ""}
-            onClick={() => navigate("snippets")}
+            className={page === "history" && active === "home" ? "active" : ""}
+            onClick={() => navigate("history")}
+            title="终端历史"
+            aria-label="终端历史"
           >
-            <Code2 size={18} />
-            <span>命令片段</span>
-            <span className="count">{workspace.snippets.length}</span>
+            <History size={18} />
+            <span>终端历史</span>
+            <span className="count">{terminalHistory.length}</span>
           </button>
         </nav>
         <div className="group-heading">
           <button
             onClick={() => setGroupsOpen(!groupsOpen)}
             aria-expanded={groupsOpen}
+            aria-label={groupsOpen ? "收起主机分组" : "展开主机分组"}
+            title="主机分组"
           >
+            <FolderClosed size={15} />
             <span>主机分组</span>
             <ChevronDown className={!groupsOpen ? "collapsed" : ""} size={14} />
           </button>
@@ -840,6 +1437,8 @@ export default function App() {
                   key={g}
                   className={group === g && active === "home" ? "selected" : ""}
                   onClick={() => navigate("hosts", g)}
+                  title={g}
+                  aria-label={g}
                 >
                   <FolderClosed size={16} />
                   <span>{g}</span>
@@ -858,7 +1457,11 @@ export default function App() {
         )}
         <div className="sidebar-spacer" />
         <div className="sidebar-bottom">
-          <button onClick={() => setPreferencesOpen(true)}>
+          <button
+            onClick={() => setPreferencesOpen(true)}
+            title="偏好设置"
+            aria-label="偏好设置"
+          >
             <Settings2 size={18} />
             <span>偏好设置</span>
           </button>
@@ -871,10 +1474,16 @@ export default function App() {
             <CircleHelp size={18} />
           </button>
         </div>
-        <div className="sidebar-version">
+        <button
+          className="sidebar-version"
+          type="button"
+          aria-label={`关于 Orbit SSH，版本 ${appVersion}`}
+          aria-haspopup="dialog"
+          onClick={() => setAboutOpen(true)}
+        >
           <span>ORBIT SSH</span>
-          <span>v1.0</span>
-        </div>
+          <span>v{appVersion}</span>
+        </button>
       </aside>
 
       <div className="app-body">
@@ -920,10 +1529,10 @@ export default function App() {
           >
             {page === "hosts" ? (
               <Server size={15} />
-            ) : page === "local" ? (
+            ) : page === "local" || page === "wsl" ? (
               <TerminalSquare size={15} />
             ) : (
-              <Code2 size={15} />
+              <History size={15} />
             )}
             {pageTitle}
           </button>
@@ -940,7 +1549,17 @@ export default function App() {
                   aria-selected={selected}
                   aria-label={`${host.name} · ${items.length} 个会话`}
                   title={`${sessionAddress(items[0])} · ${items.length} 个会话`}
+                  draggable
                   onClick={() => selectHostSessions(items)}
+                  onDragStart={(event) => {
+                    const remembered = lastActiveSessions.current.get(hostID);
+                    startSessionDrag(
+                      event,
+                      items.find((session) => session.id === remembered)?.id ??
+                        items[0].id,
+                    );
+                  }}
+                  onDragEnd={() => setDraggedSessionId(null)}
                 >
                   {items.some((s) => s.status === "connecting") ? (
                     <LoaderCircle
@@ -1007,21 +1626,6 @@ export default function App() {
             <>
               <div className="dashboard-scroll" hidden={active !== "home"}>
                 <div className="dashboard">
-                  {page === "snippets" && (
-                    <section className="page-heading">
-                      <div>
-                        <h1>命令片段</h1>
-                      </div>
-                      <button
-                        className="button primary"
-                        onClick={() => setSnippetEditor({})}
-                      >
-                        <Plus size={17} />
-                        新建片段
-                        <kbd>+</kbd>
-                      </button>
-                    </section>
-                  )}
                   {page === "local" ? (
                     <LocalShellPage
                       layout={layout}
@@ -1029,126 +1633,23 @@ export default function App() {
                       onOpen={(shell) => void openLocalShell(shell)}
                       sessions={sessions}
                     />
-                  ) : page === "snippets" ? (
-                    <section
-                      className="snippets-library"
-                      aria-label="命令片段库"
-                    >
-                      <div className="snippet-filters">
-                        <label className="snippet-search">
-                          <Search size={16} aria-hidden="true" />
-                          <input
-                            aria-label="搜索命令片段"
-                            placeholder="搜索名称、命令或说明…"
-                            value={snippetQuery}
-                            onChange={(e) => setSnippetQuery(e.target.value)}
-                          />
-                        </label>
-                        <select
-                          aria-label="片段分类"
-                          value={snippetFilter}
-                          onChange={(e) => setSnippetFilter(e.target.value)}
-                        >
-                          <option value="全部">全部分类</option>
-                          {availableSnippetCategories.map((category) => (
-                            <option key={category} value={category}>
-                              {category}
-                            </option>
-                          ))}
-                        </select>
-                        <span role="status">
-                          {filteredSnippets.length} /{" "}
-                          {workspace.snippets.length} 条
-                        </span>
-                      </div>
-                      {!filteredSnippets.length && (
-                        <div className="snippet-empty">
-                          <Search size={24} aria-hidden="true" />
-                          <strong>
-                            {workspace.snippets.length
-                              ? "没有匹配的片段"
-                              : "暂无命令片段"}
-                          </strong>
-                          {(snippetQuery || snippetFilter !== "全部") && (
-                            <button
-                              className="button secondary compact"
-                              onClick={() => {
-                                setSnippetQuery("");
-                                setSnippetFilter("全部");
-                              }}
-                            >
-                              清除筛选
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      <div className="snippets-grid">
-                        {filteredSnippets.map((s) => (
-                          <article className="snippet-card" key={s.id}>
-                            <div className="snippet-card-heading">
-                              <span className="snippet-icon">
-                                <Code2 size={20} />
-                              </span>
-                              <div>
-                                <h2>{s.name}</h2>
-                                <span className="snippet-category">
-                                  {snippetCategory(s)}
-                                </span>
-                                {s.description && <p>{s.description}</p>}
-                              </div>
-                              <button
-                                className="icon-button"
-                                aria-label={`编辑 ${s.name}`}
-                                title="编辑片段"
-                                onClick={() => setSnippetEditor({ snippet: s })}
-                              >
-                                <Pencil size={16} />
-                              </button>
-                            </div>
-                            <pre>{s.command}</pre>
-                            <div className="snippet-card-footer">
-                              <button
-                                className="text-button"
-                                onClick={() => insertSnippet(s)}
-                              >
-                                <Clipboard size={14} />
-                                {sessions.some((t) => t.status === "connected")
-                                  ? "插入终端"
-                                  : "复制命令"}
-                              </button>
-                              <button
-                                className="icon-button"
-                                aria-label={`删除 ${s.name}`}
-                                title="删除片段"
-                                onClick={() =>
-                                  setConfirmation({
-                                    title: "删除这条片段？",
-                                    message: `“${s.name}”将从命令片段中移除。`,
-                                    action: "删除片段",
-                                    danger: true,
-                                    run: () =>
-                                      saveSnippets(
-                                        stateRef.current.snippets.filter(
-                                          (item) => item.id !== s.id,
-                                        ),
-                                      ),
-                                  })
-                                }
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          </article>
-                        ))}
-                        <button
-                          className="add-snippet-card"
-                          onClick={() => setSnippetEditor({})}
-                        >
-                          <Plus size={24} />
-                          <strong>新建片段</strong>
-                        </button>
-                      </div>
-                    </section>
+                  ) : page === "wsl" ? (
+                    <WSLPage
+                      layout={layout}
+                      onLayoutChange={setHostLayout}
+                      onOpen={(name) => void openWSLTerminal(name)}
+                      sessions={sessions}
+                    />
+                  ) : page === "history" ? (
+                    <TerminalHistoryPage
+                      records={terminalHistory}
+                      recordingEnabled={workspace.preferences.terminalHistoryEnabled}
+                      onOpenSettings={() => setPreferencesOpen(true)}
+                      onTogglePin={(record) =>
+                        setHistoryPinned(record, !record.pinned)
+                      }
+                      onDelete={removeTerminalHistory}
+                    />
                   ) : (
                     <div className="workspace-columns">
                       <div className="hosts-section">
@@ -1294,14 +1795,17 @@ export default function App() {
                     {hostSessions.map((s) => (
                       <div
                         key={s.id}
-                        className={`session-tab ${s.id === active ? "selected" : ""}`}
+                        className={`session-tab ${s.id === active ? "selected" : ""} ${splitMode && splitSessionIds.includes(s.id) ? "in-split" : ""} ${draggedSessionId === s.id ? "dragging-tab" : ""}`}
                       >
                         <button
                           role="tab"
                           aria-selected={s.id === active}
                           aria-label={`${s.host.name} · 终端 #${s.terminalNumber}`}
                           title={`终端 #${s.terminalNumber} · ${s.status === "connected" ? "已连接" : s.status === "connecting" ? "连接中" : "已断开"}`}
-                          onClick={() => setActive(s.id)}
+                          draggable
+                          onClick={() => activateSession(s.id)}
+                          onDragStart={(event) => startSessionDrag(event, s.id)}
+                          onDragEnd={() => setDraggedSessionId(null)}
                         >
                           {s.status === "connecting" ? (
                             <LoaderCircle
@@ -1330,7 +1834,7 @@ export default function App() {
                     <button
                       className="tab-add"
                       aria-label="为当前主机或 Shell 新建终端"
-                      title="新建终端 · Ctrl Shift T"
+                      title="新建终端"
                       disabled={activeSession.status === "connecting"}
                       onClick={newTerminal}
                     >
@@ -1363,13 +1867,47 @@ export default function App() {
                   <div>
                     <button
                       className="button toolbar-button new-terminal-button"
-                      title="为当前主机或 Shell 新建终端 · Ctrl Shift T"
+                      title="为当前主机或 Shell 新建终端"
                       disabled={activeSession?.status === "connecting"}
                       onClick={newTerminal}
                     >
                       <Plus size={16} aria-hidden="true" />
                       新建终端
                     </button>
+                    <div className="split-control" ref={splitControlRef}>
+                      <button
+                        className={`button toolbar-button split-toggle ${splitMode ? "selected" : ""}`}
+                        aria-label="终端布局"
+                        aria-pressed={splitMode}
+                        aria-expanded={splitPickerOpen}
+                        aria-haspopup="dialog"
+                        aria-controls="terminal-layout-picker"
+                        title="终端布局与分屏"
+                        disabled={!activeSession || activeSession.status === "connecting"}
+                        onClick={() => setSplitPickerOpen((open) => !open)}
+                      >
+                        <Columns2 size={16} aria-hidden="true" />
+                        <span>分屏</span>
+                        {splitMode && <span className="split-count">{splitSessionIds.length}</span>}
+                        <ChevronDown size={12} aria-hidden="true" />
+                      </button>
+                      {splitPickerOpen && (
+                        <TerminalLayoutPicker
+                          sessions={sessions}
+                          activeId={active}
+                          selectedIds={splitSelection}
+                          layout={splitLayout}
+                          compact={compactSplit}
+                          onPreset={applySplitPreset}
+                          onToggle={toggleSplitSession}
+                          onEqualize={equalizePanes}
+                          onNewTerminal={() => {
+                            setSplitPickerOpen(false);
+                            newTerminal();
+                          }}
+                        />
+                      )}
+                    </div>
                     <span className="toolbar-divider" />
                     <button
                       className="icon-button"
@@ -1391,6 +1929,18 @@ export default function App() {
                       }
                     >
                       <Clipboard size={16} />
+                    </button>
+                    <button
+                      className={`icon-button ${terminalHistory.find((record) => record.id === activeSession?.id)?.pinned ? "selected" : ""}`}
+                      title={terminalHistory.find((record) => record.id === activeSession?.id)?.pinned ? "取消精选历史" : "加入精选历史"}
+                      aria-label={terminalHistory.find((record) => record.id === activeSession?.id)?.pinned ? "取消精选历史" : "加入精选历史"}
+                      aria-pressed={Boolean(terminalHistory.find((record) => record.id === activeSession?.id)?.pinned)}
+                      onClick={() => activeSession && toggleSessionHistory(activeSession)}
+                    >
+                      <Star
+                        size={16}
+                        fill={terminalHistory.find((record) => record.id === activeSession?.id)?.pinned ? "currentColor" : "none"}
+                      />
                     </button>
                     <button
                       className="icon-button"
@@ -1442,7 +1992,8 @@ export default function App() {
                   className={`terminal-layout ${monitorOpen && monitorExpanded ? "monitor-expanded" : ""} ${filesOpen ? "files-expanded" : ""}`}
                 >
                   <div
-                    className="terminals"
+                    ref={terminalAreaRef}
+                    className={`terminals ${splitMode ? `is-split ${compactSplit && !maximized ? "is-compact" : ""} ${maximized ? "is-maximized" : ""}` : ""}`}
                     inert={filesOpen || (monitorOpen && monitorExpanded)}
                   >
                     {terminalSearch !== null && activeSession && !filesOpen && (
@@ -1493,77 +2044,266 @@ export default function App() {
                         </button>
                       </form>
                     )}
-                    {sessions.map((s) => (
-                      <div
-                        className="terminal-session"
-                        key={s.id}
-                        hidden={active !== s.id}
-                      >
-                        <TerminalPane
-                          ref={(h) => {
-                            if (h) handles.current.set(s.id, h);
-                            else handles.current.delete(s.id);
-                          }}
-                          session={s}
-                          active={
-                            active === s.id &&
-                            !modalOpen &&
-                            !filesOpen &&
-                            !(monitorOpen && monitorExpanded)
-                          }
-                          dark={dark}
-                          fontSize={workspace.preferences.fontSize}
-                          lineHeight={workspace.preferences.lineHeight}
-                          onZoom={zoomTerminal}
-                          onClosed={(id, message) =>
-                            setSessions((items) =>
-                              items.map((item) =>
-                                item.id === id
-                                  ? {
-                                      ...item,
-                                      status: "closed",
-                                      error: message,
-                                    }
-                                  : item,
-                              ),
-                            )
-                          }
-                          onError={notify}
-                          onPaste={(text) => pasteToTerminal(s.id, text)}
-                          onSearch={() => {
-                            setTerminalSearch("");
-                            requestAnimationFrame(() =>
-                              document
-                                .querySelector<HTMLInputElement>(
-                                  ".terminal-search input",
-                                )
-                                ?.focus(),
-                            );
-                          }}
-                        />
-                        {s.status === "closed" && (
-                          <div className="reconnect-bar">
-                            <span>
-                              {isLocalSession(s) ? "终端已结束" : "连接已结束"}
-                              {s.error ? ` · ${s.error}` : ""}
-                            </span>
-                            <button
-                              className="button secondary compact"
-                              onClick={() =>
-                                s.localShell
-                                  ? void openLocalShell(s.localShell)
-                                  : s.wslDistribution
-                                    ? void openWSLTerminal(s.wslDistribution)
-                                    : chooseHost(s.host)
+                    <div
+                      className="terminal-canvas"
+                      style={{
+                        minHeight: splitMode && compactSplit && !maximized
+                          ? `${paneSessions.length * 240}px`
+                          : undefined,
+                      }}
+                    >
+                      {sessions.map((s) => {
+                        const pane = paneGeometryById.get(s.id);
+                        const visible = splitMode
+                          ? Boolean(pane) && (!maximized || active === s.id)
+                          : active === s.id;
+                        return (
+                          <div
+                            className={`terminal-session ${splitMode ? "split-session" : ""} ${active === s.id ? "focused" : ""}`}
+                            data-session-id={s.id}
+                            key={s.id}
+                            hidden={!visible}
+                            style={
+                              splitMode && pane && !maximized
+                                ? {
+                                    left: `${pane.left * 100}%`,
+                                    top: `${pane.top * 100}%`,
+                                    width: `${pane.width * 100}%`,
+                                    height: `${pane.height * 100}%`,
+                                  }
+                                : undefined
+                            }
+                            onPointerDown={
+                              splitMode ? () => setActive(s.id) : undefined
+                            }
+                            onFocusCapture={
+                              splitMode
+                                ? (event) => {
+                                    if ((event.target as HTMLElement).closest(".terminal-mount"))
+                                      setActive(s.id);
+                                  }
+                                : undefined
+                            }
+                          >
+                            {splitMode && (
+                              <div className="split-session-heading">
+                                <button
+                                  className="split-session-drag"
+                                  draggable={!maximized}
+                                  title={`${s.host.name} · 终端 #${s.terminalNumber} · 拖动调整位置，双击${maximized ? "还原" : "放大"}`}
+                                  aria-label={`激活 ${s.host.name} 终端 #${s.terminalNumber}`}
+                                  onClick={() => activateSession(s.id)}
+                                  onDoubleClick={() => togglePaneMaximize(s.id)}
+                                  onDragStart={(event) => startSessionDrag(event, s.id)}
+                                  onDragEnd={() => setDraggedSessionId(null)}
+                                >
+                                  <GripVertical className="pane-drag-grip" size={13} aria-hidden="true" />
+                                  <span className={`status-dot ${s.status === "closed" ? "offline" : ""}`} aria-hidden="true" />
+                                  <strong>{s.host.name}</strong>
+                                  <span className="pane-terminal-number">#{s.terminalNumber}</span>
+                                </button>
+                                <button
+                                  className={`icon-button split-history-star ${terminalHistory.find((record) => record.id === s.id)?.pinned ? "selected" : ""}`}
+                                  aria-label={terminalHistory.find((record) => record.id === s.id)?.pinned ? "取消精选历史" : "加入精选历史"}
+                                  title={terminalHistory.find((record) => record.id === s.id)?.pinned ? "取消精选历史" : "加入精选历史"}
+                                  aria-pressed={Boolean(terminalHistory.find((record) => record.id === s.id)?.pinned)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleSessionHistory(s);
+                                  }}
+                                >
+                                  <Star
+                                    size={14}
+                                    fill={terminalHistory.find((record) => record.id === s.id)?.pinned ? "currentColor" : "none"}
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                                <button
+                                  className="icon-button"
+                                  aria-label={maximized ? "还原分屏布局" : `放大 ${s.host.name} 终端 #${s.terminalNumber}`}
+                                  title={maximized ? "还原分屏布局" : "放大窗格 · 也可双击标题"}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    togglePaneMaximize(s.id);
+                                  }}
+                                >
+                                  {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                                </button>
+                                <button
+                                  className="icon-button"
+                                  aria-label={`收起 ${s.host.name} 终端 #${s.terminalNumber}`}
+                                  title="收起窗格，终端继续运行"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    removeSplitSession(s.id);
+                                  }}
+                                >
+                                  <X size={14} aria-hidden="true" />
+                                </button>
+                              </div>
+                            )}
+                            {draggedSessionId &&
+                              draggedSessionId !== s.id &&
+                              !maximized &&
+                              (splitMode ? Boolean(pane) : active === s.id) && (
+                                <TerminalDropTarget
+                                  sourceId={draggedSessionId}
+                                  targetId={s.id}
+                                  swapping={splitSessionIds.includes(draggedSessionId)}
+                                  canSplit={splitSessionIds.includes(draggedSessionId) || splitSessionIds.length < 4}
+                                  compact={compactSplit}
+                                  onPlace={placeSessionInSplit}
+                                  onFinish={() => setDraggedSessionId(null)}
+                                />
+                              )}
+                            <TerminalPane
+                              ref={(h) => {
+                                if (h) handles.current.set(s.id, h);
+                                else handles.current.delete(s.id);
+                              }}
+                              session={s}
+                              active={
+                                active === s.id &&
+                                !modalOpen &&
+                                !splitPickerOpen &&
+                                !draggedSessionId &&
+                                !filesOpen &&
+                                !(monitorOpen && monitorExpanded)
                               }
-                            >
-                              {isLocalSession(s) ? "重新打开" : "重新连接"}
-                              <ArrowRight size={13} />
-                            </button>
+                              dark={dark}
+                              fontSize={workspace.preferences.fontSize}
+                              lineHeight={workspace.preferences.lineHeight}
+                              historyEnabled={workspace.preferences.terminalHistoryEnabled}
+                              onHistoryOutput={recordTerminalOutput}
+                              onZoom={zoomTerminal}
+                              onClosed={(id, message) =>
+                                setSessions((items) =>
+                                  items.map((item) =>
+                                    item.id === id
+                                      ? {
+                                          ...item,
+                                          status: "closed",
+                                          error: message,
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              onError={notify}
+                              onPaste={(text) => pasteToTerminal(s.id, text)}
+                              onSearch={() => {
+                                setTerminalSearch("");
+                                requestAnimationFrame(() =>
+                                  document
+                                    .querySelector<HTMLInputElement>(
+                                      ".terminal-search input",
+                                    )
+                                    ?.focus(),
+                                );
+                              }}
+                            />
+                            {s.status === "closed" && (
+                              <div className="reconnect-bar">
+                                <span>
+                                  {isLocalSession(s)
+                                    ? "终端已结束"
+                                    : "连接已结束"}
+                                  {s.error ? ` · ${s.error}` : ""}
+                                </span>
+                                <button
+                                  className="button secondary compact"
+                                  onClick={() =>
+                                    s.localShell
+                                      ? void openLocalShell(s.localShell)
+                                      : s.wslDistribution
+                                        ? void openWSLTerminal(s.wslDistribution)
+                                        : chooseHost(s.host)
+                                  }
+                                >
+                                  {isLocalSession(s) ? "重新打开" : "重新连接"}
+                                  <ArrowRight size={13} />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        );
+                      })}
+                      {splitMode && !maximized &&
+                        splitGeometry.dividers.map((divider) => (
+                          <div
+                            key={divider.path || "root"}
+                            className={`split-divider ${divider.axis === "x" ? "vertical" : "horizontal"} ${divider.resizable === false ? "fixed" : ""} ${splitResize?.path === divider.path ? "dragging" : ""}`}
+                            role="separator"
+                            aria-orientation={
+                              divider.axis === "x" ? "vertical" : "horizontal"
+                            }
+                            aria-label={
+                              divider.resizable === false
+                                ? "终端分屏边界"
+                                : "调整终端分屏大小"
+                            }
+                            aria-disabled={divider.resizable === false}
+                            aria-valuemin={20}
+                            aria-valuemax={80}
+                            aria-valuenow={Math.round(divider.ratio * 100)}
+                            title={
+                              divider.resizable === false
+                                ? "终端分屏边界"
+                                : "拖动调整大小 · 双击均分"
+                            }
+                            tabIndex={divider.resizable === false ? -1 : 0}
+                            style={{
+                              left: `${divider.left * 100}%`,
+                              top: `${divider.top * 100}%`,
+                              width:
+                                divider.axis === "x"
+                                  ? "7px"
+                                  : `${divider.width * 100}%`,
+                              height:
+                                divider.axis === "x"
+                                  ? `${divider.height * 100}%`
+                                  : "7px",
+                            }}
+                            onPointerDown={(event) => {
+                              if (divider.resizable !== false)
+                                startSplitResize(event, divider);
+                            }}
+                            onDoubleClick={() => {
+                              if (divider.resizable !== false)
+                                setSplitLayout((current) => current ? updateSplitRatio(current, divider.path, 0.5) : current);
+                            }}
+                            onKeyDown={(event) => {
+                              if (divider.resizable === false) return;
+                              const negative =
+                                (divider.axis === "x" &&
+                                  event.key === "ArrowLeft") ||
+                                (divider.axis === "y" &&
+                                  event.key === "ArrowUp");
+                              const positive =
+                                (divider.axis === "x" &&
+                                  event.key === "ArrowRight") ||
+                                (divider.axis === "y" &&
+                                  event.key === "ArrowDown");
+                              if (event.key === "Home") {
+                                event.preventDefault();
+                                setSplitLayout((current) => current ? updateSplitRatio(current, divider.path, 0.5) : current);
+                              } else if (negative || positive) {
+                                event.preventDefault();
+                                adjustSplitResize(divider, negative ? -0.03 : 0.03);
+                              }
+                            }}
+                          />
+                        ))}
+                    </div>
+                    {draggedSessionId && !maximized && (
+                      <div className="terminal-drag-hint" aria-live="polite">
+                        <GripVertical size={14} />
+                        {splitSessionIds.length >= 4 && !splitSessionIds.includes(draggedSessionId)
+                          ? "已显示 4 个窗格，拖入窗格可替换终端"
+                          : `拖到边缘分屏，拖到中间${splitSessionIds.includes(draggedSessionId) ? "交换" : "替换"}`}
+                        <kbd>Esc</kbd><span>取消</span>
                       </div>
-                    ))}
+                    )}
                   </div>
                   {monitorOpen &&
                     activeSession &&
@@ -1640,12 +2380,6 @@ export default function App() {
           )}
         </main>
       </div>
-      {wslOpen && (
-        <WSLDialog
-          onSelect={(name) => void openWSLTerminal(name)}
-          onClose={() => setWSLOpen(false)}
-        />
-      )}
       {hostEditor && (
         <HostDialog
           host={hostEditor.host}
@@ -1661,6 +2395,7 @@ export default function App() {
           host={connectHost}
           onConnect={connect}
           onClose={() => {
+            pendingSplitRef.current = null;
             const id = connectingID.current;
             connectingID.current = null;
             if (id)
@@ -1672,21 +2407,6 @@ export default function App() {
           }}
         />
       )}
-      {snippetEditor && (
-        <SnippetDialog
-          snippet={snippetEditor.snippet}
-          onSave={async (snippet) => {
-            const list = stateRef.current.snippets;
-            await saveSnippets(
-              list.some((s) => s.id === snippet.id)
-                ? list.map((s) => (s.id === snippet.id ? snippet : s))
-                : [...list, snippet],
-            );
-            notify("命令片段已保存");
-          }}
-          onClose={() => setSnippetEditor(null)}
-        />
-      )}
       {preferencesOpen && (
         <PreferencesDialog
           preferences={workspace.preferences}
@@ -1694,6 +2414,45 @@ export default function App() {
           onChange={savePreferences}
           onClose={() => setPreferencesOpen(false)}
         />
+      )}
+      {aboutOpen && (
+        <Modal
+          title="关于 Orbit SSH"
+          onClose={() => setAboutOpen(false)}
+          className="about-dialog"
+        >
+          <div className="about-info">
+            <div className="about-version-row">
+              <span>版本</span>
+              <strong>v{appVersion}</strong>
+            </div>
+            <a
+              className="about-repository-link"
+              href={projectURL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => {
+                if (isDesktop()) {
+                  event.preventDefault();
+                  BrowserOpenURL(projectURL);
+                }
+              }}
+            >
+              <Github size={17} aria-hidden="true" />
+              <span>{projectURL.replace("https://", "")}</span>
+              <ArrowUpRight size={15} aria-hidden="true" />
+            </a>
+            <p className="about-license">许可协议：The Unlicense</p>
+          </div>
+          <div className="modal-footer">
+            <button
+              className="button primary"
+              onClick={() => setAboutOpen(false)}
+            >
+              关闭
+            </button>
+          </div>
+        </Modal>
       )}
       {paletteOpen && (
         <CommandPalette
@@ -1717,10 +2476,6 @@ export default function App() {
             <div>
               <span>搜索终端</span>
               <kbd>Ctrl / ⌘ Shift F</kbd>
-            </div>
-            <div>
-              <span>为当前主机或 Shell 新建终端</span>
-              <kbd>Ctrl / ⌘ Shift T</kbd>
             </div>
             <div>
               <span>复制选中 / 粘贴</span>

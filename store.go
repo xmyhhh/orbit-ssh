@@ -24,29 +24,42 @@ type Host struct {
 	LastConnected string `json:"lastConnected"`
 }
 
-type Snippet struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Command     string `json:"command"`
-	Description string `json:"description"`
-	Category    string `json:"category,omitempty"`
+type ShortcutBinding struct {
+	Code    string `json:"code"`
+	Primary bool   `json:"primary"`
+	Ctrl    bool   `json:"ctrl"`
+	Meta    bool   `json:"meta"`
+	Alt     bool   `json:"alt"`
+	Shift   bool   `json:"shift"`
+}
+
+type WindowShortcuts struct {
+	CloseSession    ShortcutBinding `json:"closeSession"`
+	NewTerminal     ShortcutBinding `json:"newTerminal"`
+	NextSession     ShortcutBinding `json:"nextSession"`
+	PreviousSession ShortcutBinding `json:"previousSession"`
+	SwitchSession   ShortcutBinding `json:"switchSession"`
 }
 
 type Preferences struct {
-	Theme        string  `json:"theme"`
-	HostLayout   string  `json:"hostLayout"`
-	FontSize     int     `json:"fontSize"`
-	LineHeight   float64 `json:"lineHeight"`
-	ConfirmClose bool    `json:"confirmClose"`
-	CloseToTray  bool    `json:"closeToTray"`
+	Theme                  string          `json:"theme"`
+	HostLayout             string          `json:"hostLayout"`
+	FontSize               int             `json:"fontSize"`
+	LineHeight             float64         `json:"lineHeight"`
+	ConfirmClose           bool            `json:"confirmClose"`
+	CloseToTray            bool            `json:"closeToTray"`
+	TerminalHistoryEnabled bool            `json:"terminalHistoryEnabled"`
+	TerminalHistoryLimit   int             `json:"terminalHistoryLimit"`
+	MCPEnabled             bool            `json:"mcpEnabled"`
+	MCPAllowTerminalInput  bool            `json:"mcpAllowTerminalInput"`
+	MCPPort                int             `json:"mcpPort"`
+	Shortcuts              WindowShortcuts `json:"shortcuts"`
 }
 
 type State struct {
-	Hosts                 []Host            `json:"hosts"`
-	Snippets              []Snippet         `json:"snippets"`
-	Preferences           Preferences       `json:"preferences"`
-	KnownHosts            map[string]string `json:"knownHosts"`
-	SnippetCatalogVersion int               `json:"snippetCatalogVersion"`
+	Hosts       []Host            `json:"hosts"`
+	Preferences Preferences       `json:"preferences"`
+	KnownHosts  map[string]string `json:"knownHosts"`
 }
 
 type Store struct {
@@ -56,9 +69,37 @@ type Store struct {
 }
 
 func defaultState() State {
-	return State{Hosts: []Host{}, Snippets: append([]Snippet{}, builtinSnippets.Snippets...),
-		SnippetCatalogVersion: builtinSnippets.Version,
-		Preferences:           Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true, CloseToTray: true}, KnownHosts: map[string]string{}}
+	return State{Hosts: []Host{},
+		Preferences: Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true, CloseToTray: true, TerminalHistoryEnabled: true, TerminalHistoryLimit: 20, MCPPort: 8765, Shortcuts: defaultWindowShortcuts()}, KnownHosts: map[string]string{}}
+}
+
+func defaultWindowShortcuts() WindowShortcuts {
+	return WindowShortcuts{
+		CloseSession:    ShortcutBinding{Code: "KeyW", Primary: true},
+		NewTerminal:     ShortcutBinding{Code: "KeyT", Primary: true, Shift: true},
+		NextSession:     ShortcutBinding{Code: "Tab", Ctrl: true},
+		PreviousSession: ShortcutBinding{Code: "Tab", Ctrl: true, Shift: true},
+		SwitchSession:   ShortcutBinding{Code: "Digit", Primary: true},
+	}
+}
+
+func normalizeWindowShortcuts(shortcuts *WindowShortcuts) {
+	defaults := defaultWindowShortcuts()
+	if shortcuts.CloseSession.Code == "" {
+		shortcuts.CloseSession = defaults.CloseSession
+	}
+	if shortcuts.NewTerminal.Code == "" {
+		shortcuts.NewTerminal = defaults.NewTerminal
+	}
+	if shortcuts.NextSession.Code == "" {
+		shortcuts.NextSession = defaults.NextSession
+	}
+	if shortcuts.PreviousSession.Code == "" {
+		shortcuts.PreviousSession = defaults.PreviousSession
+	}
+	if shortcuts.SwitchSession.Code == "" {
+		shortcuts.SwitchSession = defaults.SwitchSession
+	}
 }
 
 func openStore(path string) (*Store, error) {
@@ -70,18 +111,11 @@ func openStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A missing version belongs to the original three-snippet catalog.
-	s.state.SnippetCatalogVersion = 0
-	// Decode into a fresh slice so omitted fields cannot inherit preset values.
-	s.state.Snippets = nil
 	if err = json.Unmarshal(data, &s.state); err != nil {
 		return nil, fmt.Errorf("配置文件无法读取，原文件已保留：%w", err)
 	}
 	if s.state.Hosts == nil {
 		s.state.Hosts = []Host{}
-	}
-	if s.state.Snippets == nil {
-		s.state.Snippets = []Snippet{}
 	}
 	if s.state.KnownHosts == nil {
 		s.state.KnownHosts = map[string]string{}
@@ -89,11 +123,13 @@ func openStore(path string) (*Store, error) {
 	if s.state.Preferences.HostLayout != "grid" && s.state.Preferences.HostLayout != "list" {
 		s.state.Preferences.HostLayout = "grid"
 	}
-	if upgradeSnippetCatalog(&s.state) {
-		if err = s.persistLocked(); err != nil {
-			return nil, fmt.Errorf("常用片段无法保存，原配置已保留：%w", err)
-		}
+	if s.state.Preferences.TerminalHistoryLimit < 1 || s.state.Preferences.TerminalHistoryLimit > 100 {
+		s.state.Preferences.TerminalHistoryLimit = 20
 	}
+	if s.state.Preferences.MCPPort < 1024 || s.state.Preferences.MCPPort > 65535 {
+		s.state.Preferences.MCPPort = 8765
+	}
+	normalizeWindowShortcuts(&s.state.Preferences.Shortcuts)
 	return s, nil
 }
 

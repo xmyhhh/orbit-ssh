@@ -3,29 +3,52 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 type App struct {
-	ctx           context.Context
-	store         *Store
-	storeErr      error
-	mu            sync.Mutex
-	sessions      map[string]*remoteSession
-	localSessions map[string]*localSession
-	pending       map[string]context.CancelFunc
-	emit          func(string, ...interface{})
-	transferMu    sync.Mutex
-	transfers     []*transferJob
-	transferRuns  map[string]bool
-	fileEditMu    sync.Mutex
-	dirtyEditors  map[string]bool
-	tray          trayState
+	ctx               context.Context
+	store             *Store
+	storeErr          error
+	mu                sync.Mutex
+	sessions          map[string]*remoteSession
+	localSessions     map[string]*localSession
+	pending           map[string]context.CancelFunc
+	emit              func(string, ...interface{})
+	transferMu        sync.Mutex
+	transfers         []*transferJob
+	transferRuns      map[string]bool
+	fileEditMu        sync.Mutex
+	dirtyEditors      map[string]bool
+	tray              trayState
+	desktop           bool
+	mcpMu             sync.Mutex
+	mcpServer         *http.Server
+	mcpListener       net.Listener
+	mcpPort           int
+	mcpToken          string
+	mcpError          string
+	historyMu         sync.RWMutex
+	historyDir        string
+	history           map[string]TerminalHistoryRecord
+	historyChanges    map[string]terminalHistoryChange
+	historyDeleted    map[string]bool
+	historyRevision   uint64
+	historyTimer      *time.Timer
+	historyLoadError  string
+	historyStoreError string
+	historyPersistMu  sync.Mutex
 }
 
 func NewApp() *App {
-	return &App{sessions: map[string]*remoteSession{}, pending: map[string]context.CancelFunc{}}
+	return &App{
+		sessions: map[string]*remoteSession{}, pending: map[string]context.CancelFunc{},
+		history: map[string]TerminalHistoryRecord{}, historyChanges: map[string]terminalHistoryChange{}, historyDeleted: map[string]bool{},
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -37,6 +60,19 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.store, a.storeErr = openStore(filepath.Join(dir, "OrbitSSH", "workspace.json"))
+	if a.storeErr != nil {
+		return
+	}
+	dataDir := filepath.Dir(a.store.path)
+	a.historyDir = filepath.Join(dataDir, "terminal-history")
+	if err := a.loadTerminalHistory(); err != nil {
+		a.historyLoadError = err.Error()
+	}
+	var tokenErr error
+	a.mcpToken, tokenErr = loadOrCreateMCPToken(filepath.Join(dataDir, "mcp-token"))
+	if tokenErr != nil {
+		a.mcpError = tokenErr.Error()
+	}
 }
 
 func (a *App) ready() error {
@@ -84,26 +120,6 @@ func (a *App) DeleteHost(id string) error {
 	return nil
 }
 
-func (a *App) SaveSnippets(snippets []Snippet) error {
-	if err := a.ready(); err != nil {
-		return err
-	}
-	for _, s := range snippets {
-		if s.ID == "" || s.Name == "" || s.Command == "" {
-			return errors.New("请填写片段名称和命令")
-		}
-	}
-	a.store.mu.Lock()
-	defer a.store.mu.Unlock()
-	old := a.store.state.Snippets
-	a.store.state.Snippets = snippets
-	if err := a.store.persistLocked(); err != nil {
-		a.store.state.Snippets = old
-		return err
-	}
-	return nil
-}
-
 func (a *App) SavePreferences(p Preferences) error {
 	if err := a.ready(); err != nil {
 		return err
@@ -126,13 +142,37 @@ func (a *App) SavePreferences(p Preferences) error {
 	if p.LineHeight != 1.2 && p.LineHeight != 1.35 && p.LineHeight != 1.5 {
 		return errors.New("请选择有效的终端行距")
 	}
+	if p.TerminalHistoryLimit == 0 {
+		p.TerminalHistoryLimit = 20
+	}
+	if p.TerminalHistoryLimit < 1 || p.TerminalHistoryLimit > 100 {
+		return errors.New("终端历史上限范围为 1–100")
+	}
+	if p.MCPPort < 1024 || p.MCPPort > 65535 {
+		return errors.New("MCP 端口范围为 1024–65535")
+	}
+	normalizeWindowShortcuts(&p.Shortcuts)
 	a.store.mu.Lock()
-	defer a.store.mu.Unlock()
 	old := a.store.state.Preferences
 	a.store.state.Preferences = p
 	if err := a.store.persistLocked(); err != nil {
 		a.store.state.Preferences = old
+		a.store.mu.Unlock()
 		return err
+	}
+	a.store.mu.Unlock()
+	if a.desktop {
+		if err := a.configureMCP(p); err != nil {
+			a.store.mu.Lock()
+			a.store.state.Preferences = old
+			persistErr := a.store.persistLocked()
+			a.store.mu.Unlock()
+			_ = a.configureMCP(old)
+			if persistErr != nil {
+				return errors.Join(err, persistErr)
+			}
+			return err
+		}
 	}
 	return nil
 }
@@ -210,6 +250,8 @@ func (a *App) SetEditorDirty(id string, dirty bool) {
 
 func (a *App) shutdown(_ context.Context) {
 	a.stopTray()
+	a.stopMCP()
+	a.flushTerminalHistory()
 	a.transferMu.Lock()
 	for _, job := range a.transfers {
 		job.cancel()
