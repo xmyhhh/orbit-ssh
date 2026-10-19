@@ -2828,14 +2828,12 @@ textarea {
 .page-heading {
   margin-bottom: 25px;
 }
-.wsl-distributions,
-.shell-options {
+.wsl-distributions {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.wsl-distributions > button,
-.shell-options > button {
+.wsl-distributions > button {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2845,13 +2843,11 @@ textarea {
   border-radius: 7px;
   text-align: left;
 }
-.wsl-distributions > button:hover,
-.shell-options > button:hover {
+.wsl-distributions > button:hover {
   background: var(--accent-soft);
   border-color: var(--green-line);
 }
-.wsl-distributions strong,
-.shell-options strong {
+.wsl-distributions strong {
   flex: 1;
   overflow-wrap: anywhere;
 }
@@ -2869,6 +2865,53 @@ textarea {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
+}
+.local-shell-controls > p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.local-shell-controls .layout-switch {
+  flex-shrink: 0;
+}
+.local-shell-card {
+  text-align: left;
+}
+.local-shell-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+.local-shell-card .local-shell-action {
+  color: var(--accent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.local-shell-card:hover .local-shell-action {
+  text-decoration: underline;
+}
+.local-shell-state {
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+@media (max-width: 650px) {
+  .local-shell-cards.list .local-shell-card {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
+  .local-shell-cards.list .host-card-top {
+    width: 100%;
+  }
+  .local-shell-cards.list .host-card-address {
+    flex-basis: 100%;
+  }
+  .local-shell-cards.list .host-card-bottom {
+    width: 100%;
+  }
 }
 .key-remember {
   margin: 12px 0;

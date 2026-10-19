@@ -12,8 +12,6 @@ import {
   Ellipsis,
   FolderClosed,
   FolderOpen,
-  Grid2X2,
-  LayoutList,
   LoaderCircle,
   Menu,
   Moon,
@@ -61,10 +59,11 @@ import { TerminalPane } from "./TerminalPane";
 import FilesPane from "./FilesPane";
 import MonitorPanel from "./MonitorPanel";
 import WSLDialog from "./WSLDialog";
-import LocalShellDialog from "./LocalShellDialog";
+import LocalShellPage from "./LocalShellPage";
+import LayoutSwitch from "./LayoutSwitch";
 import { snippetCategories, snippetCategory } from "./snippets";
 
-type Page = "hosts" | "snippets";
+type Page = "hosts" | "local" | "snippets";
 type HostFilter = "all" | "favorite" | "recent";
 type LocalSessionTarget =
   | { localShell: LocalShell; wslDistribution?: never }
@@ -88,6 +87,7 @@ interface Confirmation {
 }
 const pageNames: Record<Page, string> = {
   hosts: "远程主机",
+  local: "本地 Shell",
   snippets: "命令片段",
 };
 
@@ -128,7 +128,6 @@ export default function App() {
   const layout = workspace.preferences.hostLayout === "list" ? "list" : "grid";
   const [platform, setPlatform] = useState("");
   const [wslOpen, setWSLOpen] = useState(false);
-  const [localShellOpen, setLocalShellOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [active, setActive] = useState("home");
   const [hostEditor, setHostEditor] = useState<{
@@ -193,8 +192,7 @@ export default function App() {
     paletteOpen ||
     helpOpen ||
     confirmation ||
-    wslOpen ||
-    localShellOpen,
+    wslOpen,
   );
 
   function notify(message: string) {
@@ -512,7 +510,6 @@ export default function App() {
     await openLocalSession({ wslDistribution: distribution });
   }
   async function openLocalShell(shell: LocalShell) {
-    setLocalShellOpen(false);
     await openLocalSession({ localShell: shell });
   }
   async function openLocalSession(target: LocalSessionTarget) {
@@ -784,9 +781,7 @@ export default function App() {
         <nav aria-label="主导航">
           <button
             className={
-              page === "hosts" && !group && active === "home"
-                ? "active"
-                : ""
+              page === "hosts" && !group && active === "home" ? "active" : ""
             }
             onClick={() => navigate("hosts")}
           >
@@ -796,7 +791,12 @@ export default function App() {
           </button>
           {platform === "windows" && (
             <>
-              <button onClick={() => setLocalShellOpen(true)}>
+              <button
+                className={
+                  page === "local" && active === "home" ? "active" : ""
+                }
+                onClick={() => navigate("local")}
+              >
                 <TerminalSquare size={18} />
                 <span>本地 Shell</span>
               </button>
@@ -807,9 +807,7 @@ export default function App() {
             </>
           )}
           <button
-            className={
-              page === "snippets" && active === "home" ? "active" : ""
-            }
+            className={page === "snippets" && active === "home" ? "active" : ""}
             onClick={() => navigate("snippets")}
           >
             <Code2 size={18} />
@@ -840,9 +838,7 @@ export default function App() {
               groups.map((g) => (
                 <button
                   key={g}
-                  className={
-                    group === g && active === "home" ? "selected" : ""
-                  }
+                  className={group === g && active === "home" ? "selected" : ""}
                   onClick={() => navigate("hosts", g)}
                 >
                   <FolderClosed size={16} />
@@ -922,7 +918,13 @@ export default function App() {
             className={`workspace-tab ${active === "home" ? "selected" : ""}`}
             onClick={() => setActive("home")}
           >
-            {page === "hosts" ? <Server size={15} /> : <Code2 size={15} />}
+            {page === "hosts" ? (
+              <Server size={15} />
+            ) : page === "local" ? (
+              <TerminalSquare size={15} />
+            ) : (
+              <Code2 size={15} />
+            )}
             {pageTitle}
           </button>
           {[...sessionGroups].map(([hostID, items]) => {
@@ -1020,7 +1022,14 @@ export default function App() {
                       </button>
                     </section>
                   )}
-                  {page === "snippets" ? (
+                  {page === "local" ? (
+                    <LocalShellPage
+                      layout={layout}
+                      onLayoutChange={setHostLayout}
+                      onOpen={(shell) => void openLocalShell(shell)}
+                      sessions={sessions}
+                    />
+                  ) : page === "snippets" ? (
                     <section
                       className="snippets-library"
                       aria-label="命令片段库"
@@ -1175,30 +1184,11 @@ export default function App() {
                             ))}
                           </div>
                           <div className="host-controls">
-                            <div
-                              className="layout-switch"
-                              role="group"
-                              aria-label="主机布局"
-                            >
-                              <button
-                                className={layout === "grid" ? "selected" : ""}
-                                aria-label="卡片视图"
-                                aria-pressed={layout === "grid"}
-                                title="卡片视图"
-                                onClick={() => setHostLayout("grid")}
-                              >
-                                <Grid2X2 size={15} aria-hidden="true" />
-                              </button>
-                              <button
-                                className={layout === "list" ? "selected" : ""}
-                                aria-label="紧凑列表视图"
-                                aria-pressed={layout === "list"}
-                                title="紧凑列表视图"
-                                onClick={() => setHostLayout("list")}
-                              >
-                                <LayoutList size={16} aria-hidden="true" />
-                              </button>
-                            </div>
+                            <LayoutSwitch
+                              layout={layout}
+                              onChange={setHostLayout}
+                              label="主机布局"
+                            />
                             <label className="host-search">
                               <Search size={14} />
                               <input
@@ -1650,12 +1640,6 @@ export default function App() {
           )}
         </main>
       </div>
-      {localShellOpen && (
-        <LocalShellDialog
-          onSelect={(shell) => void openLocalShell(shell)}
-          onClose={() => setLocalShellOpen(false)}
-        />
-      )}
       {wslOpen && (
         <WSLDialog
           onSelect={(name) => void openWSLTerminal(name)}
