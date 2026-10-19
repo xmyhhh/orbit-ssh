@@ -3,14 +3,21 @@ import type { Session } from "./types";
 import type { TerminalLayoutController } from "./hooks/useTerminalLayout";
 import { LayoutPreview } from "./TerminalLayoutPicker";
 import { splitLayoutPreset } from "./splitLayout";
+import { sessionName } from "./sessions";
 
 export function terminalTabLabel(items: Session[]) {
   const sameHost = items.every(
     (session) => session.host.id === items[0].host.id,
   );
   return items.length === 1
-    ? `终端 #${items[0].terminalNumber}`
-    : `分屏 ${items.map((session) => `${sameHost ? "" : session.host.name + " "}#${session.terminalNumber}`).join(" + ")}`;
+    ? sessionName(items[0])
+    : `分屏 ${items
+        .map((session) =>
+          session.name?.trim()
+            ? session.name.trim()
+            : `${sameHost ? "" : session.host.name + " "}#${session.terminalNumber}`,
+        )
+        .join(" + ")}`;
 }
 
 export default function SessionTabs({
@@ -19,12 +26,14 @@ export default function SessionTabs({
   active,
   layout,
   onClose,
+  onRename,
 }: {
   sessions: Session[];
   hostId: string;
   active: string;
   layout: TerminalLayoutController;
   onClose: (items: Session[]) => void;
+  onRename: (session: Session) => void;
 }) {
   return layout.tabs.map((tab) => {
     const items = tab.sessionIds
@@ -59,12 +68,15 @@ export default function SessionTabs({
           title={
             grouped
               ? `${label} · 布局单独保存在此标签中`
-              : `${label} · 拖到终端边缘分屏`
+              : `${label} · 双击重命名，拖到终端边缘分屏`
           }
           draggable={!grouped}
           onClick={() => {
             if (!layout.consumeDragClick(tab.activeId))
               layout.activateSession(tab.activeId);
+          }}
+          onDoubleClick={() => {
+            if (!grouped) onRename(items[0]);
           }}
           onDragStart={(event) => layout.startSessionDrag(event, tab.activeId)}
           onDragEnd={() => layout.setDraggedSessionId(null)}

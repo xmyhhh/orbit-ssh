@@ -9,6 +9,7 @@ import {
   Menu,
   Maximize2,
   Moon,
+  Pencil,
   Play,
   Plus,
   Search,
@@ -50,6 +51,7 @@ import {
   MCPCommandDialog,
   Modal,
   PreferencesDialog,
+  RenameSessionDialog,
   SSHConfigDialog,
 } from "./dialogs";
 import TerminalLayoutControl from "./TerminalLayoutControl";
@@ -65,7 +67,13 @@ import WorkflowPage from "./WorkflowPage";
 import { useTerminalHistory } from "./hooks/useTerminalHistory";
 import { useTerminalLayout } from "./hooks/useTerminalLayout";
 import TerminalCanvas from "./TerminalCanvas";
-import { isLocalSession, sessionAddress } from "./sessions";
+import {
+  isLocalSession,
+  sessionAddress,
+  sessionDefaultName,
+  sessionDetailLabel,
+  sessionHeading,
+} from "./sessions";
 import AppSidebar from "./AppSidebar";
 import HostsPage from "./HostsPage";
 import type { HostFilter } from "./HostsPage";
@@ -111,6 +119,11 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [sshConfigOpen, setSSHConfigOpen] = useState(false);
   const [mcpCommand, setMCPCommand] = useState<MCPCommandRequest | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{
+    id: string;
+    name: string;
+    defaultName: string;
+  } | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [toast, setToast] = useState("");
   const [systemDark, setSystemDark] = useState(
@@ -181,6 +194,7 @@ export default function App() {
     helpOpen ||
     sshConfigOpen ||
     mcpCommand ||
+    renameTarget ||
     confirmation ||
     workflowHostPicker,
   );
@@ -222,6 +236,7 @@ export default function App() {
     recordTerminalOutput,
     setHistoryPinned,
     toggleSessionHistory,
+    renameTerminalHistory,
     removeTerminalHistory,
   } = useTerminalHistory({
     loading,
@@ -230,6 +245,8 @@ export default function App() {
     handles,
     notify,
   });
+  const renameTerminalHistoryRef = useRef(renameTerminalHistory);
+  renameTerminalHistoryRef.current = renameTerminalHistory;
   const terminalLayout = useTerminalLayout({
     sessions,
     active,
@@ -321,6 +338,17 @@ export default function App() {
       const request = value as MCPCommandRequest;
       if (request?.id) setMCPCommand(request);
     });
+    const offRenamed = listen("session:renamed", (value) => {
+      const event = value as { sessionId?: string; name?: string };
+      if (!event?.sessionId) return;
+      const name = event.name?.trim() || undefined;
+      setSessions((items) =>
+        items.map((item) =>
+          item.id === event.sessionId ? { ...item, name } : item,
+        ),
+      );
+      renameTerminalHistoryRef.current(event.sessionId, name ?? "");
+    });
     if (isDesktop())
       void backend()
         .GetPlatform()
@@ -337,6 +365,7 @@ export default function App() {
     return () => {
       offNotice();
       offMCPCommand();
+      offRenamed();
       clearTimeout(toastTimer.current);
     };
   }, []);
@@ -680,6 +709,29 @@ export default function App() {
       run: () => removeSessions(items),
     });
   }
+  function openRenameSession(session: Session) {
+    setRenameTarget({
+      id: session.id,
+      name: session.name ?? "",
+      defaultName: sessionDefaultName(session),
+    });
+  }
+  async function saveSessionName(id: string, name: string) {
+    const session = sessionsRef.current.find((item) => item.id === id);
+    if (session) {
+      if (isDesktop()) await backend().RenameSession(id, name);
+      setSessions((items) =>
+        items.map((item) =>
+          item.id === id ? { ...item, name: name || undefined } : item,
+        ),
+      );
+      renameTerminalHistory(id, name);
+      notify(name ? `终端已重命名为 ${name}` : "已恢复默认名称");
+      return;
+    }
+    renameTerminalHistory(id, name);
+    notify(name ? `历史记录已重命名为 ${name}` : "已恢复历史记录默认名称");
+  }
   function closeSession(session: Session) {
     if (
       !session.demo &&
@@ -691,8 +743,8 @@ export default function App() {
           ? "结束这个本地终端？"
           : "断开这次连接？",
         message: isLocalSession(session)
-          ? `将结束 ${session.host.name} 的终端 #${session.terminalNumber}，前台任务会中断。`
-          : `将关闭 ${session.host.name} 的终端 #${session.terminalNumber}，此终端的文件传输和前台任务会中断。`,
+          ? `将结束 ${sessionDetailLabel(session)}，前台任务会中断。`
+          : `将关闭 ${sessionDetailLabel(session)}，此终端的文件传输和前台任务会中断。`,
         action: isLocalSession(session) ? "结束终端" : "断开连接",
         run: () => removeSession(session.id),
       });
@@ -979,6 +1031,13 @@ export default function App() {
                         onTogglePin={(record) =>
                           setHistoryPinned(record, !record.pinned)
                         }
+                        onRename={(record) =>
+                          setRenameTarget({
+                            id: record.id,
+                            name: record.name ?? "",
+                            defaultName: `${record.title} · 终端 #${record.terminalNumber}`,
+                          })
+                        }
                         onDelete={removeTerminalHistory}
                       />
                     ) : (
@@ -1088,6 +1147,7 @@ export default function App() {
                       active={active}
                       layout={terminalLayout}
                       onClose={closeTerminalTab}
+                      onRename={openRenameSession}
                     />
                     <button
                       className="tab-add"
@@ -1153,6 +1213,17 @@ export default function App() {
                       </button>
                     )}
                     <span className="toolbar-divider" />
+                    <button
+                      className="icon-button"
+                      title="重命名终端"
+                      aria-label="重命名终端"
+                      disabled={!activeSession}
+                      onClick={() =>
+                        activeSession && openRenameSession(activeSession)
+                      }
+                    >
+                      <Pencil size={16} />
+                    </button>
                     <button
                       className="icon-button"
                       title="搜索终端 · Ctrl Shift F"
@@ -1529,9 +1600,12 @@ export default function App() {
         <MCPCommandDialog
           request={{
             ...mcpCommand,
-            sessionName: sessions.find(
-              (session) => session.id === mcpCommand.sessionId,
-            )?.host.name,
+            sessionName: (() => {
+              const session = sessions.find(
+                (item) => item.id === mcpCommand.sessionId,
+              );
+              return session ? sessionHeading(session) : undefined;
+            })(),
           }}
           onClose={() => {
             setMCPCommand(null);
@@ -1566,6 +1640,14 @@ export default function App() {
           danger={confirmation.danger}
           onConfirm={confirmation.run}
           onClose={() => setConfirmation(null)}
+        />
+      )}
+      {renameTarget && (
+        <RenameSessionDialog
+          currentName={renameTarget.name}
+          defaultName={renameTarget.defaultName}
+          onRename={(name) => saveSessionName(renameTarget.id, name)}
+          onClose={() => setRenameTarget(null)}
         />
       )}
       {toast && (

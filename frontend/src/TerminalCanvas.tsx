@@ -13,7 +13,11 @@ import { TerminalPane } from "./TerminalPane";
 import TerminalDropTarget from "./TerminalDropTarget";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { TerminalLayoutController } from "./hooks/useTerminalLayout";
-import { isLocalSession } from "./sessions";
+import {
+  isLocalSession,
+  sessionDetailLabel,
+  sessionHeading,
+} from "./sessions";
 
 export default function TerminalCanvas({
   sessions,
@@ -185,8 +189,8 @@ export default function TerminalCanvas({
                   <button
                     className="split-session-drag"
                     draggable={!maximized}
-                    title={`${s.host.name} · 终端 #${s.terminalNumber} · 拖动调整位置，双击${maximized ? "还原" : "放大"}`}
-                    aria-label={`激活 ${s.host.name} 终端 #${s.terminalNumber}`}
+                    title={`${sessionDetailLabel(s)} · 拖动调整位置，双击${maximized ? "还原" : "放大"}`}
+                    aria-label={`激活 ${sessionDetailLabel(s)}`}
                     onClick={() => {
                       if (!consumeDragClick(s.id)) activateSession(s.id);
                     }}
@@ -204,7 +208,7 @@ export default function TerminalCanvas({
                       className={`status-dot ${s.status === "closed" ? "offline" : ""}`}
                       aria-hidden="true"
                     />
-                    <strong>{s.host.name}</strong>
+                    <strong>{sessionHeading(s)}</strong>
                     <span className="pane-terminal-number">
                       #{s.terminalNumber}
                     </span>
@@ -230,7 +234,7 @@ export default function TerminalCanvas({
                     aria-label={
                       maximized
                         ? "还原分屏布局"
-                        : `放大 ${s.host.name} 终端 #${s.terminalNumber}`
+                        : `放大 ${sessionDetailLabel(s)}`
                     }
                     title={
                       maximized ? "还原分屏布局" : "放大窗格 · 也可双击标题"
@@ -248,7 +252,7 @@ export default function TerminalCanvas({
                   </button>
                   <button
                     className="icon-button"
-                    aria-label={`收起 ${s.host.name} 终端 #${s.terminalNumber}`}
+                    aria-label={`收起 ${sessionDetailLabel(s)}`}
                     title="收起窗格，终端继续运行"
                     onClick={(event) => {
                       event.stopPropagation();

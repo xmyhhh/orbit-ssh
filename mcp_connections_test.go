@@ -123,7 +123,7 @@ func TestMCPCreateConnectAndShareTerminal(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &created); err != nil {
 		t.Fatal(err)
 	}
-	args := map[string]any{"host_id": created.Host.ID, "password": "session-only-secret"}
+	args := map[string]any{"host_id": created.Host.ID, "password": "session-only-secret", "name": "AI build"}
 	result = mcpTestHTTPCall(t, a, "connect_host", args)
 	if !result.IsError || !strings.Contains(result.Content[0].Text, "HOST_KEY_UNKNOWN|"+fingerprint) || len(a.store.snapshot().KnownHosts) != 0 {
 		t.Fatalf("first connection did not enforce host trust: %+v", result)
@@ -134,14 +134,16 @@ func TestMCPCreateConnectAndShareTerminal(t *testing.T) {
 		t.Fatal(result.Content)
 	}
 	var connected struct {
-		SessionID string `json:"sessionId"`
+		SessionID   string `json:"sessionId"`
+		Name        string `json:"name"`
+		DefaultName string `json:"defaultName"`
 	}
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &connected); err != nil || connected.SessionID == "" {
 		t.Fatalf("missing session ID: %+v %v", result, err)
 	}
 	id := connected.SessionID
-	if len(a.mcpSessions()) != 1 || a.mcpSessions()[0].ID != id {
-		t.Fatal("new terminal is not available to the existing MCP tools")
+	if connected.Name != "AI build" || connected.DefaultName != "AI server" || len(a.mcpSessions()) != 1 || a.mcpSessions()[0].ID != id || a.mcpSessions()[0].Name != "AI build" {
+		t.Fatalf("AI-provided name was not applied: %+v %+v", connected, a.mcpSessions())
 	}
 	input := mcpTestArguments(t, map[string]any{"session_id": id, "text": "AI input\n"})
 	if result = a.callMCPTool("send_terminal_input", input); !result.IsError {

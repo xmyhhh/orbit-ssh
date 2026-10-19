@@ -20,6 +20,7 @@ const terminalHistoryMaxBytes = 2 * 1024 * 1024
 type TerminalHistoryRecord struct {
 	ID             string `json:"id"`
 	Title          string `json:"title"`
+	Name           string `json:"name,omitempty"`
 	Subtitle       string `json:"subtitle"`
 	TerminalNumber int    `json:"terminalNumber"`
 	CreatedAt      int64  `json:"createdAt"`
@@ -42,7 +43,7 @@ func validTerminalHistoryRecord(record TerminalHistoryRecord) error {
 	if strings.TrimSpace(record.ID) == "" || len(record.ID) > 128 {
 		return errors.New("无效的终端历史 ID")
 	}
-	if len(record.Title) > 512 || len(record.Subtitle) > 2048 {
+	if len(record.Title) > 512 || len(record.Name) > 512 || len(record.Subtitle) > 2048 {
 		return errors.New("终端历史标题过长")
 	}
 	if len(record.Output) > terminalHistoryMaxBytes {
@@ -144,6 +145,9 @@ func (a *App) AppendTerminalHistory(record TerminalHistoryRecord, outputDelta st
 		current.Output = ""
 	} else {
 		current.Title = record.Title
+		if record.Name != "" {
+			current.Name = record.Name
+		}
 		current.Subtitle = record.Subtitle
 		current.TerminalNumber = record.TerminalNumber
 		current.CreatedAt = record.CreatedAt

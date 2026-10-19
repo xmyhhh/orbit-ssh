@@ -7,6 +7,7 @@ import type { useSessionConnections } from "./useSessionConnections";
 interface MCPConnectionEvent {
   sessionId: string;
   host: Host;
+  name?: string;
 }
 
 export function useMCPConnections(options: {
@@ -26,11 +27,11 @@ export function useMCPConnections(options: {
       latest.current.notify(`AI 已添加主机 ${host.name}`);
     });
     const offConnect = listen("mcp:connect", (value) => {
-      const { sessionId, host } = value as MCPConnectionEvent;
+      const { sessionId, host, name } = value as MCPConnectionEvent;
       latest.current.onHost(host);
       latest.current.onOpen();
       void latest.current
-        .connect(host, { password: "", passphrase: "" }, "", sessionId)
+        .connect(host, { password: "", passphrase: "" }, "", sessionId, name)
         .catch((error) => latest.current.notify(errorText(error)));
     });
     return () => {

@@ -49,6 +49,8 @@ func TestMobileTerminalHistoryAPI(t *testing.T) {
 		t.Fatalf("history append did not reach the shared backend: %+v", records)
 	}
 	record = records[0]
+	record.Name = "手机终端"
+	call("UpsertTerminalHistory", record, []string{record.ID})
 	record.Pinned = true
 	call("UpsertTerminalHistory", record, []string{record.ID})
 	if !a.terminalHistorySnapshot()[0].Pinned {
@@ -60,7 +62,7 @@ func TestMobileTerminalHistoryAPI(t *testing.T) {
 	if err := reloaded.loadTerminalHistory(); err != nil {
 		t.Fatal(err)
 	}
-	if saved := reloaded.terminalHistorySnapshot(); len(saved) != 1 || saved[0].Output != "hello world" || !saved[0].Pinned {
+	if saved := reloaded.terminalHistorySnapshot(); len(saved) != 1 || saved[0].Output != "hello world" || !saved[0].Pinned || saved[0].Name != "手机终端" {
 		t.Fatalf("mobile history was not persisted across a backend restart: %+v", saved)
 	}
 	call("DeleteTerminalHistory", record.ID)

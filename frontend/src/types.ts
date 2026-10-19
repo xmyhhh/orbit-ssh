@@ -254,6 +254,7 @@ export interface Session {
   id: string;
   host: Host;
   terminalNumber: number;
+  name?: string;
   demo: boolean;
   wslDistribution?: string;
   localShell?: LocalShell;

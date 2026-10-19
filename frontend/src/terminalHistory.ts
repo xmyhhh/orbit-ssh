@@ -1,6 +1,7 @@
 export interface TerminalHistoryRecord {
   id: string;
   title: string;
+  name?: string;
   subtitle: string;
   terminalNumber: number;
   createdAt: number;
@@ -169,6 +170,18 @@ export function deleteTerminalHistory(id: string) {
           }),
       ),
   );
+}
+
+export function terminalHistoryTitle(record: TerminalHistoryRecord) {
+  return (
+    record.name?.trim() ||
+    `${record.title} · 终端 #${record.terminalNumber}`
+  );
+}
+
+export function terminalHistorySubtitle(record: TerminalHistoryRecord) {
+  const base = `${record.title} · 终端 #${record.terminalNumber}`;
+  return record.name?.trim() ? `${base} · ${record.subtitle}` : record.subtitle;
 }
 
 export function displayTerminalOutput(output: string) {

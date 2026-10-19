@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Check, GripVertical, Plus, RotateCcw } from "lucide-react";
 import type { Session } from "./types";
+import { sessionHeading, sessionTitle } from "./sessions";
 import {
   createSplitLayout,
   splitLayoutGeometry,
@@ -149,8 +150,12 @@ export default function TerminalLayoutPicker({
               />
               <span className="split-session-label">
                 <strong>
-                  {session.host.name}
-                  <small>终端 #{session.terminalNumber}</small>
+                  {sessionHeading(session)}
+                  <small>
+                    {session.name?.trim()
+                      ? `${sessionTitle(session)} · #${session.terminalNumber}`
+                      : `终端 #${session.terminalNumber}`}
+                  </small>
                 </strong>
                 <small>
                   {session.localShell

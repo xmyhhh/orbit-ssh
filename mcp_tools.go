@@ -33,11 +33,13 @@ func mcpToolDefinitions() []map[string]any {
 			"jump_host_id": stringSchema("已保存的跳板机主机 id；省略时直连目标主机"),
 			"group":        stringSchema("主机分组；可省略"),
 		}, []string{"address", "username"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false}},
-		{"name": "connect_host", "description": "为已保存主机新建独立 SSH 终端，并在 Orbit SSH 窗口显示，返回 sessionId 后可读写该终端。需启用“允许 AI 创建连接”并保持应用界面运行。优先使用本机保存的凭据；也可提供仅本次使用的 password 或 passphrase。首次连接若返回 HOST_KEY_UNKNOWN，核对指纹后传 accepted_fingerprint 重试；已知指纹变化始终拒绝。", "inputSchema": objectSchema(map[string]any{
-			"host_id": stringSchema("list_hosts 或 create_host 返回的主机 id"), "password": stringSchema("仅本次连接使用的登录密码；省略时使用已保存密码"),
+		{"name": "connect_host", "description": "为已保存主机新建独立 SSH 终端，并在 Orbit SSH 窗口显示，返回 sessionId 后可读写该终端。需启用“允许 AI 创建连接”并保持应用界面运行。可选 name 为新终端命名；不提供时使用主机名称。优先使用本机保存的凭据；也可提供仅本次使用的 password 或 passphrase。首次连接若返回 HOST_KEY_UNKNOWN，核对指纹后传 accepted_fingerprint 重试；已知指纹变化始终拒绝。", "inputSchema": objectSchema(map[string]any{
+			"host_id": stringSchema("list_hosts 或 create_host 返回的主机 id"), "name": stringSchema("新终端会话名称；最多 80 个字符，省略时使用主机名称"),
+			"password":   stringSchema("仅本次连接使用的登录密码；省略时使用已保存密码"),
 			"passphrase": stringSchema("仅本次连接使用的私钥口令；省略时使用已保存口令"), "accepted_fingerprint": stringSchema("已核对的首次连接 SHA256 指纹；已信任主机可省略"),
 		}, []string{"host_id"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false}},
-		{"name": "list_sessions", "description": "列出 Orbit SSH 当前打开的 SSH、本地 Shell 和 WSL 终端会话。", "inputSchema": objectSchema(nil, nil), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
+		{"name": "list_sessions", "description": "列出 Orbit SSH 当前打开的 SSH、本地 Shell 和 WSL 终端会话，包括自定义名称和默认名称。", "inputSchema": objectSchema(nil, nil), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
+		{"name": "rename_session", "description": "重命名一个活动终端会话。名称会显示在终端标签、分屏标题和终端历史中，并与 list_sessions 同步。传空名称可恢复默认名称。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "name": stringSchema("新的会话名称；最多 80 个字符，留空恢复默认名称")}, []string{"session_id", "name"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true}},
 		{"name": "read_terminal", "description": "读取一个活动终端最近的输出文本。输出会去除 ANSI 控制序列；最多返回 100000 个字符。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "max_chars": integerSchema("最多返回的字符数", 100000)}, []string{"session_id"}), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "search_terminal_history", "description": "搜索已保存的终端输出历史；省略 query 时返回最近记录。", "inputSchema": objectSchema(map[string]any{"query": stringSchema("要查找的文字；可省略"), "session_id": stringSchema("仅搜索指定会话的历史；可省略"), "limit": integerSchema("最多返回的记录数", 100)}, nil), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "send_terminal_input", "description": "向一个活动终端发送原样文本。必须先启用偏好设置中的“允许 AI 输入终端”；文本中包含回车或换行时会执行对应命令。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "text": stringSchema("要发送的终端文本；命令执行需自行包含换行")}, []string{"session_id", "text"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false}},
@@ -71,7 +73,7 @@ func integerSchema(description string, maximum int) map[string]any {
 
 func knownMCPTool(name string) bool {
 	switch name {
-	case "list_hosts", "create_host", "connect_host", "list_sessions", "read_terminal", "search_terminal_history", "send_terminal_input",
+	case "list_hosts", "create_host", "connect_host", "list_sessions", "rename_session", "read_terminal", "search_terminal_history", "send_terminal_input",
 		"list_directory", "read_file", "write_file", "get_metrics", "kill_process", "run_command":
 		return true
 	default:
@@ -103,10 +105,22 @@ func (a *App) callMCPToolContext(ctx context.Context, name string, arguments map
 		if err = decodeMCPArguments(arguments, &args); err == nil {
 			var id string
 			id, err = a.connectMCPHost(ctx, args)
-			value = map[string]any{"sessionId": id, "hostId": args.HostID, "status": "connected"}
+			name, defaultName := a.sessionNames(id)
+			value = map[string]any{"sessionId": id, "hostId": args.HostID, "name": name, "defaultName": defaultName, "status": "connected"}
 		}
 	case "list_sessions":
 		value = map[string]any{"sessions": a.mcpSessions()}
+	case "rename_session":
+		var args struct {
+			SessionID string `json:"session_id"`
+			Name      string `json:"name"`
+		}
+		if err = decodeMCPArguments(arguments, &args); err == nil {
+			if err = a.RenameSession(args.SessionID, args.Name); err == nil {
+				name, defaultName := a.sessionNames(args.SessionID)
+				value = map[string]any{"sessionId": args.SessionID, "name": name, "defaultName": defaultName}
+			}
+		}
 	case "read_terminal":
 		var args mcpReadTerminalArgs
 		if err = decodeMCPArguments(arguments, &args); err == nil {

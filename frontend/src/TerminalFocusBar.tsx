@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Session } from "./types";
 import type { TerminalLayoutController } from "./hooks/useTerminalLayout";
 import { terminalTabLabel } from "./SessionTabs";
+import { sessionDetailLabel } from "./sessions";
 
 export default function TerminalFocusBar({
   sessions,
@@ -53,7 +54,7 @@ export default function TerminalFocusBar({
             >
               {items.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.host.name} #{session.terminalNumber}
+                  {sessionDetailLabel(session)}
                   {items.length > 1 ? " · 分屏" : ""}
                 </option>
               ))}

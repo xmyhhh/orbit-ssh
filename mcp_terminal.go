@@ -10,17 +10,19 @@ import (
 )
 
 type mcpSessionInfo struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Name     string `json:"name"`
-	Address  string `json:"address,omitempty"`
-	Username string `json:"username,omitempty"`
-	Status   string `json:"status"`
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+	DefaultName string `json:"defaultName,omitempty"`
+	Address     string `json:"address,omitempty"`
+	Username    string `json:"username,omitempty"`
+	Status      string `json:"status"`
 }
 
 type mcpHistoryMatch struct {
 	ID             string `json:"id"`
 	Title          string `json:"title"`
+	Name           string `json:"name,omitempty"`
 	Subtitle       string `json:"subtitle"`
 	TerminalNumber int    `json:"terminalNumber"`
 	UpdatedAt      int64  `json:"updatedAt"`
@@ -43,7 +45,7 @@ func (a *App) mcpSessions() []mcpSessionInfo {
 	for id, session := range a.sessions {
 		host := session.host
 		sessions = append(sessions, mcpSessionInfo{
-			ID: id, Kind: "ssh", Name: host.Name,
+			ID: id, Kind: "ssh", Name: effectiveSessionName(session.customName, host.Name), DefaultName: host.Name,
 			Address: net.JoinHostPort(host.Address, strconv.Itoa(host.Port)), Username: host.Username, Status: "connected",
 		})
 	}
@@ -52,7 +54,10 @@ func (a *App) mcpSessions() []mcpSessionInfo {
 		if strings.HasPrefix(session.name, "WSL") {
 			kind = "wsl"
 		}
-		sessions = append(sessions, mcpSessionInfo{ID: id, Kind: kind, Name: session.name, Status: "connected"})
+		sessions = append(sessions, mcpSessionInfo{
+			ID: id, Kind: kind, Name: effectiveSessionName(session.customName, session.name), DefaultName: session.name,
+			Status: "connected",
+		})
 	}
 	sort.Slice(sessions, func(i, j int) bool { return sessions[i].ID < sessions[j].ID })
 	return sessions
@@ -123,7 +128,7 @@ func (a *App) searchMCPTerminalHistory(query, sessionID string, limit int) ([]mc
 			continue
 		}
 		output := cleanTerminalOutput(record.Output)
-		searchable := strings.ToLower(record.Title + "\n" + record.Subtitle + "\n" + output)
+		searchable := strings.ToLower(record.Title + "\n" + record.Name + "\n" + record.Subtitle + "\n" + output)
 		index := strings.Index(searchable, needle)
 		if needle != "" && index < 0 {
 			continue
@@ -150,7 +155,7 @@ func (a *App) searchMCPTerminalHistory(query, sessionID string, limit int) ([]mc
 			snippet = string(snippetRunes[len(snippetRunes)-500:])
 		}
 		matches = append(matches, mcpHistoryMatch{
-			ID: record.ID, Title: record.Title, Subtitle: record.Subtitle,
+			ID: record.ID, Title: record.Title, Name: record.Name, Subtitle: record.Subtitle,
 			TerminalNumber: record.TerminalNumber, UpdatedAt: record.UpdatedAt,
 			Pinned: record.Pinned, Truncated: record.Truncated, Snippet: snippet,
 		})

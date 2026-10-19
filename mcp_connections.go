@@ -21,6 +21,7 @@ type mcpCreateHostArgs struct {
 
 type mcpConnectHostArgs struct {
 	HostID              string `json:"host_id"`
+	Name                string `json:"name"`
 	Password            string `json:"password"`
 	Passphrase          string `json:"passphrase"`
 	AcceptedFingerprint string `json:"accepted_fingerprint"`
@@ -29,12 +30,14 @@ type mcpConnectHostArgs struct {
 type mcpConnectionEvent struct {
 	SessionID string `json:"sessionId"`
 	Host      Host   `json:"host"`
+	Name      string `json:"name,omitempty"`
 }
 
 type mcpConnectionRequest struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	hostID      string
+	name        string
 	credentials Credentials
 	fingerprint string
 	started     bool
@@ -89,6 +92,10 @@ func (a *App) connectMCPHost(parent context.Context, args mcpConnectHostArgs) (s
 	if len(args.Password) > 16*1024 || len(args.Passphrase) > 16*1024 {
 		return "", errors.New("登录凭据过长")
 	}
+	name, err := normalizeSessionName(args.Name)
+	if err != nil {
+		return "", err
+	}
 	host, err := a.store.host(args.HostID)
 	if err != nil {
 		return "", err
@@ -102,7 +109,7 @@ func (a *App) connectMCPHost(parent context.Context, args mcpConnectHostArgs) (s
 	defer stop()
 	id := "mcp-" + rand.Text()
 	request := &mcpConnectionRequest{
-		ctx: ctx, cancel: cancel, hostID: host.ID,
+		ctx: ctx, cancel: cancel, hostID: host.ID, name: name,
 		credentials: Credentials{Password: args.Password, Passphrase: args.Passphrase},
 		fingerprint: args.AcceptedFingerprint, done: make(chan error, 1),
 	}
@@ -120,7 +127,7 @@ func (a *App) connectMCPHost(parent context.Context, args mcpConnectHostArgs) (s
 	}()
 	// The WebView mounts the normal terminal and its output listeners before
 	// calling ConnectMCPHost. Credentials stay in Go and never enter the event.
-	a.emit("mcp:connect", mcpConnectionEvent{SessionID: id, Host: host})
+	a.emit("mcp:connect", mcpConnectionEvent{SessionID: id, Host: host, Name: name})
 	select {
 	case err := <-request.done:
 		if err != nil {
@@ -159,6 +166,13 @@ func (a *App) ConnectMCPHost(id string, size TerminalSize) error {
 	err := a.allowMCPConnections()
 	if err == nil {
 		err = a.connectSSH(request.ctx, id, request.hostID, request.credentials, request.fingerprint, size)
+	}
+	if err == nil && request.name != "" {
+		a.mu.Lock()
+		if session := a.sessions[id]; session != nil {
+			session.customName = request.name
+		}
+		a.mu.Unlock()
 	}
 	request.done <- err
 	return err

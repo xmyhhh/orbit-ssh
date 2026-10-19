@@ -28,11 +28,12 @@ type localTerminal interface {
 }
 
 type localSession struct {
-	terminal localTerminal
-	name     string
-	output   *terminalOutputBuffer
-	writeMu  sync.Mutex
-	closed   sync.Once
+	terminal   localTerminal
+	name       string
+	customName string
+	output     *terminalOutputBuffer
+	writeMu    sync.Mutex
+	closed     sync.Once
 }
 
 func (s *localSession) close() { s.closed.Do(func() { _ = s.terminal.Close() }) }

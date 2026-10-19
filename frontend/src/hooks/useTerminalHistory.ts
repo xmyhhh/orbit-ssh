@@ -110,6 +110,7 @@ export function useTerminalHistory({
       {
         id: session.id,
         title: sessionTitle(session),
+        name: session.name,
         subtitle: sessionAddress(session),
         terminalNumber: session.terminalNumber,
         createdAt: previous?.createdAt ?? now,
@@ -142,6 +143,7 @@ export function useTerminalHistory({
     persistTerminalHistory({
       id: session.id,
       title: sessionTitle(session),
+      name: session.name,
       subtitle: sessionAddress(session),
       terminalNumber: session.terminalNumber,
       createdAt: current?.createdAt ?? now,
@@ -150,6 +152,13 @@ export function useTerminalHistory({
       pinned: !(current?.pinned ?? false),
       truncated: (current?.truncated ?? false) || bounded.truncated,
     });
+  }
+  function renameTerminalHistory(id: string, name: string) {
+    const current =
+      historyOutputCache.current.get(id) ??
+      terminalHistory.find((record) => record.id === id);
+    if (!current) return;
+    persistTerminalHistory({ ...current, name: name.trim() || undefined });
   }
   function removeTerminalHistory(record: TerminalHistoryRecord) {
     if (sessionsRef.current.some((session) => session.id === record.id))
@@ -169,6 +178,7 @@ export function useTerminalHistory({
     recordTerminalOutput,
     setHistoryPinned,
     toggleSessionHistory,
+    renameTerminalHistory,
     removeTerminalHistory,
   };
 }

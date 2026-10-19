@@ -23,6 +23,27 @@ export function sessionTitle(session: Session) {
   );
 }
 
+export function sessionDefaultName(session: Session) {
+  return `终端 #${session.terminalNumber}`;
+}
+
+/** The label used for tabs and other compact session pickers. */
+export function sessionName(session: Session) {
+  return session.name?.trim() || sessionDefaultName(session);
+}
+
+/** The heading shown above a terminal or split pane. */
+export function sessionHeading(session: Session) {
+  return session.name?.trim() || sessionTitle(session);
+}
+
+/** A descriptive label for confirmations, menus and workflow targets. */
+export function sessionDetailLabel(session: Session) {
+  return session.name?.trim()
+    ? `${session.name.trim()} · ${sessionTitle(session)}`
+    : `${sessionTitle(session)} · ${sessionDefaultName(session)}`;
+}
+
 export function localSessionHost(target: LocalSessionTarget): Host {
   const name = target.localShell
     ? target.localShell.name

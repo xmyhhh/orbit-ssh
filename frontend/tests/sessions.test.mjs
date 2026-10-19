@@ -4,6 +4,10 @@ import {
   localSessionHost,
   sessionAfterRemoval,
   sessionAddress,
+  sessionDefaultName,
+  sessionDetailLabel,
+  sessionHeading,
+  sessionName,
   sessionTitle,
 } from "../src/sessions.ts";
 
@@ -67,4 +71,17 @@ test("local shells and WSL have separate group identities and readable history l
   assert.equal(sessionTitle(local), "PowerShell 7");
   assert.equal(sessionTitle(wsl), "WSL · PowerShell 7");
   assert.equal(sessionAddress(session("ssh")), "root@example.com:22");
+});
+
+test("custom names replace the generic terminal label while keeping defaults", () => {
+  const defaultSession = session("ssh");
+  assert.equal(sessionDefaultName(defaultSession), "终端 #1");
+  assert.equal(sessionName(defaultSession), "终端 #1");
+  assert.equal(sessionHeading(defaultSession), "server");
+  assert.equal(sessionDetailLabel(defaultSession), "server · 终端 #1");
+
+  const named = { ...defaultSession, name: "  构建服务器  " };
+  assert.equal(sessionName(named), "构建服务器");
+  assert.equal(sessionHeading(named), "构建服务器");
+  assert.equal(sessionDetailLabel(named), "构建服务器 · server");
 });

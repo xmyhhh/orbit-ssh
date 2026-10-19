@@ -34,7 +34,7 @@ import {
   type Workflow,
   type WorkflowStep,
 } from "./workflows";
-import { isLocalSession } from "./sessions";
+import { isLocalSession, sessionDetailLabel } from "./sessions";
 
 type StepStatus = "pending" | "sent" | "completed" | "failed" | "skipped";
 
@@ -68,7 +68,7 @@ const statusIcon = (status: StepStatus) => {
 };
 
 function terminalLabel(session: Session) {
-  return `${session.host.name} · 终端 #${session.terminalNumber}`;
+  return sessionDetailLabel(session);
 }
 
 function safeFilename(title: string) {

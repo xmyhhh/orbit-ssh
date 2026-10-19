@@ -61,9 +61,9 @@ Android 安装、文件导入导出、软键盘和本地构建见 [Android 说�
 | 导入 SSH 配置 | 读取 `~/.ssh/config` 中的主机、端口、用户、私钥和 ProxyJump，选择要导入的条目并自动关联跳板机。 |
 | 备份主机配置 | 将主机导出为不含密码和密钥的 JSON，或从导出的文件合并导入，按主机 ID 或名称更新而不重复创建。 |
 | 生成密钥 | 在新建主机时生成 Ed25519 密钥对，私钥保存在应用数据目录的 `keys/` 中，同名文件不会被覆盖。 |
-| 分屏与多终端 | 同一主机可开多个终端，拖动标签组合分屏，每组最多 4 个窗格；切换标签保留各组布局和会话。 |
+| 分屏与多终端 | 同一主机可开多个终端，拖动标签组合分屏，每组最多 4 个窗格；切换标签保留各组布局和会话。双击标签或点击终端工具栏的铅笔可重命名会话。 |
 | 使用终端 | 搜索输出、复制粘贴、调整字号，右键打开常用操作；多行粘贴前会确认。 |
-| 查看终端历史 | 在当前设备保存输出、检索历史和加入精选，可在偏好设置中调整保存数量或关闭记录。 |
+| 查看终端历史 | 在当前设备保存输出、检索历史、重命名和加入精选，可在偏好设置中调整保存数量或关闭记录。 |
 | 配置 SSH 隧道 | 为主机保存本地、远程及动态 SOCKS5 TCP 转发规则，连接时启动，最后一个终端关闭时释放。 |
 | 转发 X11 | 通过 SSH 在本机 X Server 中显示远程 Linux 图形程序，支持 Xauthority cookie 认证。 |
 | 传输文件 | 双栏浏览本地与远程目录，上传、下载文件或整个文件夹，查看进度、速度和失败原因。 |
@@ -82,7 +82,7 @@ Android 安装、文件导入导出、软键盘和本地构建见 [Android 说�
 
 「解除分屏」恢复独立标签，窗格上的「收起」把该终端移回独立标签，均保留连接。关闭分屏标签会结束组内全部终端。手机上用标签左侧的拖动柄调整分屏；点击全屏按钮后，可通过顶部下拉框切换终端。操作细节见[终端工作区说明](docs/TERMINAL-WORKSPACES.md)。
 
-「终端历史」保存当前设备上的终端输出，支持搜索、精选和删除。偏好设置可关闭自动记录或调整保留数量；活动会话的输出搜索不受历史记录开关影响。
+「终端历史」保存当前设备上的终端输出，支持搜索、重命名、精选和删除。偏好设置可关闭自动记录或调整保留数量；活动会话的输出搜索不受历史记录开关影响。会话名称会同时显示在终端标签、分屏标题、工作流目标、终端历史和 MCP 的 `list_sessions` 结果中。
 
 ## 连接 AI 工具（MCP）
 
@@ -120,8 +120,9 @@ MCP 提供以下工具：
 | --- | --- |
 | `list_hosts` | 列出已保存的 SSH 主机配置，不返回密码、私钥内容或口令。 |
 | `create_host` | 添加并保存主机配置，支持名称、地址、端口、用户名、密码或私钥认证以及分组。 |
-| `connect_host` | 为已保存主机打开新的 SSH 终端，返回 `sessionId`；新终端直接显示在 Orbit SSH 窗口中。 |
-| `list_sessions` | 列出当前活动的 SSH、本地 Shell 和 WSL 终端。 |
+| `connect_host` | 为已保存主机打开新的 SSH 终端，返回 `sessionId`；可通过 `name` 为新终端命名。 |
+| `list_sessions` | 列出当前活动的 SSH、本地 Shell 和 WSL 终端及其自定义名称。 |
+| `rename_session` | 重命名活动终端；名称会同步到标签、分屏标题和终端历史。传空名称可恢复默认名称。 |
 | `read_terminal` | 读取活动终端最近的输出。 |
 | `search_terminal_history` | 搜索本机保存的终端历史。 |
 | `send_terminal_input` | 向活动终端发送文本；包含换行时会执行命令。 |
@@ -134,7 +135,7 @@ MCP 提供以下工具：
 
 `create_host` 和 `connect_host` 需要开启「允许 AI 创建连接」；`send_terminal_input`、`kill_process` 和 `run_command` 需要另外开启「允许 AI 输入终端」；`list_directory` 和 `read_file` 需要开启「允许 AI 访问文件」。三个权限相互独立，默认关闭。`write_file` 同时需要文件访问和终端输入权限。AI 创建的终端与手动打开的终端相同，你可以直接查看输出、继续输入或关闭连接。
 
-已有主机时，AI 先调用 `list_hosts` 获取主机 ID，再调用 `connect_host`。没有主机时，先调用 `create_host`，填写 `address`、`username` 及可选的 `name`、`port`、`auth_type`、`key_path`、`jump_host_id`、`group`，然后使用返回的主机 ID 建立连接。`auth_type` 支持 `password`、`key` 和 `agent`；默认端口为 22，提供 `key_path` 时默认使用私钥认证，否则使用密码认证；`jump_host_id` 指向另一台已保存的主机。`create_host` 只添加配置，不覆盖已有主机。
+已有主机时，AI 先调用 `list_hosts` 获取主机 ID，再调用 `connect_host`。没有主机时，先调用 `create_host`，填写 `address`、`username` 及可选的 `name`、`port`、`auth_type`、`key_path`、`jump_host_id`、`group`，然后使用返回的主机 ID 建立连接。`auth_type` 支持 `password`、`key` 和 `agent`；默认端口为 22，提供 `key_path` 时默认使用私钥认证，否则使用密码认证；`jump_host_id` 指向另一台已保存的主机。`create_host` 只添加配置，不覆盖已有主机。`connect_host` 和 `rename_session` 都接受最多 80 个字符的终端名称；留空或传入空名称会恢复为默认的主机或 Shell 名称。终端名称也会出现在终端历史和 `list_sessions` 中。
 
 连接可复用本机已保存的密码或私钥口令，也可以向 `connect_host` 提供仅本次使用的 `password` 或 `passphrase`；这些凭据不会写入主机配置、工具结果或前端事件。首次连接返回 `HOST_KEY_UNKNOWN` 时，需要核对返回的 SHA-256 指纹，再通过 `accepted_fingerprint` 重试；已保存指纹发生变化时仍拒绝连接。Orbit SSH 界面需保持运行；关闭正在创建的终端或取消 MCP 请求会取消连接。
 

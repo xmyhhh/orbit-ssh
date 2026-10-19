@@ -29,6 +29,7 @@ type remoteSession struct {
 	stdin             io.WriteCloser
 	files             *sftp.Client
 	host              Host
+	customName        string
 	output            *terminalOutputBuffer
 	mu                sync.Mutex
 	writeMu           sync.Mutex

@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { History, Search, Star, Trash2 } from "lucide-react";
+import { History, Pencil, Search, Star, Trash2 } from "lucide-react";
 import {
   displayTerminalOutput,
   fuzzyMatch,
+  terminalHistorySubtitle,
+  terminalHistoryTitle,
   type TerminalHistoryRecord,
 } from "./terminalHistory";
 
@@ -11,6 +13,7 @@ interface Props {
   recordingEnabled: boolean;
   onOpenSettings: () => void;
   onTogglePin: (record: TerminalHistoryRecord) => void;
+  onRename: (record: TerminalHistoryRecord) => void;
   onDelete: (record: TerminalHistoryRecord) => void;
 }
 
@@ -36,6 +39,7 @@ export default function TerminalHistoryPage({
   recordingEnabled,
   onOpenSettings,
   onTogglePin,
+  onRename,
   onDelete,
 }: Props) {
   const [collection, setCollection] = useState<"recent" | "pinned">("recent");
@@ -50,7 +54,7 @@ export default function TerminalHistoryPage({
     return items.filter((record) =>
       fuzzyMatch(
         search,
-        `${record.title} ${record.subtitle} ${record.terminalNumber} ${displayTerminalOutput(record.output)}`,
+        `${record.title} ${record.name ?? ""} ${record.subtitle} ${record.terminalNumber} ${displayTerminalOutput(record.output)}`,
       ),
     );
   }, [collection, query, records]);
@@ -115,10 +119,12 @@ export default function TerminalHistoryPage({
                 onClick={() => setSelectedID(record.id)}
               >
                 <span className="history-record-heading">
-                  <strong>{record.title} · 终端 #{record.terminalNumber}</strong>
+                  <strong>{terminalHistoryTitle(record)}</strong>
                   <time>{dateTime(record.updatedAt)}</time>
                 </span>
-                <span className="history-record-subtitle">{record.subtitle}</span>
+                <span className="history-record-subtitle">
+                  {terminalHistorySubtitle(record)}
+                </span>
                 <pre>{preview(record.output)}</pre>
                 {record.truncated && (
                   <small>较早输出已省略，仅保留最近内容</small>
@@ -140,7 +146,15 @@ export default function TerminalHistoryPage({
                 </button>
                 <button
                   className="icon-button"
-                  aria-label={`删除 ${record.title} 终端 #${record.terminalNumber} 历史`}
+                  aria-label={`重命名 ${terminalHistoryTitle(record)}`}
+                  title="重命名"
+                  onClick={() => onRename(record)}
+                >
+                  <Pencil size={15} aria-hidden="true" />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={`删除 ${terminalHistoryTitle(record)} 历史`}
                   title="删除历史"
                   onClick={() => {
                     onDelete(record);
@@ -188,10 +202,8 @@ export default function TerminalHistoryPage({
           <section className="history-detail" aria-label="历史输出详情">
             <header>
               <div>
-                <h2>
-                  {selectedRecord.title} · 终端 #{selectedRecord.terminalNumber}
-                </h2>
-                <p>{selectedRecord.subtitle}</p>
+                <h2>{terminalHistoryTitle(selectedRecord)}</h2>
+                <p>{terminalHistorySubtitle(selectedRecord)}</p>
                 <time>最近记录于 {dateTime(selectedRecord.updatedAt)}</time>
               </div>
               <div>
@@ -207,6 +219,14 @@ export default function TerminalHistoryPage({
                     fill={selectedRecord.pinned ? "currentColor" : "none"}
                     aria-hidden="true"
                   />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="重命名当前历史"
+                  title="重命名"
+                  onClick={() => onRename(selectedRecord)}
+                >
+                  <Pencil size={16} aria-hidden="true" />
                 </button>
                 <button
                   className="icon-button"

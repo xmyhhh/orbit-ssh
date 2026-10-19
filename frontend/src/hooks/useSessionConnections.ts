@@ -70,13 +70,18 @@ export function useSessionConnections({
         .catch(() => {});
     }
   }
-  function allocateSession(host: Host, id: string = crypto.randomUUID()): Session {
+  function allocateSession(
+    host: Host,
+    id: string = crypto.randomUUID(),
+    name?: string,
+  ): Session {
     const terminalNumber = (terminalNumbers.current.get(host.id) ?? 0) + 1;
     terminalNumbers.current.set(host.id, terminalNumber);
     return {
       id,
       host,
       terminalNumber,
+      name: name?.trim() || undefined,
       demo: false,
       status: "connecting",
     };
@@ -87,6 +92,7 @@ export function useSessionConnections({
     credentials: Credentials,
     fingerprint: string,
     mcpSessionID?: string,
+    name?: string,
   ) {
     if (
       mcpSessionID &&
@@ -94,7 +100,7 @@ export function useSessionConnections({
         sessionsRef.current.some((session) => session.id === mcpSessionID))
     )
       return;
-    const session = allocateSession(host, mcpSessionID);
+    const session = allocateSession(host, mcpSessionID, name);
     const id = session.id;
     const previousActive = active;
     connectingIDs.current.add(id);

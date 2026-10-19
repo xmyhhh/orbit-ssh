@@ -60,6 +60,7 @@ interface Backend {
     size: TerminalSize,
   ): Promise<void>;
   ConnectMCPHost(id: string, size: TerminalSize): Promise<void>;
+  RenameSession(id: string, name: string): Promise<void>;
   Disconnect(id: string): Promise<void>;
   WriteTerminal(id: string, text: string): Promise<void>;
   ResizeTerminal(id: string, size: TerminalSize): Promise<void>;

@@ -17,7 +17,7 @@ func init() {
 		"GetPlatform", "GetWSLInfo", "LoadState", "SaveHost", "DeleteHost",
 		"SavePreferences", "SelectKeyFile", "SelectXAuthorityFile", "DataDirectory",
 		"SaveKeyPassphrase", "ForgetKeyPassphrase", "HasSavedPassword", "SavePassword", "ForgetPassword",
-		"Connect", "Disconnect", "WriteTerminal", "ResizeTerminal", "Monitor",
+		"Connect", "Disconnect", "WriteTerminal", "ResizeTerminal", "Monitor", "RenameSession",
 		"SyncTerminalHistory", "UpsertTerminalHistory", "AppendTerminalHistory", "DeleteTerminalHistory",
 		"ListDirectory", "ListLocalDirectory", "SelectLocalDirectory", "MakeLocalDirectory", "MakeDirectory",
 		"RenameRemote", "MoveRemote", "RemoveRemote", "ChmodRemote", "KillProcess",
