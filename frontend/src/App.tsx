@@ -9,6 +9,7 @@ import {
   Menu,
   Maximize2,
   Moon,
+  Play,
   Plus,
   Search,
   Server,
@@ -18,10 +19,13 @@ import {
   Sun,
   TerminalSquare,
   Trash2,
+  Workflow,
   X,
 } from "lucide-react";
 import type {
   Host,
+  Credentials,
+  MCPCommandRequest,
   Preferences,
   Session,
   TerminalHandle,
@@ -43,7 +47,10 @@ import {
   ConnectDialog,
   HelpDialog,
   HostDialog,
+  MCPCommandDialog,
+  Modal,
   PreferencesDialog,
+  SSHConfigDialog,
 } from "./dialogs";
 import TerminalLayoutControl from "./TerminalLayoutControl";
 import TerminalFocusBar from "./TerminalFocusBar";
@@ -54,6 +61,7 @@ import WSLPage from "./WSLPage";
 import LocalShellPage from "./LocalShellPage";
 import { matchesShortcut, usesMacShortcuts } from "./shortcuts";
 import TerminalHistoryPage from "./TerminalHistoryPage";
+import WorkflowPage from "./WorkflowPage";
 import { useTerminalHistory } from "./hooks/useTerminalHistory";
 import { useTerminalLayout } from "./hooks/useTerminalLayout";
 import TerminalCanvas from "./TerminalCanvas";
@@ -61,6 +69,7 @@ import { isLocalSession, sessionAddress } from "./sessions";
 import AppSidebar from "./AppSidebar";
 import HostsPage from "./HostsPage";
 import type { HostFilter } from "./HostsPage";
+import type { Workflow as WorkflowDefinition } from "./workflows";
 import { moveTabFocus, pageNames } from "./navigation";
 import type { Page } from "./navigation";
 import { useSessionConnections } from "./hooks/useSessionConnections";
@@ -100,6 +109,8 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [sshConfigOpen, setSSHConfigOpen] = useState(false);
+  const [mcpCommand, setMCPCommand] = useState<MCPCommandRequest | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [toast, setToast] = useState("");
   const [systemDark, setSystemDark] = useState(
@@ -108,6 +119,19 @@ export default function App() {
   const [filesOpen, setFilesOpen] = useState(false);
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [monitorExpanded, setMonitorExpanded] = useState(false);
+  const [workflowPanelOpen, setWorkflowPanelOpen] = useState(false);
+  const [workflowHostPicker, setWorkflowHostPicker] =
+    useState<WorkflowDefinition | null>(null);
+  const [pendingWorkflowLaunch, setPendingWorkflowLaunch] = useState<{
+    workflowID: string;
+    hostID: string;
+  } | null>(null);
+  const [workflowLoadRequest, setWorkflowLoadRequest] = useState<{
+    workflowID: string;
+    token: number;
+  } | null>(null);
+  const workflowLoadToken = useRef(0);
+  const workflowConnectSucceeded = useRef(false);
   const [terminalSearch, setTerminalSearch] = useState<string | null>(null);
   const [terminalToolsOpen, setTerminalToolsOpen] = useState(false);
 
@@ -155,7 +179,10 @@ export default function App() {
     aboutOpen ||
     paletteOpen ||
     helpOpen ||
-    confirmation,
+    sshConfigOpen ||
+    mcpCommand ||
+    confirmation ||
+    workflowHostPicker,
   );
   const viewport = useTerminalViewport(
     Boolean(activeSession) && !filesOpen,
@@ -290,13 +317,26 @@ export default function App() {
     const offNotice = listen("ssh:notice", (message) =>
       notify(String(message)),
     );
+    const offMCPCommand = listen("mcp:command-request", (value) => {
+      const request = value as MCPCommandRequest;
+      if (request?.id) setMCPCommand(request);
+    });
     if (isDesktop())
       void backend()
         .GetPlatform()
         .then(setPlatform)
         .catch(() => {});
+    if (isDesktop())
+      void backend()
+        .ListMCPCommands()
+        .then((items) => {
+          const first = items?.[0] as MCPCommandRequest | undefined;
+          if (first?.id) setMCPCommand(first);
+        })
+        .catch(() => {});
     return () => {
       offNotice();
+      offMCPCommand();
       clearTimeout(toastTimer.current);
     };
   }, []);
@@ -316,10 +356,11 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
   useEffect(() => {
-    if (isLocalSession(activeSession)) {
+    if (!activeSession || activeSession.demo || isLocalSession(activeSession)) {
       setFilesOpen(false);
       setMonitorOpen(false);
       setMonitorExpanded(false);
+      setWorkflowPanelOpen(false);
     }
     if (activeSession)
       lastActiveSessions.current.set(activeSession.host.id, active);
@@ -335,6 +376,19 @@ export default function App() {
     for (const bar of bars) if (bar) observer.observe(bar);
     return () => observer.disconnect();
   }, [active]);
+  useEffect(() => {
+    if (!pendingWorkflowLaunch) return;
+    const session = [...sessions].reverse().find(
+      (item) =>
+        item.host.id === pendingWorkflowLaunch.hostID &&
+        item.status === "connected" &&
+        !item.demo &&
+        !isLocalSession(item),
+    );
+    if (!session) return;
+    setPendingWorkflowLaunch(null);
+    loadWorkflowInSession(pendingWorkflowLaunch.workflowID, session.id);
+  }, [pendingWorkflowLaunch, sessions]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const listener = () => setSystemDark(media.matches);
@@ -540,6 +594,54 @@ export default function App() {
     setConnectHost(host);
   }
 
+  function loadWorkflowInSession(workflowID: string, sessionID: string) {
+    setActive(sessionID);
+    setFilesOpen(false);
+    setMonitorOpen(false);
+    setMonitorExpanded(false);
+    setWorkflowLoadRequest({ workflowID, token: ++workflowLoadToken.current });
+    setWorkflowPanelOpen(true);
+    setWorkflowHostPicker(null);
+  }
+
+  function chooseWorkflowHost(host: Host) {
+    const workflow = workflowHostPicker;
+    if (!workflow) return;
+    if (!isDesktop()) {
+      setWorkflowHostPicker(null);
+      notify("请使用桌面版连接 SSH 并执行工作流。");
+      return;
+    }
+    const connected = sessionsRef.current.filter(
+      (session) =>
+        session.host.id === host.id &&
+        session.status === "connected" &&
+        !session.demo &&
+        !isLocalSession(session),
+    );
+    const remembered = lastActiveSessions.current.get(host.id);
+    const session =
+      connected.find((item) => item.id === remembered) ?? connected.at(-1);
+    if (session) {
+      loadWorkflowInSession(workflow.id, session.id);
+      return;
+    }
+    workflowConnectSucceeded.current = false;
+    setPendingWorkflowLaunch({ workflowID: workflow.id, hostID: host.id });
+    setWorkflowHostPicker(null);
+    chooseHost(host);
+  }
+
+  async function connectFromDialog(
+    host: Host,
+    credentials: Credentials,
+    fingerprint: string,
+  ) {
+    await connect(host, credentials, fingerprint);
+    if (pendingWorkflowLaunch?.hostID === host.id)
+      workflowConnectSucceeded.current = true;
+  }
+
   function newTerminal() {
     if (activeSession?.status === "connecting") return;
     setFilesOpen(false);
@@ -632,6 +734,19 @@ export default function App() {
       paste();
     }
   }
+  function runWorkflowCommand(sessionId: string, command: string) {
+    const session = sessionsRef.current.find((item) => item.id === sessionId);
+    if (
+      !session ||
+      session.status !== "connected" ||
+      session.demo ||
+      isLocalSession(session)
+    )
+      throw new Error("所选 SSH 终端已断开，请重新选择");
+    const handle = handles.current.get(sessionId);
+    if (!handle?.ready()) throw new Error("终端尚未准备好，请稍后重试");
+    handle.send(`${command}\r`);
+  }
   function deleteHost(host: Host) {
     setConfirmation({
       title: "移除这台主机？",
@@ -642,7 +757,11 @@ export default function App() {
         if (isDesktop()) await backend().DeleteHost(host.id);
         update({
           ...stateRef.current,
-          hosts: stateRef.current.hosts.filter((h) => h.id !== host.id),
+          hosts: stateRef.current.hosts
+            .filter((h) => h.id !== host.id)
+            .map((h) =>
+              h.jumpHostId === host.id ? { ...h, jumpHostId: undefined } : h,
+            ),
         });
         notify("主机已移除");
       },
@@ -726,6 +845,8 @@ export default function App() {
               <Server size={15} />
             ) : page === "local" || page === "wsl" ? (
               <TerminalSquare size={15} />
+            ) : page === "workflows" ? (
+              <Workflow size={15} />
             ) : (
               <History size={15} />
             )}
@@ -821,67 +942,113 @@ export default function App() {
             <>
               <div className="dashboard-scroll" hidden={active !== "home"}>
                 <div className="dashboard">
-                  {page === "local" ? (
-                    <LocalShellPage
-                      layout={layout}
-                      onLayoutChange={setHostLayout}
-                      onOpen={(shell) => void openLocalShell(shell)}
+                  <div
+                    className="workflow-page-slot"
+                    hidden={page !== "workflows"}
+                  >
+                    <WorkflowPage
                       sessions={sessions}
+                      activeSessionId={activeSession?.id ?? ""}
+                      onRunCommand={runWorkflowCommand}
+                      onViewTerminal={setActive}
+                      onExecuteWorkflow={setWorkflowHostPicker}
                     />
-                  ) : page === "wsl" ? (
-                    <WSLPage
-                      layout={layout}
-                      onLayoutChange={setHostLayout}
-                      onOpen={(name) => void openWSLTerminal(name)}
-                      sessions={sessions}
-                    />
-                  ) : page === "history" ? (
-                    <TerminalHistoryPage
-                      records={terminalHistory}
-                      recordingEnabled={
-                        workspace.preferences.terminalHistoryEnabled
-                      }
-                      onOpenSettings={() => setPreferencesOpen(true)}
-                      onTogglePin={(record) =>
-                        setHistoryPinned(record, !record.pinned)
-                      }
-                      onDelete={removeTerminalHistory}
-                    />
-                  ) : (
-                    <HostsPage
-                      hosts={workspace.hosts}
-                      sessions={sessions}
-                      title={pageTitle}
-                      group={group}
-                      query={query}
-                      filter={filter}
-                      layout={layout}
-                      onFilterChange={setFilter}
-                      onQueryChange={setQuery}
-                      onLayoutChange={setHostLayout}
-                      onNew={newHost}
-                      onConnect={chooseHost}
-                      onEdit={(host) => setHostEditor({ host })}
-                      onDelete={deleteHost}
-                      onFavorite={(host) =>
-                        void saveHost({
-                          ...host,
-                          favorite: !host.favorite,
-                        }).catch((error) => notify(errorText(error)))
-                      }
-                      onShowAll={() => {
-                        setQuery("");
-                        setFilter("all");
-                        setGroup("");
-                      }}
-                    />
-                  )}
+                  </div>
+                  <div hidden={page === "workflows"}>
+                    {page === "local" ? (
+                      <LocalShellPage
+                        layout={layout}
+                        onLayoutChange={setHostLayout}
+                        onOpen={(shell) => void openLocalShell(shell)}
+                        sessions={sessions}
+                      />
+                    ) : page === "wsl" ? (
+                      <WSLPage
+                        layout={layout}
+                        onLayoutChange={setHostLayout}
+                        onOpen={(name) => void openWSLTerminal(name)}
+                        sessions={sessions}
+                      />
+                    ) : page === "history" ? (
+                      <TerminalHistoryPage
+                        records={terminalHistory}
+                        recordingEnabled={
+                          workspace.preferences.terminalHistoryEnabled
+                        }
+                        onOpenSettings={() => setPreferencesOpen(true)}
+                        onTogglePin={(record) =>
+                          setHistoryPinned(record, !record.pinned)
+                        }
+                        onDelete={removeTerminalHistory}
+                      />
+                    ) : (
+                      <HostsPage
+                        hosts={workspace.hosts}
+                        sessions={sessions}
+                        title={pageTitle}
+                        group={group}
+                        query={query}
+                        filter={filter}
+                        layout={layout}
+                        onFilterChange={setFilter}
+                        onQueryChange={setQuery}
+                        onLayoutChange={setHostLayout}
+                        onNew={newHost}
+                        onConnect={chooseHost}
+                        onEdit={(host) => setHostEditor({ host })}
+                        onDelete={deleteHost}
+                        onFavorite={(host) =>
+                          void saveHost({
+                            ...host,
+                            favorite: !host.favorite,
+                          }).catch((error) => notify(errorText(error)))
+                        }
+                        onShowAll={() => {
+                          setQuery("");
+                          setFilter("all");
+                          setGroup("");
+                        }}
+                        onImportSSHConfig={() => {
+                          if (!isDesktop()) {
+                            notify("请在桌面版中导入 ~/.ssh/config");
+                            return;
+                          }
+                          setSSHConfigOpen(true);
+                        }}
+                        onExport={() => {
+                          if (!isDesktop()) {
+                            notify("请在桌面版中导出主机配置");
+                            return;
+                          }
+                          void backend()
+                            .ExportHosts()
+                            .then((path) => path && notify(`已导出到 ${path}`))
+                            .catch((error) => notify(errorText(error)));
+                        }}
+                        onImport={() => {
+                          if (!isDesktop()) {
+                            notify("请在桌面版中导入主机配置");
+                            return;
+                          }
+                          void backend()
+                            .ImportHosts()
+                            .then(async (result) => {
+                              await load();
+                              notify(
+                                `已导入 ${result.added} 台主机${result.updated ? `，更新 ${result.updated} 台` : ""}${result.skipped ? `，跳过 ${result.skipped} 台` : ""}`,
+                              );
+                            })
+                            .catch((error) => notify(errorText(error)));
+                        }}
+                      />
+                    )}
 
-                  {!isDesktop() && (
-                    <footer className="dashboard-footer">
-                      <span>网页预览</span>
-                    </footer>
-                  )}
+                    {!isDesktop() && (
+                      <footer className="dashboard-footer">
+                        <span>网页预览</span>
+                      </footer>
+                    )}
+                  </div>
                 </div>
               </div>
               <div
@@ -1068,6 +1235,7 @@ export default function App() {
                           onClick={() => {
                             setMonitorOpen(!monitorOpen);
                             setFilesOpen(false);
+                            setWorkflowPanelOpen(false);
                           }}
                         >
                           <Activity size={16} />
@@ -1080,17 +1248,33 @@ export default function App() {
                           onClick={() => {
                             setFilesOpen(!filesOpen);
                             setMonitorOpen(false);
+                            setWorkflowPanelOpen(false);
                           }}
                         >
                           <FolderOpen size={16} />
                           文件
+                        </button>
+                        <button
+                          className={`button toolbar-button ${workflowPanelOpen ? "selected" : ""}`}
+                          aria-pressed={workflowPanelOpen}
+                          disabled={Boolean(activeSession?.demo)}
+                          onClick={() => {
+                            const open = !workflowPanelOpen;
+                            setWorkflowPanelOpen(open);
+                            setFilesOpen(false);
+                            setMonitorOpen(false);
+                            setMonitorExpanded(false);
+                          }}
+                        >
+                          <Workflow size={16} />
+                          工作流
                         </button>
                       </>
                     )}
                   </div>
                 </div>
                 <div
-                  className={`terminal-layout ${monitorOpen && monitorExpanded ? "monitor-expanded" : ""} ${filesOpen ? "files-expanded" : ""}`}
+                  className={`terminal-layout ${monitorOpen && monitorExpanded ? "monitor-expanded" : ""} ${filesOpen ? "files-expanded" : ""} ${workflowPanelOpen ? "workflow-panel-open" : ""}`}
                 >
                   <TerminalCanvas
                     sessions={sessions}
@@ -1155,6 +1339,27 @@ export default function App() {
                         notify={notify}
                       />
                     )}
+                  <WorkflowPage
+                    key={`${activeSession?.host.id ?? "none"}-${workflowLoadRequest?.token ?? "workflow-panel"}`}
+                    sessions={sessions}
+                    activeSessionId={activeSession?.id ?? ""}
+                    targetHostID={
+                      activeSession && !isLocalSession(activeSession)
+                        ? activeSession.host.id
+                        : undefined
+                    }
+                    mode="panel"
+                    hidden={
+                      !workflowPanelOpen ||
+                      !activeSession ||
+                      activeSession.demo ||
+                      isLocalSession(activeSession)
+                    }
+                    initialWorkflowID={workflowLoadRequest?.workflowID}
+                    onRunCommand={runWorkflowCommand}
+                    onViewTerminal={setActive}
+                    onClosePanel={() => setWorkflowPanelOpen(false)}
+                  />
                 </div>
                 <div className="terminal-status">
                   <span>
@@ -1214,20 +1419,88 @@ export default function App() {
           host={hostEditor.host}
           isNew={hostEditor.isNew}
           groups={groups}
+          hosts={workspace.hosts}
           onSave={saveHost}
           onClose={() => setHostEditor(null)}
         />
+      )}
+      {workflowHostPicker && (
+        <Modal
+          title={`选择主机执行“${workflowHostPicker.title}”`}
+          onClose={() => setWorkflowHostPicker(null)}
+          className="workflow-host-picker-modal"
+        >
+          <p className="modal-intro">选择一个 SSH 主机。</p>
+          <div className="workflow-host-options">
+            {workspace.hosts.map((host) => {
+              const count = sessions.filter(
+                (session) =>
+                  session.host.id === host.id &&
+                  session.status === "connected" &&
+                  !session.demo &&
+                  !isLocalSession(session),
+              ).length;
+              return (
+                <button
+                  className="workflow-host-option"
+                  key={host.id}
+                  onClick={() => chooseWorkflowHost(host)}
+                >
+                  <span className={`host-icon ${host.color}`}>
+                    <Server size={20} />
+                  </span>
+                  <span>
+                    <strong>{host.name}</strong>
+                    <small>
+                      {host.username}@{host.address}
+                      {count ? ` · ${count} 个已连接终端` : " · 连接后继续"}
+                    </small>
+                  </span>
+                  <Play size={15} />
+                </button>
+              );
+            })}
+            {!workspace.hosts.length && (
+              <div className="workflow-library-empty">还没有已保存的 SSH 主机</div>
+            )}
+          </div>
+          <div className="modal-footer">
+            {!workspace.hosts.length && (
+              <button
+                className="button primary"
+                onClick={() => {
+                  setWorkflowHostPicker(null);
+                  newHost();
+                }}
+              >
+                新建主机
+              </button>
+            )}
+            <button
+              className="button secondary"
+              onClick={() => setWorkflowHostPicker(null)}
+            >
+              取消
+            </button>
+          </div>
+        </Modal>
       )}
       {connectHost && (
         <ConnectDialog
           key={connectHost.id}
           host={connectHost}
-          onConnect={connect}
+          jumpHost={workspace.hosts.find(
+            (h) => h.id === connectHost.jumpHostId,
+          )}
+          onConnect={connectFromDialog}
           onClose={() => {
             pendingSplitRef.current = null;
             cancelConnection();
 
             setConnectHost(null);
+            if (!workflowConnectSucceeded.current)
+              setPendingWorkflowLaunch(null);
+            workflowConnectSucceeded.current = false;
             requestAnimationFrame(() => handles.current.get(active)?.focus());
           }}
         />
@@ -1238,6 +1511,39 @@ export default function App() {
           platform={platform}
           onChange={savePreferences}
           onClose={() => setPreferencesOpen(false)}
+        />
+      )}
+      {sshConfigOpen && (
+        <SSHConfigDialog
+          onImported={(result) => {
+            void load().then(() =>
+              notify(
+                `已导入 ${result.added} 台主机${result.updated ? `，更新 ${result.updated} 台` : ""}${result.skipped ? `，跳过 ${result.skipped} 台` : ""}`,
+              ),
+            );
+          }}
+          onClose={() => setSSHConfigOpen(false)}
+        />
+      )}
+      {mcpCommand && (
+        <MCPCommandDialog
+          request={{
+            ...mcpCommand,
+            sessionName: sessions.find(
+              (session) => session.id === mcpCommand.sessionId,
+            )?.host.name,
+          }}
+          onClose={() => {
+            setMCPCommand(null);
+            if (isDesktop())
+              void backend()
+                .ListMCPCommands()
+                .then((items) => {
+                  const next = items?.[0] as MCPCommandRequest | undefined;
+                  if (next?.id) setMCPCommand(next);
+                })
+                .catch(() => {});
+          }}
         />
       )}
       {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}

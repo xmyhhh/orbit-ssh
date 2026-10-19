@@ -14,10 +14,12 @@ import { Modal } from "./Modal";
 
 export function ConnectDialog({
   host,
+  jumpHost,
   onConnect,
   onClose,
 }: {
   host: Host;
+  jumpHost?: Host;
   onConnect: (
     host: Host,
     credentials: Credentials,
@@ -28,6 +30,8 @@ export function ConnectDialog({
   const [credentials, setCredentials] = useState<Credentials>({
     password: "",
     passphrase: "",
+    jumpPassword: "",
+    jumpPassphrase: "",
     rememberKey: true,
     rememberPassword: true,
   });
@@ -35,33 +39,46 @@ export function ConnectDialog({
   const [error, setError] = useState("");
   const [fingerprint, setFingerprint] = useState("");
   const [hasSavedPassword, setHasSavedPassword] = useState(false);
+  const [jumpHasSavedPassword, setJumpHasSavedPassword] = useState(false);
   const [checkingPassword, setCheckingPassword] = useState(
-    host.authType === "password" && isDesktop(),
+    (host.authType === "password" ||
+      jumpHost?.authType === "password") &&
+      isDesktop(),
   );
   const [showPassword, setShowPassword] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     let current = true;
-    if (host.authType === "password" && isDesktop()) {
-      void backend()
-        .HasSavedPassword(host.id)
-        .then((saved) => {
-          if (!current) return;
-          setHasSavedPassword(saved);
-          setCheckingPassword(false);
-          if (saved) void connect();
-        })
-        .catch((e) => {
-          if (!current) return;
+    let timer: number | undefined;
+    async function prepare() {
+      let targetSaved = false;
+      let jumpSaved = false;
+      try {
+        if (host.authType === "password" && isDesktop())
+          targetSaved = await backend().HasSavedPassword(host.id);
+        if (jumpHost?.authType === "password" && isDesktop())
+          jumpSaved = await backend().HasSavedPassword(jumpHost.id);
+      } catch (e) {
+        if (current) {
           setCheckingPassword(false);
           setError(errorText(e));
-        });
+        }
+        return;
+      }
+      if (!current) return;
+      setHasSavedPassword(targetSaved);
+      setJumpHasSavedPassword(jumpSaved);
+      setCheckingPassword(false);
+      const needsPassword = host.authType === "password" && !targetSaved;
+      const needsJumpPassword =
+        jumpHost?.authType === "password" && !jumpSaved;
+      if (needsPassword || needsJumpPassword) return;
+      timer = requestAnimationFrame(() => {
+        if (current) void connect();
+      });
     }
-    const timer =
-      host.authType === "key"
-        ? requestAnimationFrame(() => void connect())
-        : undefined;
+    void prepare();
     return () => {
       mounted.current = false;
       current = false;
@@ -89,9 +106,11 @@ export function ConnectDialog({
         setError(
           message.includes("HOST_KEY_CHANGED")
             ? `服务器指纹与之前保存的记录不同，连接已拒绝。请先与服务器管理员核实。\n${message}`
-            : message
-                .replace("KEY_PASSPHRASE_REQUIRED|", "")
-                .replace("PASSWORD_REQUIRED|", ""),
+            : message.includes("JUMP_HOST_UNTRUSTED")
+              ? `跳板机的服务器指纹尚未信任。请先单独连接一次跳板机并确认指纹。\n${message}`
+              : message
+                  .replace("KEY_PASSPHRASE_REQUIRED|", "")
+                  .replace("PASSWORD_REQUIRED|", ""),
         );
       }
     } finally {
@@ -138,48 +157,95 @@ export function ConnectDialog({
         </>
       ) : (
         <form onSubmit={(e) => void connect(e)}>
-          <label className="field">
-            {host.authType === "key" ? "私钥口令（未加密可留空）" : "登录密码"}
-            <div className="input-action">
-              <input
-                autoFocus
-                type={showPassword ? "text" : "password"}
-                name="password"
-                required={host.authType === "password" && !hasSavedPassword}
-                disabled={busy || checkingPassword}
-                placeholder={hasSavedPassword ? "留空使用已保存密码" : ""}
-                autoComplete="current-password"
-                value={
-                  host.authType === "password"
-                    ? credentials.password
-                    : credentials.passphrase
-                }
-                onChange={(e) =>
-                  setCredentials((c) =>
+          {host.authType === "agent" ? (
+            <p className="field-hint">
+              将使用本机 SSH Agent 中已加载的密钥。Windows 需启动 OpenSSH
+              Authentication Agent 服务。
+            </p>
+          ) : (
+            <label className="field">
+              {host.authType === "key"
+                ? "私钥口令（未加密可留空）"
+                : "登录密码"}
+              <div className="input-action">
+                <input
+                  autoFocus
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  required={host.authType === "password" && !hasSavedPassword}
+                  disabled={busy || checkingPassword}
+                  placeholder={hasSavedPassword ? "留空使用已保存密码" : ""}
+                  autoComplete="current-password"
+                  value={
                     host.authType === "password"
-                      ? { ...c, password: e.target.value }
-                      : { ...c, passphrase: e.target.value },
-                  )
-                }
-              />
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                aria-pressed={showPassword}
-                disabled={busy || checkingPassword}
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-              </button>
-            </div>
-          </label>
+                      ? credentials.password
+                      : credentials.passphrase
+                  }
+                  onChange={(e) =>
+                    setCredentials((c) =>
+                      host.authType === "password"
+                        ? { ...c, password: e.target.value }
+                        : { ...c, passphrase: e.target.value },
+                    )
+                  }
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                  aria-pressed={showPassword}
+                  disabled={busy || checkingPassword}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </label>
+          )}
           <input
             type="hidden"
             name="username"
             autoComplete="username"
             value={host.username}
           />
+          {jumpHost && jumpHost.authType === "password" && (
+            <label className="field">
+              跳板机 {jumpHost.name} 的密码
+              <input
+                type="password"
+                autoComplete="off"
+                disabled={busy || checkingPassword}
+                placeholder={
+                  jumpHasSavedPassword ? "留空使用已保存密码" : "请输入跳板机密码"
+                }
+                value={credentials.jumpPassword ?? ""}
+                onChange={(e) =>
+                  setCredentials((c) => ({
+                    ...c,
+                    jumpPassword: e.target.value,
+                  }))
+                }
+              />
+            </label>
+          )}
+          {jumpHost && jumpHost.authType === "key" && (
+            <label className="field">
+              跳板机 {jumpHost.name} 的私钥口令
+              <input
+                type="password"
+                autoComplete="off"
+                disabled={busy || checkingPassword}
+                placeholder="留空使用已保存口令"
+                value={credentials.jumpPassphrase ?? ""}
+                onChange={(e) =>
+                  setCredentials((c) => ({
+                    ...c,
+                    jumpPassphrase: e.target.value,
+                  }))
+                }
+              />
+            </label>
+          )}
           {host.authType === "password" && (
             <div className="password-options">
               <label className="key-remember">

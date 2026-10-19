@@ -20,8 +20,10 @@ func init() {
 		"Connect", "Disconnect", "WriteTerminal", "ResizeTerminal", "Monitor",
 		"SyncTerminalHistory", "UpsertTerminalHistory", "AppendTerminalHistory", "DeleteTerminalHistory",
 		"ListDirectory", "ListLocalDirectory", "SelectLocalDirectory", "MakeLocalDirectory", "MakeDirectory",
+		"RenameRemote", "MoveRemote", "RemoveRemote", "ChmodRemote", "KillProcess",
 		"QueueTransfer", "ListTransfers", "CancelTransfer", "ClearTransfers",
 		"ReadFilePreview", "ReadRemoteTextFile", "SaveRemoteTextFile", "SetEditorDirty", "UploadFile", "DownloadFile",
+		"DecideMCPCommand",
 	} {
 		mobileMethods[name] = true
 	}

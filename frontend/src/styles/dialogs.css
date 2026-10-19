@@ -253,6 +253,120 @@
 .host-dialog {
   width: 570px;
 }
+.ssh-config-dialog {
+  width: 560px;
+}
+.ssh-config-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.ssh-config-heading strong {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ssh-config-heading span {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.ssh-config-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.ssh-config-actions .checkbox-label {
+  margin-left: 0;
+}
+.ssh-config-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.ssh-config-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.ssh-config-entry:last-child {
+  border-bottom: 0;
+}
+.ssh-config-entry:hover {
+  background: var(--surface-soft);
+}
+.ssh-config-alias {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+.ssh-config-alias strong {
+  font-size: 12px;
+  font-weight: 550;
+}
+.ssh-config-alias code {
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-command {
+  display: flex;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.mcp-command strong {
+  font-size: 12px;
+}
+.mcp-command p {
+  margin: 5px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.mcp-command.danger {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+.mcp-command.danger svg {
+  color: var(--danger);
+}
+.mcp-command-text {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin: 13px 0 0;
+  padding: 12px 13px;
+  background: var(--terminal-bg, #10201d);
+  color: #e6f2ee;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+.mcp-command-text code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .host-settings-tabs {
   display: flex;
   gap: 6px;

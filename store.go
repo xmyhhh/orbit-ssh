@@ -19,6 +19,7 @@ type Host struct {
 	Group         string        `json:"group"`
 	AuthType      string        `json:"authType"`
 	KeyPath       string        `json:"keyPath"`
+	JumpHostID    string        `json:"jumpHostId,omitempty"`
 	Color         string        `json:"color"`
 	Favorite      bool          `json:"favorite"`
 	LastConnected string        `json:"lastConnected"`
@@ -52,9 +53,11 @@ type Preferences struct {
 	CloseToTray            bool            `json:"closeToTray"`
 	TerminalHistoryEnabled bool            `json:"terminalHistoryEnabled"`
 	TerminalHistoryLimit   int             `json:"terminalHistoryLimit"`
+	KeepAliveSeconds       int             `json:"keepAliveSeconds"`
 	MCPEnabled             bool            `json:"mcpEnabled"`
 	MCPAllowConnections    bool            `json:"mcpAllowConnections"`
 	MCPAllowTerminalInput  bool            `json:"mcpAllowTerminalInput"`
+	MCPAllowFileAccess     bool            `json:"mcpAllowFileAccess"`
 	MCPPort                int             `json:"mcpPort"`
 	Shortcuts              WindowShortcuts `json:"shortcuts"`
 }
@@ -73,7 +76,7 @@ type Store struct {
 
 func defaultState() State {
 	return State{Hosts: []Host{},
-		Preferences: Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true, CloseToTray: true, TerminalHistoryEnabled: true, TerminalHistoryLimit: 20, MCPPort: 8765, Shortcuts: defaultWindowShortcuts()}, KnownHosts: map[string]string{}}
+		Preferences: Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true, CloseToTray: true, TerminalHistoryEnabled: true, TerminalHistoryLimit: 20, KeepAliveSeconds: 30, MCPPort: 8765, Shortcuts: defaultWindowShortcuts()}, KnownHosts: map[string]string{}}
 }
 
 func defaultWindowShortcuts() WindowShortcuts {
@@ -132,6 +135,9 @@ func openStore(path string) (*Store, error) {
 	if s.state.Preferences.MCPPort < 1024 || s.state.Preferences.MCPPort > 65535 {
 		s.state.Preferences.MCPPort = 8765
 	}
+	if s.state.Preferences.KeepAliveSeconds < 0 || s.state.Preferences.KeepAliveSeconds > 300 {
+		s.state.Preferences.KeepAliveSeconds = 30
+	}
 	normalizeWindowShortcuts(&s.state.Preferences.Shortcuts)
 	return s, nil
 }
@@ -181,11 +187,16 @@ func validateHost(h Host) error {
 	if h.Port < 1 || h.Port > 65535 {
 		return errors.New("端口应在 1–65535 之间")
 	}
-	if h.AuthType != "password" && h.AuthType != "key" {
+	if h.AuthType != "password" && h.AuthType != "key" && h.AuthType != "agent" {
 		return errors.New("不支持的认证方式")
 	}
 	if h.AuthType == "key" && h.KeyPath == "" {
 		return errors.New("请选择私钥文件")
+	}
+	if h.JumpHostID != "" {
+		if h.JumpHostID == h.ID {
+			return errors.New("主机不能以自身作为跳板机")
+		}
 	}
 	return validateTunneling(h.PortForwards, h.X11)
 }
@@ -197,6 +208,31 @@ func (s *Store) snapshot() State {
 	var copy State
 	_ = json.Unmarshal(data, &copy)
 	return copy
+}
+
+func validateJumpChain(hosts []Host, next Host) error {
+	byID := map[string]Host{}
+	for _, h := range hosts {
+		byID[h.ID] = h
+	}
+	byID[next.ID] = next
+	seen := map[string]bool{next.ID: true}
+	current := next
+	for current.JumpHostID != "" {
+		jump, ok := byID[current.JumpHostID]
+		if !ok {
+			return errors.New("跳板机不存在，请重新选择")
+		}
+		if seen[jump.ID] {
+			return errors.New("跳板机配置存在循环引用")
+		}
+		seen[jump.ID] = true
+		current = jump
+		if len(seen) > 5 {
+			return errors.New("跳板机最多支持 5 级")
+		}
+	}
+	return nil
 }
 
 func (s *Store) host(id string) (Host, error) {
@@ -218,6 +254,9 @@ func (s *Store) saveHost(h Host) error {
 	h.PortForwards = append([]PortForward(nil), h.PortForwards...)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := validateJumpChain(s.state.Hosts, h); err != nil {
+		return err
+	}
 	previous := append([]Host{}, s.state.Hosts...)
 	found := false
 	for i, old := range s.state.Hosts {

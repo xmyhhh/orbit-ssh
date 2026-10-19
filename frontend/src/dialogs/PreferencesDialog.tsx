@@ -314,6 +314,29 @@ export function PreferencesDialog({
             </div>
             <div className="setting-row">
               <div>
+                <strong>连接保活间隔</strong>
+                <p className="field-hint">
+                  定期发送 keepalive 探测；0 表示关闭。网络中断时更快发现掉线。
+                </p>
+              </div>
+              <select
+                aria-label="连接保活间隔"
+                className="terminal-density-select"
+                disabled={busy}
+                value={preferences.keepAliveSeconds}
+                onChange={(e) =>
+                  void change({ keepAliveSeconds: Number(e.target.value) })
+                }
+              >
+                <option value={0}>关闭</option>
+                <option value={15}>15 秒</option>
+                <option value={30}>30 秒</option>
+                <option value={60}>60 秒</option>
+                <option value={120}>120 秒</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
                 <strong>记录终端历史</strong>
                 <p className="field-hint">
                   在此设备保存终端输出；精选记录不会自动清理。
@@ -401,6 +424,7 @@ export function PreferencesDialog({
                           mcpEnabled: false,
                           mcpAllowConnections: false,
                           mcpAllowTerminalInput: false,
+                          mcpAllowFileAccess: false,
                         }
                       : { mcpEnabled: true },
                   )
@@ -488,6 +512,29 @@ export function PreferencesDialog({
                       void change({
                         mcpAllowTerminalInput:
                           !preferences.mcpAllowTerminalInput,
+                      })
+                    }
+                  >
+                    <span />
+                  </button>
+                </div>
+                <div className="setting-row">
+                  <div>
+                    <strong>允许 AI 访问文件</strong>
+                    <p className="field-hint">
+                      允许列出和读取远程文件；写入文件还需同时开启“允许 AI
+                      输入终端”。
+                    </p>
+                  </div>
+                  <button
+                    className={`switch ${preferences.mcpAllowFileAccess ? "on" : ""}`}
+                    role="switch"
+                    aria-label="允许 AI 访问文件"
+                    aria-checked={preferences.mcpAllowFileAccess}
+                    disabled={busy}
+                    onClick={() =>
+                      void change({
+                        mcpAllowFileAccess: !preferences.mcpAllowFileAccess,
                       })
                     }
                   >

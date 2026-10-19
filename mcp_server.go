@@ -15,6 +15,7 @@ type MCPStatus struct {
 	Running          bool   `json:"running"`
 	AllowInput       bool   `json:"allowInput"`
 	AllowConnections bool   `json:"allowConnections"`
+	AllowFileAccess  bool   `json:"allowFileAccess"`
 	Endpoint         string `json:"endpoint"`
 	Token            string `json:"token"`
 	Error            string `json:"error"`
@@ -109,6 +110,7 @@ func (a *App) GetMCPStatus() MCPStatus {
 		status.Enabled = preferences.MCPEnabled
 		status.AllowInput = preferences.MCPAllowTerminalInput
 		status.AllowConnections = preferences.MCPAllowConnections
+		status.AllowFileAccess = preferences.MCPAllowFileAccess
 		status.Endpoint = fmt.Sprintf("http://127.0.0.1:%d/mcp", preferences.MCPPort)
 	}
 	a.mcpMu.Lock()

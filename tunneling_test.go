@@ -188,6 +188,41 @@ func testForwardRule(t *testing.T, kind, target string) PortForward {
 	return PortForward{ID: kind, Type: kind, Enabled: true, BindAddress: "127.0.0.1", BindPort: unusedTCPPort(t), DestinationHost: host, DestinationPort: port}
 }
 
+func TestForwardingReleasesJumpTransport(t *testing.T) {
+	address, _ := testSSHServer(t)
+	client, err := ssh.Dial("tcp", address, &ssh.ClientConfig{
+		User: "tester", Auth: []ssh.AuthMethod{ssh.Password("session-only-secret")},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { client.Close() })
+	a := testAppWithStore(t)
+	rule := testForwardRule(t, "local", "127.0.0.1:1234")
+	host := Host{ID: "jump-forward", Name: "jump-forward", PortForwards: []PortForward{rule}}
+	released := 0
+	group, err := a.acquireForwarding(context.Background(), host, func(context.Context) (*ssh.Client, func(), error) {
+		return client, func() { released++ }, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if group == nil {
+		t.Fatal("forwarding group was not created")
+	}
+	if released != 0 {
+		t.Fatal("transport was released before the last terminal closed")
+	}
+	a.releaseForwarding(group)
+	if released != 1 {
+		t.Fatalf("jump transport release calls = %d, want 1", released)
+	}
+	if len(a.forwards) != 0 {
+		t.Fatal("forwarding group was not removed")
+	}
+}
+
 func testDialForward(t *testing.T, rule PortForward) net.Conn {
 	t.Helper()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(rule.BindPort)), 2*time.Second)
@@ -424,7 +459,8 @@ func TestPortForwardConcurrentTerminals(t *testing.T) {
 		}
 	}
 	a.forwardMu.Lock()
-	refs := a.forwards[host.ID].refs
+	group := a.forwards[host.ID]
+	refs := group.refs
 	a.forwardMu.Unlock()
 	if refs != 8 {
 		t.Fatalf("forwarding references = %d, want 8", refs)
@@ -442,11 +478,22 @@ func TestPortForwardConcurrentTerminals(t *testing.T) {
 		go func() { defer wg.Done(); _ = a.Disconnect(fmt.Sprintf("concurrent-%d", i)) }()
 	}
 	wg.Wait()
-	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(rule.BindPort)))
-	if err != nil {
-		t.Fatalf("concurrent disconnect leaked listener: %v", err)
+	// Rebinding the same port is unreliable on Windows because an earlier echo
+	// connection may keep it in TIME_WAIT. Check the runtime itself instead:
+	// every listener must have been closed and the group must be gone.
+	a.forwardMu.Lock()
+	leakedGroup := a.forwards[host.ID]
+	a.forwardMu.Unlock()
+	if leakedGroup != nil {
+		t.Fatal("concurrent disconnect left an active forwarding group")
 	}
-	listener.Close()
+	group.runtime.mu.Lock()
+	closed := group.runtime.closed
+	listeners := len(group.runtime.listeners)
+	group.runtime.mu.Unlock()
+	if !closed || listeners != 0 {
+		t.Fatalf("concurrent disconnect leaked listener: closed=%v listeners=%d", closed, listeners)
+	}
 }
 
 func TestPortForwardCancellationDuringStartup(t *testing.T) {

@@ -17,6 +17,11 @@ import type {
   TerminalSize,
   Workspace,
   WSLInfo,
+  SSHConfigEntry,
+  SSHConfigImport,
+  SSHConfigImportResult,
+  HostImportResult,
+  MCPCommandRequest,
 } from "./types";
 import { defaultShortcuts } from "./shortcuts";
 import type { TerminalHistoryRecord } from "./terminalHistory";
@@ -85,6 +90,19 @@ interface Backend {
   UploadFile(id: string, dir: string): Promise<boolean>;
   DownloadFile(id: string, path: string): Promise<boolean>;
   MakeDirectory(id: string, dir: string, name: string): Promise<void>;
+  RenameRemote(id: string, dir: string, from: string, to: string): Promise<void>;
+  MoveRemote(id: string, from: string, toDir: string): Promise<void>;
+  RemoveRemote(id: string, filename: string): Promise<void>;
+  ChmodRemote(id: string, filename: string, mode: string): Promise<void>;
+  KillProcess(id: string, pid: number, signal: string): Promise<void>;
+  ReadSSHConfig(path: string): Promise<SSHConfigImport>;
+  SelectSSHConfigFile(): Promise<string>;
+  ImportSSHConfig(entries: SSHConfigEntry[]): Promise<SSHConfigImportResult>;
+  ExportHosts(): Promise<string>;
+  ImportHosts(): Promise<HostImportResult>;
+  GenerateKeyPair(name: string): Promise<[string, string]>;
+  DecideMCPCommand(id: string, approved: boolean): Promise<void>;
+  ListMCPCommands(): Promise<MCPCommandRequest[]>;
   DataDirectory(): Promise<string>;
   GetMCPStatus(): Promise<MCPStatus>;
   InstallMCP(target: MCPClient): Promise<MCPInstallResult>;
@@ -150,9 +168,11 @@ export const defaults: Workspace = {
     closeToTray: true,
     terminalHistoryEnabled: true,
     terminalHistoryLimit: 20,
+    keepAliveSeconds: 30,
     mcpEnabled: false,
     mcpAllowConnections: false,
     mcpAllowTerminalInput: false,
+    mcpAllowFileAccess: false,
     mcpPort: 8765,
     shortcuts: defaultShortcuts,
   },

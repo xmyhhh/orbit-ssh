@@ -112,9 +112,14 @@ func (a *App) DeleteHost(id string) error {
 	old := a.store.state.Hosts
 	filtered := []Host{}
 	for _, h := range old {
-		if h.ID != id {
-			filtered = append(filtered, h)
+		if h.ID == id {
+			continue
 		}
+		// A deleted host must not leave dangling jump references behind.
+		if h.JumpHostID == id {
+			h.JumpHostID = ""
+		}
+		filtered = append(filtered, h)
 	}
 	a.store.state.Hosts = filtered
 	if err := a.store.persistLocked(); err != nil {
@@ -154,6 +159,9 @@ func (a *App) SavePreferences(p Preferences) error {
 	}
 	if p.MCPPort < 1024 || p.MCPPort > 65535 {
 		return errors.New("MCP 端口范围为 1024–65535")
+	}
+	if p.KeepAliveSeconds < 0 || p.KeepAliveSeconds > 300 {
+		return errors.New("保活间隔范围为 0–300 秒")
 	}
 	normalizeWindowShortcuts(&p.Shortcuts)
 	a.store.mu.Lock()

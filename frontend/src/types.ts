@@ -21,13 +21,50 @@ export interface Host {
   port: number;
   username: string;
   group: string;
-  authType: "password" | "key";
+  authType: "password" | "key" | "agent";
   keyPath: string;
+  jumpHostId?: string;
   color: string;
   favorite: boolean;
   lastConnected: string;
   portForwards?: PortForward[];
   x11?: X11Config;
+}
+export interface SSHConfigEntry {
+  alias: string;
+  name: string;
+  address: string;
+  port: number;
+  username: string;
+  authType: "password" | "key" | "agent";
+  keyPath: string;
+  jumpAlias: string;
+  group: string;
+  imported: boolean;
+}
+export interface SSHConfigImport {
+  path: string;
+  entries: SSHConfigEntry[];
+}
+export interface SSHConfigImportResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  hostIds: string[];
+}
+export interface HostImportResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  hostIds: string[];
+}
+export interface MCPCommandRequest {
+  id: string;
+  sessionId: string;
+  command: string;
+  createdAt?: number;
+  dangerous?: boolean;
+  sessionName?: string;
 }
 export interface ShortcutBinding {
   code: string;
@@ -53,9 +90,11 @@ export interface Preferences {
   closeToTray: boolean;
   terminalHistoryEnabled: boolean;
   terminalHistoryLimit: number;
+  keepAliveSeconds: number;
   mcpEnabled: boolean;
   mcpAllowConnections: boolean;
   mcpAllowTerminalInput: boolean;
+  mcpAllowFileAccess: boolean;
   mcpPort: number;
   shortcuts: WindowShortcuts;
 }
@@ -64,6 +103,7 @@ export interface MCPStatus {
   running: boolean;
   allowInput: boolean;
   allowConnections: boolean;
+  allowFileAccess: boolean;
   endpoint: string;
   token: string;
   error: string;
@@ -84,6 +124,8 @@ export interface Workspace {
 export interface Credentials {
   password: string;
   passphrase: string;
+  jumpPassword?: string;
+  jumpPassphrase?: string;
   rememberKey?: boolean;
   rememberPassword?: boolean;
 }
@@ -94,6 +136,27 @@ export interface DiskMetric {
   used: number;
   available: number;
   usedPercent: number;
+}
+export interface NetworkMetric {
+  interface: string;
+  rxBytes: number;
+  txBytes: number;
+  rxRate: number;
+  txRate: number;
+}
+export interface DiskIOMetric {
+  device: string;
+  readBytes: number;
+  writeBytes: number;
+  readOps: number;
+  writeOps: number;
+  readRate: number;
+  writeRate: number;
+}
+export interface ThermalMetric {
+  zone: string;
+  type: string;
+  celsius: number;
 }
 export interface ProcessMetric {
   pid: number;
@@ -119,6 +182,9 @@ export interface Metrics {
   swapTotal: number;
   swapUsed: number;
   disks: DiskMetric[];
+  networks?: NetworkMetric[];
+  diskIo?: DiskIOMetric[];
+  thermals?: ThermalMetric[];
   processes: ProcessMetric[];
   processTotal: number;
   warnings: string[];

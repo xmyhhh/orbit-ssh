@@ -9,13 +9,14 @@ import (
 )
 
 type mcpCreateHostArgs struct {
-	Name     string `json:"name"`
-	Address  string `json:"address"`
-	Port     *int   `json:"port"`
-	Username string `json:"username"`
-	AuthType string `json:"auth_type"`
-	KeyPath  string `json:"key_path"`
-	Group    string `json:"group"`
+	Name       string `json:"name"`
+	Address    string `json:"address"`
+	Port       *int   `json:"port"`
+	Username   string `json:"username"`
+	AuthType   string `json:"auth_type"`
+	KeyPath    string `json:"key_path"`
+	JumpHostID string `json:"jump_host_id"`
+	Group      string `json:"group"`
 }
 
 type mcpConnectHostArgs struct {
@@ -58,6 +59,7 @@ func (a *App) createMCPHost(args mcpCreateHostArgs) (Host, error) {
 		ID: "mcp-" + rand.Text(), Name: strings.TrimSpace(args.Name), Address: strings.TrimSpace(args.Address),
 		Port: 22, Username: strings.TrimSpace(args.Username), AuthType: args.AuthType,
 		KeyPath: strings.TrimSpace(args.KeyPath), Group: strings.TrimSpace(args.Group), Color: "mint",
+		JumpHostID: strings.TrimSpace(args.JumpHostID),
 	}
 	if args.Port != nil {
 		host.Port = *args.Port

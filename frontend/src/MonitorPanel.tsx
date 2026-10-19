@@ -10,6 +10,8 @@ import {
   Play,
   RefreshCw,
   Search,
+  Thermometer,
+  Wifi,
   X,
 } from "lucide-react";
 import { backend, errorText } from "./bridge";
@@ -32,6 +34,9 @@ function duration(seconds: number) {
     : hours
       ? `${hours} 时 ${minutes} 分`
       : `${minutes} 分`;
+}
+export function rate(value: number) {
+  return `${bytes(value)}/s`;
 }
 function Sparkline({
   values,
@@ -144,6 +149,27 @@ function demoMetrics(): Metrics {
         usedPercent: 39,
       },
     ],
+    networks: [
+      {
+        interface: "eth0",
+        rxBytes: 12.4 * 1024 ** 3,
+        txBytes: 3.1 * 1024 ** 3,
+        rxRate: (1.8 + wave * 0.6) * 1024 ** 2,
+        txRate: (420 + wave * 120) * 1024,
+      },
+    ],
+    diskIo: [
+      {
+        device: "vda",
+        readBytes: 9.2 * 1024 ** 3,
+        writeBytes: 4.6 * 1024 ** 3,
+        readOps: 184320,
+        writeOps: 92160,
+        readRate: (2.4 + wave) * 1024 ** 2,
+        writeRate: (860 + wave * 300) * 1024,
+      },
+    ],
+    thermals: [{ zone: "thermal_zone0", type: "x86_pkg_temp", celsius: 47 + wave * 4 }],
     processes,
     processTotal: 5,
     warnings: [],
@@ -186,6 +212,9 @@ export default function MonitorPanel({
   const [sort, setSort] = useState<"cpu" | "memory" | "pid">("cpu");
   const [limit, setLimit] = useState(50);
   const [selected, setSelected] = useState<number | null>(null);
+  const [signal, setSignal] = useState("TERM");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const inFlight = useRef<Promise<Metrics> | null>(null);
   const manual = useRef(0);
   useEffect(() => {
@@ -267,6 +296,27 @@ export default function MonitorPanel({
       );
   }, [metrics, query, sort]);
   const detail = metrics?.processes.find((p) => p.pid === selected);
+  async function sendSignal(process: ProcessMetric) {
+    const label = process.command.split(" ")[0].split("/").pop();
+    const warning =
+      signal === "KILL"
+        ? `强制结束进程 ${label}（PID ${process.pid}）？未保存的数据会丢失。`
+        : signal === "STOP"
+          ? `暂停进程 ${label}（PID ${process.pid}）？`
+          : `向进程 ${label}（PID ${process.pid}）发送 SIG${signal}？`;
+    if (!window.confirm(warning)) return;
+    setActionBusy(true);
+    setNotice("");
+    try {
+      await backend().KillProcess(session.id, process.pid, signal);
+      setNotice(`已向 PID ${process.pid} 发送 SIG${signal}`);
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setNotice(errorText(e));
+    } finally {
+      setActionBusy(false);
+    }
+  }
   const memoryPercent = metrics
     ? (metrics.memoryUsed / metrics.memoryTotal) * 100
     : 0;
@@ -491,6 +541,71 @@ export default function MonitorPanel({
                   </div>
                 ))}
               </section>
+              {!!metrics.networks?.length && (
+                <section className="monitor-disks">
+                  <h3>
+                    <Wifi size={16} />
+                    网络 <span>{metrics.networks.length}</span>
+                  </h3>
+                  {metrics.networks.map((n) => (
+                    <div className="monitor-io" key={n.interface}>
+                      <div>
+                        <strong title={n.interface}>{n.interface}</strong>
+                        <span>
+                          累计 ↓{bytes(n.rxBytes)} ↑{bytes(n.txBytes)}
+                        </span>
+                      </div>
+                      <small>
+                        <span>下载 {rate(n.rxRate)}</span>
+                        <span>上传 {rate(n.txRate)}</span>
+                      </small>
+                    </div>
+                  ))}
+                </section>
+              )}
+              {!!metrics.diskIo?.length && (
+                <section className="monitor-disks">
+                  <h3>
+                    <Activity size={16} />
+                    磁盘 I/O <span>{metrics.diskIo.length}</span>
+                  </h3>
+                  {metrics.diskIo.map((d) => (
+                    <div className="monitor-io" key={d.device}>
+                      <div>
+                        <strong title={d.device}>{d.device}</strong>
+                        <span>
+                          {d.readOps + d.writeOps} 次操作
+                        </span>
+                      </div>
+                      <small>
+                        <span>读取 {rate(d.readRate)}</span>
+                        <span>写入 {rate(d.writeRate)}</span>
+                      </small>
+                    </div>
+                  ))}
+                </section>
+              )}
+              {!!metrics.thermals?.length && (
+                <section className="monitor-disks">
+                  <h3>
+                    <Thermometer size={16} />
+                    温度 <span>{metrics.thermals.length}</span>
+                  </h3>
+                  <div className="monitor-thermal-grid">
+                    {metrics.thermals.map((t) => (
+                      <div
+                        className={`monitor-thermal ${t.celsius >= 85 ? "high" : ""}`}
+                        key={`${t.zone}:${t.type}`}
+                      >
+                        <strong>{t.celsius.toFixed(1)}°C</strong>
+                        <span title={t.type || t.zone}>
+                          {t.type || t.zone}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               <button
                 className="monitor-process-link"
                 onClick={() => setTab("processes")}
@@ -604,7 +719,40 @@ export default function MonitorPanel({
                     运行 {duration(detail.elapsed)} · {detail.user} ·{" "}
                     {detail.state}
                   </small>
+                  <div className="process-actions">
+                    <select
+                      aria-label="发送信号"
+                      value={signal}
+                      disabled={actionBusy || session.demo}
+                      onChange={(e) => setSignal(e.target.value)}
+                    >
+                      <option value="TERM">SIGTERM · 正常结束</option>
+                      <option value="KILL">SIGKILL · 强制结束</option>
+                      <option value="HUP">SIGHUP · 重载配置</option>
+                      <option value="INT">SIGINT · 中断</option>
+                      <option value="QUIT">SIGQUIT · 退出并转储</option>
+                      <option value="STOP">SIGSTOP · 暂停</option>
+                      <option value="CONT">SIGCONT · 继续</option>
+                      <option value="USR1">SIGUSR1</option>
+                      <option value="USR2">SIGUSR2</option>
+                    </select>
+                    <button
+                      className={`button compact ${signal === "KILL" ? "danger" : "secondary"}`}
+                      disabled={actionBusy || session.demo}
+                      onClick={() => void sendSignal(detail)}
+                    >
+                      发送信号
+                    </button>
+                  </div>
+                  {session.demo && (
+                    <small>演示会话不会真正发送信号。</small>
+                  )}
                 </section>
+              )}
+              {notice && (
+                <p className="monitor-alert" role="status">
+                  {notice}
+                </p>
               )}
               <p className="monitor-footnote">
                 CPU 为 ps 报告的进程生命周期平均值。最多读取 CPU 排名前 500

@@ -1,4 +1,4 @@
-import { Plus, Search, Server, X } from "lucide-react";
+import { Download, Plus, Search, Server, Upload, X } from "lucide-react";
 import type { Host, Preferences, Session } from "./types";
 import LayoutSwitch from "./LayoutSwitch";
 import HostCard from "./HostCard";
@@ -22,6 +22,9 @@ export default function HostsPage({
   onDelete,
   onFavorite,
   onShowAll,
+  onImportSSHConfig,
+  onExport,
+  onImport,
 }: {
   hosts: Host[];
   sessions: Session[];
@@ -39,6 +42,9 @@ export default function HostsPage({
   onDelete: (host: Host) => void;
   onFavorite: (host: Host) => void;
   onShowAll: () => void;
+  onImportSSHConfig: () => void;
+  onExport: () => void;
+  onImport: () => void;
 }) {
   let filtered = hosts.filter(
     (h) =>
@@ -60,10 +66,36 @@ export default function HostsPage({
             <h1>{title}</h1>
             <span className="subtle-count">{hosts.length}</span>
           </div>
-          <button className="button primary" onClick={onNew}>
-            <Plus size={16} />
-            新建连接
-          </button>
+          <div className="hosts-heading-actions">
+            <button
+              className="button secondary compact"
+              onClick={onImportSSHConfig}
+              title="读取 ~/.ssh/config 并导入主机"
+            >
+              <Download size={15} />
+              导入 SSH 配置
+            </button>
+            <button
+              className="button secondary compact"
+              onClick={onExport}
+              title="导出主机配置为 JSON（不含密码和密钥）"
+            >
+              <Upload size={15} />
+              导出
+            </button>
+            <button
+              className="button secondary compact"
+              onClick={onImport}
+              title="从 JSON 文件导入主机"
+            >
+              <Download size={15} />
+              导入
+            </button>
+            <button className="button primary" onClick={onNew}>
+              <Plus size={16} />
+              新建连接
+            </button>
+          </div>
         </div>
         <div className="host-filters">
           <div className="filter-buttons">

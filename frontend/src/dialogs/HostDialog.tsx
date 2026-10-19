@@ -6,6 +6,7 @@ import {
   FileKey2,
   FolderOpen,
   LockKeyhole,
+  Network,
 } from "lucide-react";
 import type { Host } from "../types";
 import { backend, errorText, isDesktop } from "../bridge";
@@ -24,12 +25,14 @@ export function HostDialog({
   host,
   isNew = false,
   groups,
+  hosts = [],
   onSave,
   onClose,
 }: {
   host?: Host;
   isNew?: boolean;
   groups: string[];
+  hosts?: Host[];
   onSave: (host: Host) => Promise<void>;
   onClose: () => void;
 }) {
@@ -239,6 +242,15 @@ export function HostDialog({
               <FileKey2 size={16} />
               私钥登录{form.authType === "key" && <Check size={15} />}
             </button>
+            <button
+              type="button"
+              aria-pressed={form.authType === "agent"}
+              className={form.authType === "agent" ? "selected" : ""}
+              onClick={() => field("authType", "agent")}
+            >
+              <Network size={16} />
+              SSH Agent{form.authType === "agent" && <Check size={15} />}
+            </button>
           </fieldset>
           {form.authType === "key" && (
             <label className="field">
@@ -267,8 +279,49 @@ export function HostDialog({
                   <FolderOpen size={18} />
                 </button>
               </div>
+              {isDesktop() && (
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    void backend()
+                      .GenerateKeyPair(
+                        `${form.name || "orbit"}-ed25519`.replace(/\s+/g, "-"),
+                      )
+                      .then(([privatePath]) => {
+                        field("keyPath", privatePath);
+                        setCredentialNotice(
+                          "已生成 Ed25519 密钥，公钥保存在同名 .pub 文件。",
+                        );
+                      })
+                      .catch((e) => setError(errorText(e)));
+                  }}
+                >
+                  生成新的 Ed25519 密钥
+                </button>
+              )}
             </label>
           )}
+          <label className="field">
+            跳板机（ProxyJump，可选）
+            <select
+              value={form.jumpHostId ?? ""}
+              onChange={(e) => field("jumpHostId", e.target.value)}
+            >
+              <option value="">直连目标主机</option>
+              {hosts
+                .filter((item) => item.id !== form.id)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}（{item.username}@{item.address}）
+                  </option>
+                ))}
+            </select>
+            <span className="field-hint">
+              通过另一台已保存主机转发连接；跳板机需已信任其服务器指纹。
+            </span>
+          </label>
           <div className="color-field">
             <span>主机颜色</span>
             <div>

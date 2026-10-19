@@ -12,6 +12,7 @@ import {
   Server,
   Settings2,
   TerminalSquare,
+  Workflow,
 } from "lucide-react";
 import type { Host } from "./types";
 import type { Page } from "./navigation";
@@ -133,6 +134,15 @@ export default function AppSidebar({
           <History size={18} />
           <span>终端历史</span>
           <span className="count">{historyCount}</span>
+        </button>
+        <button
+          className={page === "workflows" && active === "home" ? "active" : ""}
+          onClick={() => navigate("workflows")}
+          title="工作流"
+          aria-label="工作流"
+        >
+          <Workflow size={18} />
+          <span>工作流</span>
         </button>
       </nav>
       <div className="group-heading">

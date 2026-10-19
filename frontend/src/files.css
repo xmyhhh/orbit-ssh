@@ -190,6 +190,16 @@
   width: 28px;
   height: 30px;
 }
+.browser-prompt-label {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: 5px;
+}
 .browser-error {
   display: flex;
   gap: 7px;
@@ -644,4 +654,12 @@
 .file-context-menu > button:focus-visible {
   background: var(--accent-soft);
   color: var(--accent-text);
+}
+.file-context-menu > button.danger {
+  color: var(--danger);
+}
+.file-context-menu > button.danger:hover,
+.file-context-menu > button.danger:focus-visible {
+  background: var(--danger-bg);
+  color: var(--danger);
 }

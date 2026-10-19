@@ -58,6 +58,12 @@ export default function FileBrowser({
   const [sort, setSort] = useState<"name" | "size" | "modified">("name");
   const [folderName, setFolderName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [prompt, setPrompt] = useState<{
+    kind: "rename" | "move" | "chmod" | "delete";
+    file: RemoteFile;
+    value: string;
+  } | null>(null);
+  const [promptBusy, setPromptBusy] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [contextMenu, setContextMenu] = useState<{
     file: RemoteFile;
@@ -160,6 +166,44 @@ export default function FileBrowser({
       setError(errorText(e));
     } finally {
       setCreating(false);
+    }
+  }
+  async function submitPrompt() {
+    if (!prompt) return;
+    setPromptBusy(true);
+    try {
+      if (prompt.kind === "rename") {
+        await backend().RenameRemote(
+          session.id,
+          directory.path,
+          prompt.file.name,
+          prompt.value.trim(),
+        );
+      } else if (prompt.kind === "move") {
+        await backend().MoveRemote(
+          session.id,
+          child(directory.path, prompt.file.name, side),
+          prompt.value.trim(),
+        );
+      } else if (prompt.kind === "chmod") {
+        await backend().ChmodRemote(
+          session.id,
+          child(directory.path, prompt.file.name, side),
+          prompt.value.trim(),
+        );
+      } else {
+        await backend().RemoveRemote(
+          session.id,
+          child(directory.path, prompt.file.name, side),
+        );
+      }
+      setPrompt(null);
+      setSelected([]);
+      await load(directory.path);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setPromptBusy(false);
     }
   }
   const start = Math.max(0, Math.floor((scrollTop - 32) / 36) - 8);
@@ -325,6 +369,67 @@ export default function FileBrowser({
             aria-label="取消新建文件夹"
             onClick={() => setFolderName(null)}
             disabled={creating}
+          >
+            <X size={16} />
+          </button>
+        </form>
+      )}
+      {prompt && (
+        <form
+          className="browser-new-folder"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitPrompt();
+          }}
+        >
+          {prompt.kind === "delete" ? (
+            <span className="browser-prompt-label">
+              删除“{prompt.file.name}”？
+              {prompt.file.isDir && "（仅空文件夹可删除）"}
+            </span>
+          ) : (
+            <input
+              aria-label={
+                prompt.kind === "rename"
+                  ? "新名称"
+                  : prompt.kind === "move"
+                    ? "目标目录绝对路径"
+                    : "八进制权限，例如 644"
+              }
+              autoFocus
+              required
+              maxLength={255}
+              placeholder={
+                prompt.kind === "move" ? "/home/user/target" : undefined
+              }
+              value={prompt.value}
+              onChange={(e) =>
+                setPrompt({ ...prompt, value: e.target.value })
+              }
+              disabled={promptBusy}
+            />
+          )}
+          <button
+            className="icon-button"
+            title="确认"
+            aria-label="确认"
+            disabled={
+              promptBusy ||
+              (prompt.kind !== "delete" && !prompt.value.trim())
+            }
+          >
+            {promptBusy ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <Check size={16} />
+            )}
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="取消"
+            onClick={() => setPrompt(null)}
+            disabled={promptBusy}
           >
             <X size={16} />
           </button>
@@ -558,6 +663,34 @@ export default function FileBrowser({
           x={contextMenu.x}
           y={contextMenu.y}
           onOpen={() => open(contextMenu.file)}
+          onRename={() =>
+            setPrompt({
+              kind: "rename",
+              file: contextMenu.file,
+              value: contextMenu.file.name,
+            })
+          }
+          onMove={() =>
+            setPrompt({
+              kind: "move",
+              file: contextMenu.file,
+              value: "",
+            })
+          }
+          onChmod={() =>
+            setPrompt({
+              kind: "chmod",
+              file: contextMenu.file,
+              value: contextMenu.file.isDir ? "755" : "644",
+            })
+          }
+          onDelete={() =>
+            setPrompt({
+              kind: "delete",
+              file: contextMenu.file,
+              value: "",
+            })
+          }
           onClose={(restoreFocus) => {
             if (restoreFocus)
               contextMenu.trigger?.focus({ preventScroll: true });

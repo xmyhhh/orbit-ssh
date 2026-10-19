@@ -1,12 +1,13 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
-export type Page = "hosts" | "local" | "wsl" | "history";
+export type Page = "hosts" | "local" | "wsl" | "history" | "workflows";
 
 export const pageNames: Record<Page, string> = {
   hosts: "远程主机",
   local: "本地 Shell",
   wsl: "WSL",
   history: "终端历史",
+  workflows: "工作流",
 };
 
 export function moveTabFocus(e: ReactKeyboardEvent<HTMLDivElement>) {

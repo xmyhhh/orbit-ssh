@@ -19,6 +19,9 @@ printf '__ORBIT_META__\n'; hostname; uname -sr; cat /proc/uptime; cat /proc/load
 printf '__ORBIT_CPU__\n'; cat /proc/stat
 printf '__ORBIT_MEMORY__\n'; cat /proc/meminfo
 printf '__ORBIT_DISKS__\n'; df -Pk -x tmpfs -x devtmpfs -x squashfs 2>/dev/null || df -Pk
+printf '__ORBIT_NETWORK__\n'; cat /proc/net/dev
+printf '__ORBIT_DISKIO__\n'; cat /proc/diskstats
+printf '__ORBIT_THERMAL__\n'; for z in /sys/class/thermal/thermal_zone*/temp; do [ -r "$z" ] || continue; t=$(cat "$z" 2>/dev/null) || continue; n=${z%/temp}; n=${n##*/}; type=$(cat "${z%temp}type" 2>/dev/null); printf '%s %s %s\n' "$n" "$t" "$type"; done
 printf '__ORBIT_PROCESSES__\n'; ps -eo pid=,user=,stat=,pcpu=,pmem=,rss=,etimes=,args= --sort=-pcpu 2>/dev/null | head -n 500
 `
 
@@ -29,6 +32,28 @@ type DiskMetric struct {
 	Used        uint64  `json:"used"`
 	Available   uint64  `json:"available"`
 	UsedPercent float64 `json:"usedPercent"`
+}
+type NetworkMetric struct {
+	Interface string  `json:"interface"`
+	RxBytes   uint64  `json:"rxBytes"`
+	TxBytes   uint64  `json:"txBytes"`
+	RxRate    float64 `json:"rxRate"`
+	TxRate    float64 `json:"txRate"`
+}
+type DiskIOMetric struct {
+	Device      string  `json:"device"`
+	ReadBytes   uint64  `json:"readBytes"`
+	WriteBytes  uint64  `json:"writeBytes"`
+	ReadOps     uint64  `json:"readOps"`
+	WriteOps    uint64  `json:"writeOps"`
+	ReadRate    float64 `json:"readRate"`
+	WriteRate   float64 `json:"writeRate"`
+	BusyPercent float64 `json:"busyPercent,omitempty"`
+}
+type ThermalMetric struct {
+	Zone    string  `json:"zone"`
+	Type    string  `json:"type"`
+	Celsius float64 `json:"celsius"`
 }
 type ProcessMetric struct {
 	PID           int     `json:"pid"`
@@ -54,6 +79,9 @@ type Metrics struct {
 	SwapTotal       uint64          `json:"swapTotal"`
 	SwapUsed        uint64          `json:"swapUsed"`
 	Disks           []DiskMetric    `json:"disks"`
+	Networks        []NetworkMetric `json:"networks,omitempty"`
+	DiskIO          []DiskIOMetric  `json:"diskIo,omitempty"`
+	Thermals        []ThermalMetric `json:"thermals,omitempty"`
 	Processes       []ProcessMetric `json:"processes"`
 	ProcessTotal    int             `json:"processTotal"`
 	Warnings        []string        `json:"warnings"`
@@ -62,6 +90,10 @@ type cpuSample struct {
 	total uint64
 	idle  uint64
 	at    time.Time
+}
+type netSample struct {
+	rx uint64
+	tx uint64
 }
 type boundedBuffer struct {
 	buffer bytes.Buffer
@@ -152,6 +184,51 @@ func (a *App) Monitor(id string) (Metrics, error) {
 		metrics.CPUPercent = &value
 	}
 	s.previousCPU = &sample
+	now := time.Now()
+	if s.previousNet != nil && !s.previousNetAt.IsZero() {
+		seconds := now.Sub(s.previousNetAt).Seconds()
+		if seconds > 0 {
+			for i := range metrics.Networks {
+				previous, ok := s.previousNet[metrics.Networks[i].Interface]
+				if !ok {
+					continue
+				}
+				if metrics.Networks[i].RxBytes >= previous.rx {
+					metrics.Networks[i].RxRate = float64(metrics.Networks[i].RxBytes-previous.rx) / seconds
+				}
+				if metrics.Networks[i].TxBytes >= previous.tx {
+					metrics.Networks[i].TxRate = float64(metrics.Networks[i].TxBytes-previous.tx) / seconds
+				}
+			}
+		}
+	}
+	s.previousNet = map[string]netSample{}
+	for _, network := range metrics.Networks {
+		s.previousNet[network.Interface] = netSample{rx: network.RxBytes, tx: network.TxBytes}
+	}
+	s.previousNetAt = now
+	if s.previousDiskIO != nil && !s.previousDiskAt.IsZero() {
+		seconds := now.Sub(s.previousDiskAt).Seconds()
+		if seconds > 0 {
+			for i := range metrics.DiskIO {
+				previous, ok := s.previousDiskIO[metrics.DiskIO[i].Device]
+				if !ok {
+					continue
+				}
+				if metrics.DiskIO[i].ReadBytes >= previous.rx {
+					metrics.DiskIO[i].ReadRate = float64(metrics.DiskIO[i].ReadBytes-previous.rx) / seconds
+				}
+				if metrics.DiskIO[i].WriteBytes >= previous.tx {
+					metrics.DiskIO[i].WriteRate = float64(metrics.DiskIO[i].WriteBytes-previous.tx) / seconds
+				}
+			}
+		}
+	}
+	s.previousDiskIO = map[string]netSample{}
+	for _, disk := range metrics.DiskIO {
+		s.previousDiskIO[disk.Device] = netSample{rx: disk.ReadBytes, tx: disk.WriteBytes}
+	}
+	s.previousDiskAt = now
 	return metrics, nil
 }
 
@@ -167,7 +244,7 @@ func parseMetrics(output string) (Metrics, cpuSample, error) {
 			sections[section] = append(sections[section], line)
 		}
 	}
-	m := Metrics{SampledAt: time.Now().UnixMilli(), Load: []float64{}, Disks: []DiskMetric{}, Processes: []ProcessMetric{}, Warnings: []string{}}
+	m := Metrics{SampledAt: time.Now().UnixMilli(), Load: []float64{}, Disks: []DiskMetric{}, Networks: []NetworkMetric{}, DiskIO: []DiskIOMetric{}, Thermals: []ThermalMetric{}, Processes: []ProcessMetric{}, Warnings: []string{}}
 	meta := sections["META"]
 	if len(meta) < 4 {
 		return m, cpuSample{}, errors.New("监控数据不完整，无法读取系统信息")
@@ -246,6 +323,56 @@ func parseMetrics(output string) (Metrics, cpuSample, error) {
 		}
 		m.Disks = append(m.Disks, DiskMetric{Filesystem: fields[0], Mount: strings.Join(fields[5:], " "), Total: total * 1024, Used: used * 1024, Available: avail * 1024, UsedPercent: math.Max(0, math.Min(100, number(strings.TrimSuffix(fields[4], "%"))))})
 	}
+	for _, line := range sections["NETWORK"] {
+		fields := strings.Fields(strings.ReplaceAll(line, ":", " "))
+		if len(fields) < 10 || fields[0] == "Inter" || fields[0] == "face" {
+			continue
+		}
+		rx, errRx := strconv.ParseUint(fields[1], 10, 64)
+		tx, errTx := strconv.ParseUint(fields[9], 10, 64)
+		if errRx != nil || errTx != nil {
+			continue
+		}
+		m.Networks = append(m.Networks, NetworkMetric{Interface: fields[0], RxBytes: rx, TxBytes: tx})
+	}
+	for _, line := range sections["DISKIO"] {
+		f := strings.Fields(line)
+		if len(f) < 14 {
+			continue
+		}
+		device := f[2]
+		if strings.HasPrefix(device, "loop") || strings.HasPrefix(device, "ram") || strings.HasPrefix(device, "dm-") {
+			continue
+		}
+		// Sectors are 512 bytes for the counters used by Linux.
+		readSectors, _ := strconv.ParseUint(f[5], 10, 64)
+		writeSectors, _ := strconv.ParseUint(f[9], 10, 64)
+		readOps, _ := strconv.ParseUint(f[3], 10, 64)
+		writeOps, _ := strconv.ParseUint(f[7], 10, 64)
+		m.DiskIO = append(m.DiskIO, DiskIOMetric{Device: device, ReadBytes: readSectors * 512, WriteBytes: writeSectors * 512, ReadOps: readOps, WriteOps: writeOps})
+	}
+	for _, line := range sections["THERMAL"] {
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		raw, err := strconv.ParseFloat(f[1], 64)
+		if err != nil {
+			continue
+		}
+		// Values are millidegrees on most systems, degrees on a few.
+		if raw > 1000 {
+			raw /= 1000
+		}
+		if raw <= 0 || raw > 200 {
+			continue
+		}
+		label := ""
+		if len(f) > 2 {
+			label = strings.Join(f[2:], " ")
+		}
+		m.Thermals = append(m.Thermals, ThermalMetric{Zone: f[0], Type: label, Celsius: raw})
+	}
 	for _, line := range sections["PROCESSES"] {
 		f := strings.Fields(line)
 		if len(f) < 8 {
@@ -277,4 +404,53 @@ func number(value string) float64 {
 		return 0
 	}
 	return n
+}
+
+var allowedSignals = map[string]bool{
+	"TERM": true, "KILL": true, "HUP": true, "INT": true, "QUIT": true, "STOP": true, "CONT": true, "USR1": true, "USR2": true,
+}
+
+// KillProcess sends a signal to one process over a separate exec channel. It is
+// deliberately limited to a small signal set and a positive PID; the caller is
+// responsible for confirming the action with the user.
+func (a *App) KillProcess(id string, pid int, signal string) error {
+	if pid < 1 || pid > 4194304 {
+		return errors.New("无效的进程 ID")
+	}
+	signal = strings.ToUpper(strings.TrimSpace(signal))
+	if signal == "" {
+		signal = "TERM"
+	}
+	if !allowedSignals[signal] {
+		return errors.New("不支持该信号")
+	}
+	s, err := a.session(id)
+	if err != nil {
+		return err
+	}
+	channel, err := s.client.NewSession()
+	if err != nil {
+		return fmt.Errorf("无法创建进程操作通道：%w", err)
+	}
+	defer channel.Close()
+	output := &boundedBuffer{limit: 4096}
+	channel.Stdout = output
+	channel.Stderr = output
+	done := make(chan error, 1)
+	go func() { done <- channel.Run(fmt.Sprintf("kill -%s %d", signal, pid)) }()
+	select {
+	case <-s.done:
+		return errors.New("连接已断开")
+	case <-time.After(10 * time.Second):
+		return errors.New("进程操作超时")
+	case err = <-done:
+	}
+	if err != nil {
+		message := strings.TrimSpace(output.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("无法向进程 %d 发送 SIG%s：%s", pid, signal, message)
+	}
+	return nil
 }

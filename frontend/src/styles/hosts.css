@@ -51,6 +51,17 @@
   font-size: 12px;
   padding: 0 12px;
 }
+.hosts-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hosts-heading-actions .button {
+  height: 33px;
+  font-size: 12px;
+  padding: 0 12px;
+}
 .host-controls {
   display: flex;
   align-items: center;

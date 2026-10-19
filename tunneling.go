@@ -109,13 +109,28 @@ func validateTunneling(rules []PortForward, x11 X11Config) error {
 // listener alive when its first terminal closes and avoids binding it again
 // for every terminal. The final terminal releases the forwarding transport.
 type hostForwarding struct {
-	ready   chan struct{}
-	refs    int // guarded by App.forwardMu
-	host    Host
-	rules   []PortForward
-	client  *ssh.Client
-	runtime *forwardingRuntime
-	err     error // published by closing ready
+	ready            chan struct{}
+	refs             int // guarded by App.forwardMu
+	host             Host
+	rules            []PortForward
+	client           *ssh.Client
+	releaseTransport func()
+	closeOnce        sync.Once
+	runtime          *forwardingRuntime
+	err              error // published by closing ready
+}
+
+// closeTransport closes the forwarding connection and any jump host hops it
+// used. It is safe to call more than once and from concurrent goroutines.
+func (g *hostForwarding) closeTransport() {
+	g.closeOnce.Do(func() {
+		if g.client != nil {
+			g.client.Close()
+		}
+		if g.releaseTransport != nil {
+			g.releaseTransport()
+		}
+	})
 }
 
 type forwardingRuntime struct {
@@ -192,7 +207,7 @@ func (a *App) forwardingNotice(host Host) func(string) {
 	}
 }
 
-func (a *App) acquireForwarding(ctx context.Context, host Host, config *ssh.ClientConfig) (*hostForwarding, error) {
+func (a *App) acquireForwarding(ctx context.Context, host Host, dial func(context.Context) (*ssh.Client, func(), error)) (*hostForwarding, error) {
 	rules := []PortForward{}
 	for _, rule := range host.PortForwards {
 		if rule.Enabled {
@@ -239,7 +254,7 @@ func (a *App) acquireForwarding(ctx context.Context, host Host, config *ssh.Clie
 	group.refs++
 	a.forwardMu.Unlock()
 	if creator {
-		group.err = group.start(ctx, config, a.forwardingNotice(host))
+		group.err = group.start(ctx, dial, a.forwardingNotice(host))
 		close(group.ready)
 	}
 	select {
@@ -272,11 +287,9 @@ func (a *App) releaseForwarding(group *hostForwarding) {
 		if group.runtime != nil {
 			group.runtime.cancel()
 		}
-		if group.client != nil {
-			// Close the transport before remote listeners, whose Close sends a
-			// global request and must not wait on an unresponsive SSH server.
-			group.client.Close()
-		}
+		// Close the transport before remote listeners, whose Close sends a
+		// global request and must not wait on an unresponsive SSH server.
+		group.closeTransport()
 		if group.runtime != nil {
 			group.runtime.close()
 		}
@@ -284,22 +297,18 @@ func (a *App) releaseForwarding(group *hostForwarding) {
 	}
 }
 
-func (g *hostForwarding) start(ctx context.Context, config *ssh.ClientConfig, notice func(string)) error {
-	address := net.JoinHostPort(g.host.Address, strconv.Itoa(g.host.Port))
-	raw, err := dialSSH(ctx, address)
+func (g *hostForwarding) start(ctx context.Context, dial func(context.Context) (*ssh.Client, func(), error), notice func(string)) error {
+	client, releaseTransport, err := dial(ctx)
 	if err != nil {
 		return fmt.Errorf("无法建立端口转发连接：%w", err)
 	}
-	stop := context.AfterFunc(ctx, func() { raw.Close() })
-	defer stop()
-	_ = raw.SetDeadline(time.Now().Add(20 * time.Second))
-	conn, chans, reqs, err := ssh.NewClientConn(raw, address, config)
-	if err != nil {
-		raw.Close()
-		return fmt.Errorf("端口转发 SSH 握手失败：%w", err)
-	}
-	g.client = ssh.NewClient(conn, chans, reqs)
+	g.client = client
+	g.releaseTransport = releaseTransport
 	g.runtime = newForwardingRuntime(notice)
+	// Cancelling the connection attempt must also release a Listen that is
+	// waiting for a server reply, including connections through a jump host.
+	stop := context.AfterFunc(ctx, func() { g.closeTransport() })
+	defer stop()
 	for _, rule := range g.rules {
 		bind := net.JoinHostPort(forwardBindAddress(rule), strconv.Itoa(rule.BindPort))
 		var listener net.Listener
@@ -310,19 +319,19 @@ func (g *hostForwarding) start(ctx context.Context, config *ssh.ClientConfig, no
 		}
 		if err != nil {
 			g.runtime.cancel()
-			g.client.Close()
+			g.closeTransport()
 			g.runtime.close()
 			return fmt.Errorf("无法启动%s转发 %s（请检查端口占用和 SSH 转发权限）：%w", forwardTypeName(rule.Type), bind, err)
 		}
 		g.runtime.listeners = append(g.runtime.listeners, listener)
 	}
-	if !stop() || ctx.Err() != nil {
+	if ctx.Err() != nil {
 		g.runtime.cancel()
-		g.client.Close()
+		g.closeTransport()
 		g.runtime.close()
 		return errors.New("端口转发连接已取消")
 	}
-	_ = raw.SetDeadline(time.Time{})
+	stop()
 	for i, listener := range g.runtime.listeners {
 		go g.runtime.serve(listener, g.client, g.rules[i])
 	}

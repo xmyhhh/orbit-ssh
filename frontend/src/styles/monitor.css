@@ -232,6 +232,72 @@
   color: var(--muted);
   font-size: 10px;
 }
+.monitor-io {
+  margin-bottom: 16px;
+}
+.monitor-io > div,
+.monitor-io small {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+.monitor-io > div > span,
+.monitor-io small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.monitor-io strong {
+  font-weight: 500;
+}
+.monitor-thermal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.monitor-thermal {
+  padding: 9px 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.monitor-thermal strong {
+  display: block;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+}
+.monitor-thermal span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.monitor-thermal.high strong {
+  color: var(--danger);
+}
+.process-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.process-actions select {
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 8px;
+}
 .monitor-process-link {
   display: flex;
   width: 100%;
