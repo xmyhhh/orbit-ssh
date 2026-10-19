@@ -1,10 +1,14 @@
-# Android 本地构建与安装
+# Android 下载、安装与构建
 
 Android 版复用桌面版的 Go SSH / SFTP、主机指纹校验、监控、文件编辑和 React 界面。Android 原生宿主提供 WebView、文件选择器、剪贴板和 Android Keystore。支持 **Android 9（API 28）及以上的 ARM64 手机 / 平板**；界面需要支持现代 JavaScript 的 Android System WebView。
 
+## 下载与安装
+
+从 [v2.0 发布页](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) 下载 [OrbitSSH-v2.0-android-arm64.apk](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)。将 APK 传到手机后打开，按系统提示允许当前文件管理器安装应用。相同签名的 APK 可以覆盖安装并保留数据；如果旧版本来自你自己的构建，需要沿用原签名重新构建。
+
 ## 生成 APK
 
-Windows 构建需要 Go 1.24+、Node.js 20+、JDK 17 / 21、Android SDK Platform 35 和 Android SDK Build-Tools 35+。默认使用 Android Studio 自带 JDK 和 `%LOCALAPPDATA%\Android\Sdk`，也支持 `ANDROID_SDK_ROOT` / `ANDROID_HOME`。不需要 Gradle 或 NDK。
+Windows 构建需要 Go 1.24+、Node.js 22.18+、JDK 17 / 21、Android SDK Platform 35 和 Android SDK Build-Tools 35+。默认使用 Android Studio 自带 JDK 和 `%LOCALAPPDATA%\Android\Sdk`，也支持 `ANDROID_SDK_ROOT` / `ANDROID_HOME`。不需要 Gradle 或 NDK。
 
 在仓库根目录运行：
 
@@ -18,14 +22,14 @@ Windows 构建需要 Go 1.24+、Node.js 20+、JDK 17 / 21、Android SDK Platform
 .\android\build.ps1 -SdkPath "$env:LOCALAPPDATA\Android\Sdk" -JdkPath "C:\Program Files\Android\openjdk\jdk-21.0.8"
 ```
 
-产物为 `build/bin/OrbitSSH-v1.0.3-android-arm64.apk`（文件名跟随 AndroidManifest 中的版本号）。构建脚本编译前端、Go ARM64 PIE 可执行文件、Java 与 DEX，打包并执行 APK 签名、16 KB 对齐和本地界面资源完整性校验。SDK 工具和 JDK 的路径可以含空格。
+产物为 `build/bin/OrbitSSH-v2.0-android-arm64.apk`（文件名跟随 AndroidManifest 中的版本号），同时生成 `.sha256` 校验文件。构建脚本编译前端、Go ARM64 PIE 可执行文件、Java 与 DEX，打包并执行 APK 签名、16 KB 对齐和本地界面资源完整性校验。SDK 工具和 JDK 的路径可以含空格。
 
 APK 使用本机生成的 `android/orbit-local.keystore` 签名，适合直接安装测试。该文件不会提交到 Git；保留它才能用后续本机构建覆盖安装并保留配置。这不是应用商店发布包。
 
 把 APK 传到手机后打开，按系统提示允许当前文件管理器安装应用。也可以在开启 USB 调试并连接设备后运行：
 
 ```powershell
-& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r .\build\bin\OrbitSSH-v1.0.3-android-arm64.apk
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r .\build\bin\OrbitSSH-v2.0-android-arm64.apk
 ```
 
 ## 手机上使用
@@ -38,10 +42,13 @@ APK 使用本机生成的 `android/orbit-local.keystore` 签名，适合直接�
 - 终端底部提供 Esc、Tab、Ctrl、方向键、中断和粘贴。Ctrl 按一次后对下一个输入字符生效；「中断」直接发送 Ctrl+C。「键盘」按钮可打开软键盘，支持外接键盘。
 - 长按终端文字选择单词，按住拖动可扩展选择范围；松手后显示安卓原生浮动菜单，提供复制、粘贴和全选。粘贴多行命令仍需确认。
 - 双指张开或收拢调整终端字号（11–22 px），松手后保存；单指仍用于滚动输出。键盘弹出时由原生宿主统一调整可用高度，顶部导航保持原位。
+- 支持独立终端和分屏标签，每组最多 4 个窗格。点击「全屏」隐藏导航，通过顶部下拉框切换终端；全屏或软键盘打开时优先显示当前窗格。Android 11+ 可同时隐藏系统栏，返回键先退出全屏。详见[终端工作区说明](TERMINAL-WORKSPACES.md)。
+- 主机编辑页的「SSH 隧道」可配置本地、远程和 SOCKS5 TCP 转发；X11 需要设备上有可访问的 X Server。
+- 终端历史在手机本地保存，支持继续追加输出、加入精选和删除；保存失败时避免连续重复弹出提示。
 - 手机上文件管理器通过「本地文件 / 远程文件」标签切换；平板横屏可同时显示两栏。点击本地一栏的文件夹按钮，可从系统文件选择器导入一个或多个文件，然后上传。
 - 远程下载先保存到应用的本地文件区；选择其中一个普通文件，点击「导出到手机」按钮，通过系统选择保存位置。取消系统选择不会覆盖已有文件。导入同名文件会自动改名，原文件保留。
 - 私钥导入到应用私有目录；主机配置与信任指纹保存在应用私有目录；密码和私钥口令使用 Android Keystore 中的 AES-GCM 密钥加密保存，不写入 workspace JSON。
-- WSL 仅适用于 Windows，在 Android 中隐藏。Android 与 Windows 各自保存配置。
+- Windows 本地 Shell、WSL、系统托盘和 MCP 集成在 Android 中隐藏。Android 与 Windows 各自保存配置。
 
 当前版本主要面向前台使用，尚未加入保持后台连接的前台服务；系统回收应用、强行停止或退出会结束会话和传输。后台长时间运行及锁屏保持连接需要实机进一步验证。卸载会删除应用配置、凭据、导入的私钥和应用文件区，重要下载请先导出。
 

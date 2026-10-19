@@ -27,6 +27,16 @@ func testSSHServer(t *testing.T, keys ...ssh.PublicKey) (string, string) {
 type testMonitorResponse func(sample uint64) (stdout, stderr string, status uint32)
 
 func testSSHServerWithMonitor(t *testing.T, monitor testMonitorResponse, keys ...ssh.PublicKey) (string, string) {
+	return testSSHServerWithFeatures(t, monitor, nil, keys...)
+}
+
+type testSSHFeatures struct {
+	channel func(*ssh.ServerConn, ssh.NewChannel) bool
+	request func(*ssh.ServerConn, *ssh.Request) bool
+	session func(*ssh.ServerConn, ssh.Channel, *ssh.Request) bool
+}
+
+func testSSHServerWithFeatures(t *testing.T, monitor testMonitorResponse, features *testSSHFeatures, keys ...ssh.PublicKey) (string, string) {
 	t.Helper()
 	_, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -76,13 +86,23 @@ func testSSHServerWithMonitor(t *testing.T, monitor testMonitorResponse, keys ..
 			connections = append(connections, raw)
 			mu.Unlock()
 			go func() {
-				_, channels, requests, err := ssh.NewServerConn(raw, config)
+				connection, channels, requests, err := ssh.NewServerConn(raw, config)
 				if err != nil {
 					raw.Close()
 					return
 				}
-				go ssh.DiscardRequests(requests)
+				go func() {
+					for request := range requests {
+						if features != nil && features.request != nil && features.request(connection, request) {
+							continue
+						}
+						request.Reply(false, nil)
+					}
+				}()
 				for incoming := range channels {
+					if features != nil && features.channel != nil && features.channel(connection, incoming) {
+						continue
+					}
 					if incoming.ChannelType() != "session" {
 						incoming.Reject(ssh.UnknownChannelType, "session only")
 						continue
@@ -94,6 +114,9 @@ func testSSHServerWithMonitor(t *testing.T, monitor testMonitorResponse, keys ..
 					go func() {
 						defer ch.Close()
 						for req := range reqs {
+							if features != nil && features.session != nil && features.session(connection, ch, req) {
+								continue
+							}
 							switch req.Type {
 							case "pty-req", "window-change":
 								req.Reply(true, nil)

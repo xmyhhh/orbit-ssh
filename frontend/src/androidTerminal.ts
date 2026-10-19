@@ -24,6 +24,7 @@ export function installAndroidTerminalTouch(
   let selectionStart = 0;
   let selectionEnd = 0;
   let selecting = false;
+  let moved = false;
   let nativeShown = false;
   let pinch: { distance: number; startSize: number; size: number } | undefined;
   let suppressMouseUntil = 0;
@@ -141,7 +142,11 @@ export function installAndroidTerminalTouch(
       return;
     }
     if (pinch) return stop(event);
+    // xterm scrolls its own viewport. Prevent WebView's long-press selection
+    // from taking over this gesture before our native toolbar can open.
+    if (event.cancelable) event.preventDefault();
     hideActions();
+    moved = false;
     origin = { x: event.touches[0].clientX, y: event.touches[0].clientY };
     holdTimer = window.setTimeout(() => {
       if (!origin || !options.active()) return;
@@ -190,6 +195,7 @@ export function installAndroidTerminalTouch(
         event.touches[0].clientY - origin.y,
       ) > 8
     ) {
+      moved = true;
       cancelHold();
     }
   };
@@ -203,6 +209,8 @@ export function installAndroidTerminalTouch(
       selecting = false;
       suppressMouseUntil = performance.now() + 600;
       showActions();
+    } else if (origin && !moved && options.active()) {
+      term.focus();
     }
     if (!event.touches.length) origin = undefined;
   };
@@ -215,7 +223,8 @@ export function installAndroidTerminalTouch(
   const contextMenu = (event: MouseEvent) => {
     stop(event);
     cancelHold();
-    if (pinch || !options.active()) return;
+    if (pinch || performance.now() < suppressMouseUntil || !options.active())
+      return;
     if (!term.hasSelection()) selectWord(event.clientX, event.clientY);
     showActions();
   };

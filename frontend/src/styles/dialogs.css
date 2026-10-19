@@ -250,6 +250,170 @@
   line-height: 1.8;
   margin-top: 9px;
 }
+.host-dialog {
+  width: 570px;
+}
+.host-settings-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.host-settings-tabs > button {
+  flex: 1;
+  min-height: 35px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.host-settings-tabs > button[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 1px 3px #0000000d;
+}
+.host-settings-panel {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.host-settings-panel[hidden],
+.forward-rule-fields[hidden] {
+  display: none;
+}
+.tunneling-heading,
+.tunneling-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tunneling-heading {
+  justify-content: space-between;
+  gap: 12px;
+}
+.tunneling-heading h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.tunneling-heading h3 > svg {
+  color: var(--accent);
+}
+.tunneling-heading .text-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  font-size: 11px;
+}
+.tunneling-intro {
+  margin: 4px 0 14px;
+}
+.tunneling-empty {
+  padding: 24px 20px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.forward-rules {
+  display: grid;
+  gap: 10px;
+}
+.forward-rule {
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.forward-rule-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 11px;
+  background: var(--surface-soft);
+}
+.forward-rule-heading > input,
+.tunneling-checkbox > input {
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.forward-rule-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.forward-rule-toggle > span {
+  flex: 1;
+  min-width: 0;
+}
+.forward-rule-toggle strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.forward-rule-toggle code {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+.forward-rule-toggle > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.forward-rule-toggle > svg.expanded {
+  transform: rotate(180deg);
+}
+.forward-rule-fields {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--line);
+}
+.host-tunneling .field select {
+  width: 100%;
+  min-width: 0;
+  height: 39px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.host-tunneling .field select:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+.host-tunneling .tunnel-endpoint {
+  grid-template-columns: minmax(0, 1fr) 100px;
+  gap: 10px;
+}
+.forward-rule-fields .field:last-of-type {
+  margin-bottom: 6px;
+}
+.x11-settings {
+  margin-top: 23px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.tunneling-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 15px;
+  font-size: 11px;
+}
 .connection-destination {
   display: flex;
   align-items: center;
@@ -495,6 +659,47 @@
   font-size: 10px;
   margin-top: 8px;
   overflow-wrap: anywhere;
+}
+.mcp-install-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  flex-shrink: 0;
+}
+.mcp-install-actions select {
+  min-height: 31px;
+  max-width: 190px;
+}
+.mcp-install-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.mcp-install-result {
+  padding: 12px;
+  border: 1px solid var(--green-line);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px;
+}
+.mcp-install-result > p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.8;
+}
+.mcp-install-result code {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+.mcp-install-result details {
+  margin-top: 9px;
+}
+.mcp-install-result summary {
+  cursor: pointer;
 }
 .version-label {
   color: var(--faint);

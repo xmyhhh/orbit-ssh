@@ -115,6 +115,11 @@
   padding: 11px 9px 10px 12px;
   text-align: left;
 }
+.history-record,
+.history-record * {
+  -webkit-user-select: text;
+  user-select: text;
+}
 .history-record-heading {
   display: flex;
   align-items: baseline;
@@ -262,6 +267,8 @@
   overflow: auto;
   margin: 0;
   padding: 14px;
+  -webkit-user-select: text;
+  user-select: text;
   color: var(--text);
   background: var(--terminal-bg);
   font-family: "Cascadia Mono", Consolas, monospace;

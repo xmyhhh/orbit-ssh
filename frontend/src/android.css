@@ -12,8 +12,13 @@
 [data-platform="android"] .terminal-mount {
   min-height: 0;
   overflow: hidden;
-  /* Keep single-finger terminal scrolling; pinch is font size, not page zoom. */
-  touch-action: pan-y;
+  /* xterm handles scrolling; Android gestures select text and change font size. */
+  touch-action: none;
+}
+[data-platform="android"] .terminal-mount .xterm-rows {
+  /* Selection redraws these spans. Keep the touch target on the stable screen
+     so the gesture still receives touchend after text is highlighted. */
+  pointer-events: none;
 }
 .android-terminal-keys {
   display: flex;

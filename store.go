@@ -11,17 +11,19 @@ import (
 )
 
 type Host struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Address       string `json:"address"`
-	Port          int    `json:"port"`
-	Username      string `json:"username"`
-	Group         string `json:"group"`
-	AuthType      string `json:"authType"`
-	KeyPath       string `json:"keyPath"`
-	Color         string `json:"color"`
-	Favorite      bool   `json:"favorite"`
-	LastConnected string `json:"lastConnected"`
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Address       string        `json:"address"`
+	Port          int           `json:"port"`
+	Username      string        `json:"username"`
+	Group         string        `json:"group"`
+	AuthType      string        `json:"authType"`
+	KeyPath       string        `json:"keyPath"`
+	Color         string        `json:"color"`
+	Favorite      bool          `json:"favorite"`
+	LastConnected string        `json:"lastConnected"`
+	PortForwards  []PortForward `json:"portForwards,omitempty"`
+	X11           X11Config     `json:"x11"`
 }
 
 type ShortcutBinding struct {
@@ -51,6 +53,7 @@ type Preferences struct {
 	TerminalHistoryEnabled bool            `json:"terminalHistoryEnabled"`
 	TerminalHistoryLimit   int             `json:"terminalHistoryLimit"`
 	MCPEnabled             bool            `json:"mcpEnabled"`
+	MCPAllowConnections    bool            `json:"mcpAllowConnections"`
 	MCPAllowTerminalInput  bool            `json:"mcpAllowTerminalInput"`
 	MCPPort                int             `json:"mcpPort"`
 	Shortcuts              WindowShortcuts `json:"shortcuts"`
@@ -184,7 +187,7 @@ func validateHost(h Host) error {
 	if h.AuthType == "key" && h.KeyPath == "" {
 		return errors.New("请选择私钥文件")
 	}
-	return nil
+	return validateTunneling(h.PortForwards, h.X11)
 }
 
 func (s *Store) snapshot() State {
@@ -201,6 +204,7 @@ func (s *Store) host(id string) (Host, error) {
 	defer s.mu.Unlock()
 	for _, h := range s.state.Hosts {
 		if h.ID == id {
+			h.PortForwards = append([]PortForward(nil), h.PortForwards...)
 			return h, nil
 		}
 	}
@@ -211,6 +215,7 @@ func (s *Store) saveHost(h Host) error {
 	if err := validateHost(h); err != nil {
 		return err
 	}
+	h.PortForwards = append([]PortForward(nil), h.PortForwards...)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	previous := append([]Host{}, s.state.Hosts...)

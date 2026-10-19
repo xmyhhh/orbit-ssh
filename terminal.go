@@ -64,8 +64,12 @@ func (a *App) Disconnect(id string) error {
 	delete(a.sessions, id)
 	delete(a.localSessions, id)
 	cancel := a.pending[id]
+	mcpRequest := a.mcpConnections[id]
 	delete(a.pending, id)
 	a.mu.Unlock()
+	if mcpRequest != nil {
+		mcpRequest.cancel()
+	}
 	if cancel != nil {
 		cancel()
 	}

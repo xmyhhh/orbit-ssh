@@ -39,11 +39,13 @@ export function useSessionConnections({
   notify: (message: string) => void;
 }) {
   const connectingID = useRef<string | null>(null);
+  const connectingIDs = useRef(new Set<string>());
   const terminalNumbers = useRef(new Map<string, number>());
   const { activateNewSession, pendingSplitRef } = layout;
 
   async function discardSession(session: Session, previousActive: string) {
     const { id, host, terminalNumber } = session;
+    connectingIDs.current.delete(id);
     await backend()
       .Disconnect(id)
       .catch(() => {});
@@ -61,16 +63,18 @@ export function useSessionConnections({
   function cancelConnection() {
     const id = connectingID.current;
     connectingID.current = null;
-    if (id)
+    if (id) {
+      connectingIDs.current.delete(id);
       void backend()
         .Disconnect(id)
         .catch(() => {});
+    }
   }
-  function allocateSession(host: Host): Session {
+  function allocateSession(host: Host, id: string = crypto.randomUUID()): Session {
     const terminalNumber = (terminalNumbers.current.get(host.id) ?? 0) + 1;
     terminalNumbers.current.set(host.id, terminalNumber);
     return {
-      id: crypto.randomUUID(),
+      id,
       host,
       terminalNumber,
       demo: false,
@@ -82,26 +86,34 @@ export function useSessionConnections({
     host: Host,
     credentials: Credentials,
     fingerprint: string,
+    mcpSessionID?: string,
   ) {
-    const session = allocateSession(host);
+    if (
+      mcpSessionID &&
+      (connectingIDs.current.has(mcpSessionID) ||
+        sessionsRef.current.some((session) => session.id === mcpSessionID))
+    )
+      return;
+    const session = allocateSession(host, mcpSessionID);
     const id = session.id;
     const previousActive = active;
-    connectingID.current = id;
+    connectingIDs.current.add(id);
+    if (!mcpSessionID) connectingID.current = id;
     setSessions((s) => [...s, session]);
-    activateNewSession(id);
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    );
+    if (mcpSessionID) layout.activateSession(id);
+    else activateNewSession(id);
     try {
-      if (connectingID.current !== id) throw new Error("连接已取消");
-      await backend().Connect(
-        id,
-        host.id,
-        credentials,
-        fingerprint,
-        handles.current.get(id)?.size() ?? { cols: 100, rows: 30 },
-      );
-      if (connectingID.current !== id) {
+      const deadline = Date.now() + 5000;
+      while (!handles.current.get(id)?.ready()) {
+        if (!connectingIDs.current.has(id)) throw new Error("连接已取消");
+        if (Date.now() >= deadline) throw new Error("终端界面尚未准备好，请重试");
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 16));
+      }
+      if (!connectingIDs.current.has(id)) throw new Error("连接已取消");
+      const size = handles.current.get(id)!.size();
+      if (mcpSessionID) await backend().ConnectMCPHost(id, size);
+      else await backend().Connect(id, host.id, credentials, fingerprint, size);
+      if (!connectingIDs.current.has(id)) {
         await backend().Disconnect(id);
         throw new Error("连接已取消");
       }
@@ -113,7 +125,7 @@ export function useSessionConnections({
             : item,
         ),
       );
-      pendingSplitRef.current = null;
+      if (!mcpSessionID) pendingSplitRef.current = null;
       update({
         ...stateRef.current,
         hosts: stateRef.current.hosts.map((h) =>
@@ -154,6 +166,7 @@ export function useSessionConnections({
 
       throw e;
     } finally {
+      connectingIDs.current.delete(id);
       if (connectingID.current === id) connectingID.current = null;
     }
   }
@@ -212,6 +225,7 @@ export function useSessionConnections({
     if (session) await removeSessions([session]);
   }
   async function removeSessions(closing: Session[]) {
+    for (const session of closing) connectingIDs.current.delete(session.id);
     const results = await Promise.allSettled(
       closing.map((s) =>
         isDesktop() && !s.demo ? backend().Disconnect(s.id) : Promise.resolve(),

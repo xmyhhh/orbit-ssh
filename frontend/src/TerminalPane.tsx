@@ -123,6 +123,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
   ) {
     const container = useRef<HTMLDivElement>(null);
     const terminal = useRef<Terminal | null>(null);
+    const ready = useRef(false);
     const fit = useRef<FitAddon | null>(null);
     const search = useRef<SearchAddon | null>(null);
     const demoInput = useRef("");
@@ -323,6 +324,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     }
 
     useImperativeHandle(ref, () => ({
+      ready: () => ready.current,
       send,
       paste: (text) => {
         if (latest.current.session.status === "connected")
@@ -531,6 +533,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
             );
             latest.current.onClosed(session.id, String(message));
           });
+      ready.current = true;
       if (session.demo) {
         writeLine(
           term,
@@ -548,6 +551,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       resize();
       const element = container.current!;
       return () => {
+        ready.current = false;
         disposed = true;
         disposeAndroidTouch();
         const trailing = outputDecoder.current.decode();

@@ -64,6 +64,7 @@ import type { HostFilter } from "./HostsPage";
 import { moveTabFocus, pageNames } from "./navigation";
 import type { Page } from "./navigation";
 import { useSessionConnections } from "./hooks/useSessionConnections";
+import { useMCPConnections } from "./hooks/useMCPConnections";
 import { useTerminalViewport } from "./hooks/useTerminalViewport";
 
 interface Confirmation {
@@ -247,6 +248,27 @@ export default function App() {
     },
   });
 
+  useMCPConnections({
+    enabled: !loading,
+    connect,
+    onHost: (host) => {
+      const previous = stateRef.current;
+      update({
+        ...previous,
+        hosts: previous.hosts.some((item) => item.id === host.id)
+          ? previous.hosts.map((item) => (item.id === host.id ? host : item))
+          : [...previous.hosts, host],
+      });
+    },
+    onOpen: () => {
+      setSidebarOpen(false);
+      setFilesOpen(false);
+      setMonitorExpanded(false);
+      setTerminalSearch(null);
+    },
+    notify,
+  });
+
   function notify(message: string) {
     clearTimeout(toastTimer.current);
     setToast(message);
@@ -265,7 +287,9 @@ export default function App() {
   }
   useEffect(() => {
     void load();
-    const offNotice = listen("ssh:notice", (message) => notify(String(message)));
+    const offNotice = listen("ssh:notice", (message) =>
+      notify(String(message)),
+    );
     if (isDesktop())
       void backend()
         .GetPlatform()

@@ -18,6 +18,8 @@ type App struct {
 	sessions          map[string]*remoteSession
 	localSessions     map[string]*localSession
 	pending           map[string]context.CancelFunc
+	forwardMu         sync.Mutex
+	forwards          map[string]*hostForwarding
 	emit              func(string, ...interface{})
 	transferMu        sync.Mutex
 	transfers         []*transferJob
@@ -32,6 +34,7 @@ type App struct {
 	mcpPort           int
 	mcpToken          string
 	mcpError          string
+	mcpConnections    map[string]*mcpConnectionRequest
 	historyMu         sync.RWMutex
 	historyDir        string
 	history           map[string]TerminalHistoryRecord
@@ -47,7 +50,8 @@ type App struct {
 func NewApp() *App {
 	return &App{
 		sessions: map[string]*remoteSession{}, pending: map[string]context.CancelFunc{},
-		history: map[string]TerminalHistoryRecord{}, historyChanges: map[string]terminalHistoryChange{}, historyDeleted: map[string]bool{},
+		mcpConnections: map[string]*mcpConnectionRequest{},
+		history:        map[string]TerminalHistoryRecord{}, historyChanges: map[string]terminalHistoryChange{}, historyDeleted: map[string]bool{},
 	}
 }
 
@@ -181,6 +185,10 @@ func (a *App) SelectKeyFile() (string, error) {
 	return selectOpenFile(a.ctx, "选择 SSH 私钥文件")
 }
 
+func (a *App) SelectXAuthorityFile() (string, error) {
+	return selectOpenFile(a.ctx, "选择 Xauthority 文件")
+}
+
 func (a *App) DataDirectory() (string, error) {
 	if err := a.ready(); err != nil {
 		return "", err
@@ -261,10 +269,15 @@ func (a *App) shutdown(_ context.Context) {
 	sessions := a.sessions
 	locals := a.localSessions
 	pending := a.pending
+	mcpConnections := a.mcpConnections
 	a.sessions = map[string]*remoteSession{}
 	a.localSessions = map[string]*localSession{}
 	a.pending = map[string]context.CancelFunc{}
+	a.mcpConnections = map[string]*mcpConnectionRequest{}
 	a.mu.Unlock()
+	for _, request := range mcpConnections {
+		request.cancel()
+	}
 	for _, cancel := range pending {
 		cancel()
 	}

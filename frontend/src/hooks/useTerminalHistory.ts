@@ -77,8 +77,7 @@ export function useTerminalHistory({
       record,
       preferencesRef.current.terminalHistoryLimit,
     )
-      .then((records) => {
-        historyFailureNotified.current = false;
+      .then(async (records) => {
         setTerminalHistory(records);
         if (isDesktop()) {
           const retainedIDs = records.map((item) => item.id);
@@ -90,8 +89,9 @@ export function useTerminalHistory({
                   outputDelta,
                   retainedIDs,
                 );
-          void sync.catch(reportHistoryFailure);
+          await sync;
         }
+        historyFailureNotified.current = false;
       })
       .catch(reportHistoryFailure);
   }

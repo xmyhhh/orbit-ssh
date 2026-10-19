@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
@@ -88,7 +89,7 @@ func (a *App) mcpHandler(token string) http.Handler {
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		result, rpcErr := a.handleMCPRequest(request)
+		result, rpcErr := a.handleMCPRequest(r.Context(), request)
 		if rpcErr != nil {
 			writeMCPJSON(w, http.StatusOK, mcpErrorResponse(request.ID, rpcErr.code, rpcErr.message))
 			return
@@ -103,7 +104,7 @@ type mcpRPCError struct {
 	message string
 }
 
-func (a *App) handleMCPRequest(request mcpRequest) (any, *mcpRPCError) {
+func (a *App) handleMCPRequest(ctx context.Context, request mcpRequest) (any, *mcpRPCError) {
 	switch request.Method {
 	case "initialize":
 		var params struct {
@@ -136,7 +137,7 @@ func (a *App) handleMCPRequest(request mcpRequest) (any, *mcpRPCError) {
 		if !knownMCPTool(params.Name) {
 			return nil, &mcpRPCError{code: -32602, message: "Unknown tool"}
 		}
-		return a.callMCPTool(params.Name, params.Arguments), nil
+		return a.callMCPToolContext(ctx, params.Name, params.Arguments), nil
 	default:
 		return nil, &mcpRPCError{code: -32601, message: "Method not found"}
 	}

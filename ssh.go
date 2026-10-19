@@ -21,26 +21,34 @@ type Credentials struct {
 }
 
 type remoteSession struct {
-	client      *ssh.Client
-	shell       *ssh.Session
-	stdin       io.WriteCloser
-	files       *sftp.Client
-	host        Host
-	output      *terminalOutputBuffer
-	mu          sync.Mutex
-	writeMu     sync.Mutex
-	once        sync.Once
-	closed      bool
-	done        chan struct{}
-	monitorMu   sync.Mutex
-	previousCPU *cpuSample
+	client            *ssh.Client
+	shell             *ssh.Session
+	stdin             io.WriteCloser
+	files             *sftp.Client
+	host              Host
+	output            *terminalOutputBuffer
+	mu                sync.Mutex
+	writeMu           sync.Mutex
+	once              sync.Once
+	closed            bool
+	done              chan struct{}
+	monitorMu         sync.Mutex
+	previousCPU       *cpuSample
+	x11               *x11Forwarding
+	releaseForwarding func()
 }
 
 func (s *remoteSession) close() {
 	s.once.Do(func() {
 		close(s.done)
-		// Close the transport first so blocked SFTP requests can release s.mu.
+		// Close the transport first so blocked SFTP and X11 requests release.
 		s.client.Close()
+		if s.x11 != nil {
+			s.x11.runtime.close()
+		}
+		if s.releaseForwarding != nil {
+			s.releaseForwarding()
+		}
 		s.mu.Lock()
 		s.closed = true
 		if s.files != nil {
@@ -80,6 +88,10 @@ func hostKeyVerifier(known, accepted string) ssh.HostKeyCallback {
 }
 
 func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFingerprint string, size TerminalSize) error {
+	return a.connectSSH(a.ctx, id, hostID, credentials, acceptedFingerprint, size)
+}
+
+func (a *App) connectSSH(parent context.Context, id, hostID string, credentials Credentials, acceptedFingerprint string, size TerminalSize) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
@@ -88,6 +100,9 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 	}
 	host, err := a.store.host(hostID)
 	if err != nil {
+		return err
+	}
+	if err = validateTunneling(host.PortForwards, host.X11); err != nil {
 		return err
 	}
 	var auth ssh.AuthMethod
@@ -134,7 +149,7 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 	known := a.store.state.KnownHosts[address]
 	a.store.mu.Unlock()
 	config := &ssh.ClientConfig{User: host.Username, Auth: []ssh.AuthMethod{auth}, HostKeyCallback: hostKeyVerifier(known, acceptedFingerprint), Timeout: 15 * time.Second}
-	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
 	a.mu.Lock()
 	_, exists := a.sessions[id]
 	_, connecting := a.pending[id]
@@ -165,14 +180,28 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 	}
 	client := ssh.NewClient(c, chans, reqs)
 	keepClient := false
+	var x11 *x11Forwarding
 	defer func() {
 		if !keepClient {
 			client.Close()
+			if x11 != nil {
+				x11.runtime.close()
+			}
 		}
 	}()
 	shell, err := client.NewSession()
 	if err != nil {
 		return err
+	}
+	if host.X11.Enabled {
+		x11, err = prepareX11(client, host.X11, a.forwardingNotice(host))
+		if err == nil {
+			err = x11.request(shell)
+		}
+		if err != nil {
+			shell.Close()
+			return err
+		}
 	}
 	stdin, err := shell.StdinPipe()
 	if err != nil {
@@ -236,7 +265,18 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 		shell.Close()
 		return fmt.Errorf("无法保存主机信任信息：%w", err)
 	}
-	s := &remoteSession{client: client, shell: shell, stdin: stdin, host: host, output: &terminalOutputBuffer{}, done: make(chan struct{})}
+	forwarding, err := a.acquireForwarding(ctx, host, config)
+	if err != nil {
+		shell.Close()
+		return err
+	}
+	defer func() {
+		if !keepClient {
+			a.releaseForwarding(forwarding)
+		}
+	}()
+	s := &remoteSession{client: client, shell: shell, stdin: stdin, host: host, output: &terminalOutputBuffer{}, done: make(chan struct{}), x11: x11,
+		releaseForwarding: func() { a.releaseForwarding(forwarding) }}
 	a.mu.Lock()
 	if ctx.Err() != nil {
 		a.mu.Unlock()

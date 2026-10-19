@@ -1,4 +1,19 @@
 export type Theme = "light" | "dark" | "system";
+export interface PortForward {
+  id: string;
+  type: "local" | "remote" | "dynamic";
+  enabled: boolean;
+  bindAddress: string;
+  bindPort: number;
+  destinationHost: string;
+  destinationPort: number;
+  description: string;
+}
+export interface X11Config {
+  enabled: boolean;
+  display: string;
+  authFile: string;
+}
 export interface Host {
   id: string;
   name: string;
@@ -11,6 +26,8 @@ export interface Host {
   color: string;
   favorite: boolean;
   lastConnected: string;
+  portForwards?: PortForward[];
+  x11?: X11Config;
 }
 export interface ShortcutBinding {
   code: string;
@@ -37,6 +54,7 @@ export interface Preferences {
   terminalHistoryEnabled: boolean;
   terminalHistoryLimit: number;
   mcpEnabled: boolean;
+  mcpAllowConnections: boolean;
   mcpAllowTerminalInput: boolean;
   mcpPort: number;
   shortcuts: WindowShortcuts;
@@ -45,10 +63,18 @@ export interface MCPStatus {
   enabled: boolean;
   running: boolean;
   allowInput: boolean;
+  allowConnections: boolean;
   endpoint: string;
   token: string;
   error: string;
   historyError: string;
+}
+export type MCPClient =
+  "codex" | "claude" | "cursor" | "opencode" | "gemini" | "vscode";
+export interface MCPInstallResult {
+  configPath: string;
+  backupPath: string;
+  changed: boolean;
 }
 export interface Workspace {
   hosts: Host[];
@@ -185,6 +211,7 @@ export interface LocalShellInfo {
   message: string;
 }
 export interface TerminalHandle {
+  ready: () => boolean;
   send: (text: string) => void;
   paste: (text: string) => void;
   pasteFromClipboard: () => void;

@@ -54,12 +54,27 @@ func TestMobileTerminalHistoryAPI(t *testing.T) {
 	if !a.terminalHistorySnapshot()[0].Pinned {
 		t.Fatal("mobile history pin was not saved")
 	}
+	a.flushTerminalHistory()
+	reloaded := NewApp()
+	reloaded.historyDir = a.historyDir
+	if err := reloaded.loadTerminalHistory(); err != nil {
+		t.Fatal(err)
+	}
+	if saved := reloaded.terminalHistorySnapshot(); len(saved) != 1 || saved[0].Output != "hello world" || !saved[0].Pinned {
+		t.Fatalf("mobile history was not persisted across a backend restart: %+v", saved)
+	}
 	call("DeleteTerminalHistory", record.ID)
 	call("AppendTerminalHistory", record, "late output", []string{record.ID})
 	if len(a.terminalHistorySnapshot()) != 0 {
 		t.Fatal("late output recreated deleted mobile history")
 	}
 	a.flushTerminalHistory()
+	if err := reloaded.loadTerminalHistory(); err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.terminalHistorySnapshot()) != 0 {
+		t.Fatal("deleted mobile history remained on disk")
+	}
 }
 
 // Exercise the actual Android pipe protocol against a local SSH/SFTP server,

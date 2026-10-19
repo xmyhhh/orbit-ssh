@@ -11,6 +11,8 @@ import type {
   Host,
   Metrics,
   MCPStatus,
+  MCPClient,
+  MCPInstallResult,
   Preferences,
   TerminalSize,
   Workspace,
@@ -38,6 +40,7 @@ interface Backend {
   DeleteHost(id: string): Promise<void>;
   SavePreferences(preferences: Preferences): Promise<void>;
   SelectKeyFile(): Promise<string>;
+  SelectXAuthorityFile(): Promise<string>;
   SaveKeyPassphrase(hostID: string, passphrase: string): Promise<void>;
   ForgetKeyPassphrase(hostID: string): Promise<void>;
   HasSavedPassword(hostID: string): Promise<boolean>;
@@ -51,6 +54,7 @@ interface Backend {
     fingerprint: string,
     size: TerminalSize,
   ): Promise<void>;
+  ConnectMCPHost(id: string, size: TerminalSize): Promise<void>;
   Disconnect(id: string): Promise<void>;
   WriteTerminal(id: string, text: string): Promise<void>;
   ResizeTerminal(id: string, size: TerminalSize): Promise<void>;
@@ -83,6 +87,8 @@ interface Backend {
   MakeDirectory(id: string, dir: string, name: string): Promise<void>;
   DataDirectory(): Promise<string>;
   GetMCPStatus(): Promise<MCPStatus>;
+  InstallMCP(target: MCPClient): Promise<MCPInstallResult>;
+  MCPConfigSnippet(target: MCPClient): Promise<string>;
   SyncTerminalHistory(records: TerminalHistoryRecord[]): Promise<void>;
   UpsertTerminalHistory(
     record: TerminalHistoryRecord,
@@ -145,6 +151,7 @@ export const defaults: Workspace = {
     terminalHistoryEnabled: true,
     terminalHistoryLimit: 20,
     mcpEnabled: false,
+    mcpAllowConnections: false,
     mcpAllowTerminalInput: false,
     mcpPort: 8765,
     shortcuts: defaultShortcuts,

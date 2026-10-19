@@ -11,13 +11,14 @@ import (
 )
 
 type MCPStatus struct {
-	Enabled      bool   `json:"enabled"`
-	Running      bool   `json:"running"`
-	AllowInput   bool   `json:"allowInput"`
-	Endpoint     string `json:"endpoint"`
-	Token        string `json:"token"`
-	Error        string `json:"error"`
-	HistoryError string `json:"historyError"`
+	Enabled          bool   `json:"enabled"`
+	Running          bool   `json:"running"`
+	AllowInput       bool   `json:"allowInput"`
+	AllowConnections bool   `json:"allowConnections"`
+	Endpoint         string `json:"endpoint"`
+	Token            string `json:"token"`
+	Error            string `json:"error"`
+	HistoryError     string `json:"historyError"`
 }
 
 func (a *App) configureMCP(preferences Preferences) error {
@@ -107,6 +108,7 @@ func (a *App) GetMCPStatus() MCPStatus {
 		preferences := a.store.snapshot().Preferences
 		status.Enabled = preferences.MCPEnabled
 		status.AllowInput = preferences.MCPAllowTerminalInput
+		status.AllowConnections = preferences.MCPAllowConnections
 		status.Endpoint = fmt.Sprintf("http://127.0.0.1:%d/mcp", preferences.MCPPort)
 	}
 	a.mcpMu.Lock()

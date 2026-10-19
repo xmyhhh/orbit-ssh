@@ -1,6 +1,20 @@
 import { useEffect, useState } from "react";
-import { Check, Clipboard, Monitor, Moon, RotateCcw, Sun } from "lucide-react";
-import type { MCPStatus, Preferences, WindowShortcuts } from "../types";
+import {
+  Check,
+  Clipboard,
+  Monitor,
+  Moon,
+  PlugZap,
+  RotateCcw,
+  Sun,
+} from "lucide-react";
+import type {
+  MCPClient,
+  MCPInstallResult,
+  MCPStatus,
+  Preferences,
+  WindowShortcuts,
+} from "../types";
 import { backend, errorText, isDesktop, writeClipboard } from "../bridge";
 import {
   captureShortcut,
@@ -21,6 +35,14 @@ const preferenceSections = [
   { id: "behavior", label: "行为" },
 ] as const;
 type PreferenceSection = (typeof preferenceSections)[number]["id"];
+const mcpClients: { target: MCPClient; name: string }[] = [
+  { target: "codex", name: "Codex" },
+  { target: "claude", name: "Claude Code" },
+  { target: "cursor", name: "Cursor" },
+  { target: "opencode", name: "OpenCode" },
+  { target: "gemini", name: "Gemini CLI" },
+  { target: "vscode", name: "VS Code Copilot" },
+];
 
 export function PreferencesDialog({
   preferences,
@@ -43,7 +65,13 @@ export function PreferencesDialog({
     useState<PreferenceSection>("appearance");
   const [mcpPortDraft, setMcpPortDraft] = useState(String(preferences.mcpPort));
   const [mcpStatus, setMcpStatus] = useState<MCPStatus | null>(null);
-  const [mcpCopied, setMcpCopied] = useState<"json" | "codex" | "">("");
+  const [mcpClient, setMcpClient] = useState<MCPClient>("codex");
+  const [mcpCopied, setMcpCopied] = useState<MCPClient | "">("");
+  const [installingMCP, setInstallingMCP] = useState(false);
+  const [mcpInstall, setMcpInstall] = useState<MCPInstallResult | null>(null);
+  const mcpClientName = mcpClients.find(
+    (client) => client.target === mcpClient,
+  )!.name;
   const [recordingShortcut, setRecordingShortcut] = useState<
     keyof WindowShortcuts | null
   >(null);
@@ -54,6 +82,8 @@ export function PreferencesDialog({
   }, [preferences.terminalHistoryLimit]);
   useEffect(() => {
     setMcpPortDraft(String(preferences.mcpPort));
+    setMcpInstall(null);
+    setMcpCopied("");
   }, [preferences.mcpPort]);
   useEffect(() => {
     if (isDesktop())
@@ -145,6 +175,20 @@ export function PreferencesDialog({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      setBusy(false);
+    }
+  }
+  async function installMCP() {
+    setBusy(true);
+    setInstallingMCP(true);
+    setError("");
+    setMcpInstall(null);
+    try {
+      setMcpInstall(await backend().InstallMCP(mcpClient));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setInstallingMCP(false);
       setBusy(false);
     }
   }
@@ -353,7 +397,11 @@ export function PreferencesDialog({
                 onClick={() =>
                   void change(
                     preferences.mcpEnabled
-                      ? { mcpEnabled: false, mcpAllowTerminalInput: false }
+                      ? {
+                          mcpEnabled: false,
+                          mcpAllowConnections: false,
+                          mcpAllowTerminalInput: false,
+                        }
                       : { mcpEnabled: true },
                   )
                 }
@@ -403,6 +451,28 @@ export function PreferencesDialog({
               <>
                 <div className="setting-row">
                   <div>
+                    <strong>允许 AI 创建连接</strong>
+                    <p className="field-hint">
+                      AI 可添加主机配置、连接已有主机；新终端会显示在当前窗口。
+                    </p>
+                  </div>
+                  <button
+                    className={`switch ${preferences.mcpAllowConnections ? "on" : ""}`}
+                    role="switch"
+                    aria-label="允许 AI 创建连接"
+                    aria-checked={preferences.mcpAllowConnections}
+                    disabled={busy}
+                    onClick={() =>
+                      void change({
+                        mcpAllowConnections: !preferences.mcpAllowConnections,
+                      })
+                    }
+                  >
+                    <span />
+                  </button>
+                </div>
+                <div className="setting-row">
+                  <div>
                     <strong>允许 AI 输入终端</strong>
                     <p className="field-hint">
                       开启后，AI 可向活动终端发送文本；包含换行时会执行命令。
@@ -441,65 +511,90 @@ export function PreferencesDialog({
                     )}
                   </div>
                 </div>
+                <div className="setting-row">
+                  <div>
+                    <strong>接入 AI 客户端</strong>
+                    <p className="field-hint">
+                      自动配置当前用户，接入后重启客户端。修改端口后请再次接入。
+                    </p>
+                  </div>
+                  <div className="mcp-install-actions">
+                    <select
+                      aria-label="MCP 客户端"
+                      disabled={busy}
+                      value={mcpClient}
+                      onChange={(event) => {
+                        setMcpClient(event.target.value as MCPClient);
+                        setMcpInstall(null);
+                        setMcpCopied("");
+                        setError("");
+                      }}
+                    >
+                      {mcpClients.map((client) => (
+                        <option key={client.target} value={client.target}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="text-button mcp-install-button"
+                      type="button"
+                      disabled={busy || !mcpStatus?.running}
+                      onClick={() => void installMCP()}
+                    >
+                      <PlugZap size={14} aria-hidden="true" />
+                      {installingMCP
+                        ? "正在接入…"
+                        : `一键接入 ${mcpClientName}`}
+                    </button>
+                  </div>
+                </div>
+                {mcpInstall && (
+                  <div className="mcp-install-result" role="status">
+                    <p>
+                      <Check size={14} aria-hidden="true" />
+                      {mcpInstall.changed
+                        ? `已接入 ${mcpClientName}`
+                        : `${mcpClientName} 配置已是最新`}
+                      ，请重启客户端。
+                    </p>
+                    <code>{mcpInstall.configPath}</code>
+                    {mcpInstall.backupPath && (
+                      <details>
+                        <summary>查看原配置备份</summary>
+                        <code>{mcpInstall.backupPath}</code>
+                      </details>
+                    )}
+                  </div>
+                )}
                 {mcpStatus?.endpoint && mcpStatus.token && (
                   <details className="data-directory mcp-connection-details">
                     <summary>连接信息与令牌</summary>
                     <code>{mcpStatus.endpoint}</code>
                     <code>Bearer {mcpStatus.token}</code>
                     <p className="field-hint">
-                      Codex：复制 TOML 并追加到
-                      %USERPROFILE%\.codex\config.toml，保存后重启 Codex。
+                      也可复制 {mcpClientName}{" "}
+                      配置并手动合并，保存后重启客户端。
                     </p>
                     <button
                       className="text-button"
                       type="button"
                       disabled={!mcpStatus.running}
                       onClick={() => {
-                        const config = JSON.stringify(
-                          {
-                            mcpServers: {
-                              "orbit-ssh": {
-                                url: mcpStatus.endpoint,
-                                headers: {
-                                  Authorization: `Bearer ${mcpStatus.token}`,
-                                },
-                              },
-                            },
-                          },
-                          null,
-                          2,
-                        );
-                        void writeClipboard(config)
+                        void backend()
+                          .MCPConfigSnippet(mcpClient)
+                          .then(writeClipboard)
                           .then(() => {
-                            setMcpCopied("json");
+                            setMcpCopied(mcpClient);
                             window.setTimeout(() => setMcpCopied(""), 1500);
                           })
                           .catch((copyError) => setError(errorText(copyError)));
                       }}
                     >
                       <Clipboard size={14} aria-hidden="true" />
-                      {mcpCopied === "json" ? "已复制" : "复制通用 JSON"}
-                    </button>
-                    <button
-                      className="text-button"
-                      type="button"
-                      disabled={!mcpStatus.running}
-                      onClick={() => {
-                        const config = [
-                          "[mcp_servers.orbit-ssh]",
-                          `url = "${mcpStatus.endpoint}"`,
-                          `http_headers = { Authorization = "Bearer ${mcpStatus.token}" }`,
-                        ].join("\n");
-                        void writeClipboard(config)
-                          .then(() => {
-                            setMcpCopied("codex");
-                            window.setTimeout(() => setMcpCopied(""), 1500);
-                          })
-                          .catch((copyError) => setError(errorText(copyError)));
-                      }}
-                    >
-                      <Clipboard size={14} aria-hidden="true" />
-                      {mcpCopied === "codex" ? "已复制" : "复制 Codex TOML"}
+                      {mcpCopied === mcpClient
+                        ? "已复制"
+                        : `复制 ${mcpClientName} ${mcpClient === "codex" ? "TOML" : "JSON"}`}
                     </button>
                   </details>
                 )}
