@@ -72,6 +72,7 @@ public final class MainActivity extends Activity {
     private TerminalActionMode terminalActions;
     private TextView loading;
     private boolean darkAppearance;
+    private boolean terminalFullscreen;
     private int surfaceColor = Color.WHITE;
     private int canvasColor = Color.rgb(247, 248, 250);
     private Process backend;
@@ -144,6 +145,26 @@ public final class MainActivity extends Activity {
             loading.setBackgroundColor(canvasColor);
             loading.setTextColor(darkAppearance ? Color.rgb(123, 197, 164) : Color.rgb(35, 110, 84));
         }
+        applyTerminalFullscreen();
+    }
+
+    private void applyTerminalFullscreen() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                if (terminalFullscreen) controller.hide(WindowInsets.Type.systemBars());
+                else controller.show(WindowInsets.Type.systemBars());
+            }
+        } else {
+            // Keep adjustResize working on Android 9/10: FULLSCREEN disables it
+            // on these versions. Reclaim the navigation bar and app chrome.
+            View decor = getWindow().getDecorView();
+            int mask = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+            int flags = decor.getSystemUiVisibility();
+            decor.setSystemUiVisibility(terminalFullscreen ? flags | mask : flags & ~mask);
+        }
+        if (webContainer != null) webContainer.requestApplyInsets();
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
@@ -208,7 +229,21 @@ public final class MainActivity extends Activity {
                 android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
                 view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+                try {
+                    deliver(new JSONObject().put("type", "event").put("name", "android:viewport")
+                        .put("args", new JSONArray().put(new JSONObject().put("keyboardVisible", insets.isVisible(WindowInsets.Type.ime())))));
+                } catch (Exception ignored) { }
                 return WindowInsets.CONSUMED;
+            });
+        } else {
+            webContainer.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+                android.graphics.Rect visible = new android.graphics.Rect();
+                getWindow().getDecorView().getWindowVisibleDisplayFrame(visible);
+                boolean keyboardVisible = getResources().getDisplayMetrics().heightPixels - visible.bottom > 140 * getResources().getDisplayMetrics().density;
+                try {
+                    deliver(new JSONObject().put("type", "event").put("name", "android:viewport")
+                        .put("args", new JSONArray().put(new JSONObject().put("keyboardVisible", keyboardVisible))));
+                } catch (Exception ignored) { }
             });
         }
     }
@@ -308,7 +343,7 @@ public final class MainActivity extends Activity {
                 String method = request.getString("method");
                 JSONArray args = request.optJSONArray("args");
                 final String requestID = id;
-                if (method.equals("ClipboardGetText") || method.equals("ClipboardSetText") || method.equals("ShowKeyboard") || method.equals("SetSystemAppearance") || method.equals("ShowTerminalActions") || method.equals("HideTerminalActions")) {
+                if (method.equals("ClipboardGetText") || method.equals("ClipboardSetText") || method.equals("ShowKeyboard") || method.equals("SetSystemAppearance") || method.equals("ShowTerminalActions") || method.equals("HideTerminalActions") || method.equals("SetTerminalFullscreen")) {
                     runOnUiThread(() -> frontendAction(requestID, method, args));
                 } else if (method.equals("ExportLocalFile")) {
                     File source = new File(args.getString(0)).getCanonicalFile();
@@ -338,6 +373,10 @@ public final class MainActivity extends Activity {
                 reply(id, false, true, null);
             } else if (method.equals("HideTerminalActions")) {
                 terminalActions.hide(args.getString(0));
+                reply(id, false, true, null);
+            } else if (method.equals("SetTerminalFullscreen")) {
+                terminalFullscreen = args.getBoolean(0);
+                applyTerminalFullscreen();
                 reply(id, false, true, null);
             } else if (method.equals("SetSystemAppearance")) {
                 boolean dark = args.getBoolean(0);
@@ -543,7 +582,14 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (webView != null) {
-            webView.evaluateJavascript("(() => { const close = document.querySelector('.modal [aria-label=\"关闭对话框\"]'); if (close) { close.click(); return true; } const backdrop = document.querySelector('.sidebar-backdrop'); if (backdrop) { backdrop.click(); return true; } return false; })()", handled -> {
+            String script = "(() => {"
+                + " const close = document.querySelector('.modal [aria-label=\"关闭对话框\"]'); if (close) { close.click(); return true; }"
+                + " const backdrop = document.querySelector('.sidebar-backdrop'); if (backdrop) { backdrop.click(); return true; }"
+                + " const layout = document.querySelector('.split-toggle[aria-expanded=\"true\"]'); if (layout) { layout.click(); return true; }"
+                + " const tools = document.querySelector('[aria-label=\"更多终端操作\"][aria-expanded=\"true\"]'); if (tools) { tools.click(); return true; }"
+                + " const fullscreen = document.querySelector('[aria-label=\"退出终端全屏\"]'); if (fullscreen) { fullscreen.click(); return true; }"
+                + " return false; })()";
+            webView.evaluateJavascript(script, handled -> {
                 if (!"true".equals(handled)) confirmExit();
             });
         } else confirmExit();

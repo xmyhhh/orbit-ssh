@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   Check,
-  ChevronDown,
   Clipboard,
-  Columns2,
   FolderOpen,
   History,
   LoaderCircle,
   Menu,
+  Maximize2,
   Moon,
   Plus,
   Search,
@@ -34,6 +33,7 @@ import {
   errorText,
   isDesktop,
   loadWorkspace,
+  listen,
   savePreview,
 } from "./bridge";
 import {
@@ -45,7 +45,9 @@ import {
   HostDialog,
   PreferencesDialog,
 } from "./dialogs";
-import TerminalLayoutPicker from "./TerminalLayoutPicker";
+import TerminalLayoutControl from "./TerminalLayoutControl";
+import TerminalFocusBar from "./TerminalFocusBar";
+import SessionTabs from "./SessionTabs";
 import FilesPane from "./FilesPane";
 import MonitorPanel from "./MonitorPanel";
 import WSLPage from "./WSLPage";
@@ -62,6 +64,7 @@ import type { HostFilter } from "./HostsPage";
 import { moveTabFocus, pageNames } from "./navigation";
 import type { Page } from "./navigation";
 import { useSessionConnections } from "./hooks/useSessionConnections";
+import { useTerminalViewport } from "./hooks/useTerminalViewport";
 
 interface Confirmation {
   title: string;
@@ -105,6 +108,7 @@ export default function App() {
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [monitorExpanded, setMonitorExpanded] = useState(false);
   const [terminalSearch, setTerminalSearch] = useState<string | null>(null);
+  const [terminalToolsOpen, setTerminalToolsOpen] = useState(false);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -137,9 +141,6 @@ export default function App() {
     if (items) items.push(session);
     else sessionGroups.set(session.host.id, [session]);
   }
-  const hostSessions = activeSession
-    ? (sessionGroups.get(activeSession.host.id) ?? [])
-    : [];
   const dark =
     workspace.preferences.theme === "dark" ||
     (workspace.preferences.theme === "system" && systemDark);
@@ -155,6 +156,38 @@ export default function App() {
     helpOpen ||
     confirmation,
   );
+  const viewport = useTerminalViewport(
+    Boolean(activeSession) && !filesOpen,
+    modalOpen,
+  );
+  const focusToolbar = viewport.mobile || viewport.fullscreen;
+  useEffect(() => {
+    setTerminalToolsOpen(false);
+  }, [active, viewport.fullscreen, filesOpen, modalOpen]);
+  useEffect(() => {
+    if (!terminalToolsOpen) return;
+    function close(event: PointerEvent) {
+      if (
+        !(event.target as HTMLElement).closest(
+          ".terminal-toolbar, .terminal-focus-bar",
+        )
+      )
+        setTerminalToolsOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setTerminalToolsOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape, true);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", escape, true);
+    };
+  }, [terminalToolsOpen]);
 
   const {
     terminalHistory,
@@ -178,24 +211,14 @@ export default function App() {
     filesOpen,
     notify,
     onNewTerminal: newTerminal,
+    focusPane:
+      viewport.mobile && (viewport.fullscreen || viewport.keyboardVisible),
   });
   const {
-    splitLayout,
-    splitSessionIds,
-    splitMode,
-    splitSelection,
-    compactSplit,
-    splitPickerOpen,
-    setSplitPickerOpen,
-    draggedSessionId,
     setDraggedSessionId,
-    splitControlRef,
     pendingSplitRef,
     startSessionDrag,
     activateSession,
-    applySplitPreset,
-    equalizePanes,
-    toggleSplitSession,
   } = terminalLayout;
 
   const {
@@ -242,12 +265,16 @@ export default function App() {
   }
   useEffect(() => {
     void load();
+    const offNotice = listen("ssh:notice", (message) => notify(String(message)));
     if (isDesktop())
       void backend()
         .GetPlatform()
         .then(setPlatform)
         .catch(() => {});
-    return () => clearTimeout(toastTimer.current);
+    return () => {
+      offNotice();
+      clearTimeout(toastTimer.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -545,6 +572,24 @@ export default function App() {
       });
     else void removeSession(session.id).catch((e) => notify(errorText(e)));
   }
+  function closeTerminalTab(items: Session[]) {
+    if (items.length === 1) {
+      closeSession(items[0]);
+      return;
+    }
+    const run = () => removeSessions(items);
+    if (
+      workspace.preferences.confirmClose &&
+      items.some((session) => !session.demo && session.status !== "closed")
+    ) {
+      setConfirmation({
+        title: "关闭这组分屏？",
+        message: `将关闭此组合的 ${items.length} 个终端，前台任务和文件传输会中断。`,
+        action: "关闭分屏会话",
+        run,
+      });
+    } else void run().catch((error) => notify(errorText(error)));
+  }
   function pasteToTerminal(sessionId: string, text: string) {
     const target = sessionsRef.current.find((s) => s.id === sessionId);
     if (!target || target.status !== "connected" || !text) return;
@@ -582,7 +627,8 @@ export default function App() {
 
   return (
     <div
-      className={`app ${sidebarOpen ? "sidebar-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
+      className={`app ${sidebarOpen ? "sidebar-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${viewport.mobile && activeSession ? "is-mobile-terminal" : ""} ${viewport.fullscreen ? "terminal-fullscreen" : ""} ${viewport.keyboardVisible ? "terminal-keyboard-visible" : ""}`}
+      style={{ height: viewport.viewportHeight }}
     >
       <a className="skip-link" href="#main-content">
         跳转到工作区
@@ -818,6 +864,25 @@ export default function App() {
                 className={`terminal-workspace ${filesOpen ? "file-mode" : ""}`}
                 hidden={!activeSession}
               >
+                {activeSession && focusToolbar && (
+                  <TerminalFocusBar
+                    sessions={sessions}
+                    active={active}
+                    layout={terminalLayout}
+                    fullscreen={viewport.fullscreen}
+                    onFullscreen={viewport.toggleFullscreen}
+                    onNavigate={() => setSidebarOpen(true)}
+                    toolsOpen={terminalToolsOpen}
+                    onTools={() => setTerminalToolsOpen((open) => !open)}
+                  >
+                    <TerminalLayoutControl
+                      sessions={sessions}
+                      active={active}
+                      layout={terminalLayout}
+                      onNewTerminal={newTerminal}
+                    />
+                  </TerminalFocusBar>
+                )}
                 {activeSession && (
                   <div
                     ref={sessionbarRef}
@@ -826,45 +891,13 @@ export default function App() {
                     aria-label={`${activeSession.host.name} 的终端会话`}
                     onKeyDown={moveTabFocus}
                   >
-                    {hostSessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className={`session-tab ${s.id === active ? "selected" : ""} ${splitMode && splitSessionIds.includes(s.id) ? "in-split" : ""} ${draggedSessionId === s.id ? "dragging-tab" : ""}`}
-                      >
-                        <button
-                          role="tab"
-                          aria-selected={s.id === active}
-                          aria-label={`${s.host.name} · 终端 #${s.terminalNumber}`}
-                          title={`终端 #${s.terminalNumber} · ${s.status === "connected" ? "已连接" : s.status === "connecting" ? "连接中" : "已断开"}`}
-                          draggable
-                          onClick={() => activateSession(s.id)}
-                          onDragStart={(event) => startSessionDrag(event, s.id)}
-                          onDragEnd={() => setDraggedSessionId(null)}
-                        >
-                          {s.status === "connecting" ? (
-                            <LoaderCircle
-                              size={13}
-                              className="spin"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <span
-                              className={`status-dot ${s.status === "closed" ? "offline" : ""}`}
-                              aria-hidden="true"
-                            />
-                          )}
-                          <span>终端 #{s.terminalNumber}</span>
-                        </button>
-                        <button
-                          className="tab-close"
-                          aria-label={`关闭 ${s.host.name} 终端 #${s.terminalNumber}`}
-                          title={`关闭终端 #${s.terminalNumber}`}
-                          onClick={() => closeSession(s)}
-                        >
-                          <X size={13} aria-hidden="true" />
-                        </button>
-                      </div>
-                    ))}
+                    <SessionTabs
+                      sessions={sessions}
+                      hostId={activeSession.host.id}
+                      active={active}
+                      layout={terminalLayout}
+                      onClose={closeTerminalTab}
+                    />
                     <button
                       className="tab-add"
                       aria-label="为当前主机或 Shell 新建终端"
@@ -876,7 +909,9 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                <div className="terminal-toolbar">
+                <div
+                  className={`terminal-toolbar ${terminalToolsOpen ? "mobile-tools-open" : ""}`}
+                >
                   <div>
                     <span
                       className={`status-dot ${activeSession?.status === "closed" ? "offline" : ""}`}
@@ -908,47 +943,24 @@ export default function App() {
                       <Plus size={16} aria-hidden="true" />
                       新建终端
                     </button>
-                    <div className="split-control" ref={splitControlRef}>
+                    {!focusToolbar && (
+                      <TerminalLayoutControl
+                        sessions={sessions}
+                        active={active}
+                        layout={terminalLayout}
+                        onNewTerminal={newTerminal}
+                      />
+                    )}
+                    {!focusToolbar && (
                       <button
-                        className={`button toolbar-button split-toggle ${splitMode ? "selected" : ""}`}
-                        aria-label="终端布局"
-                        aria-pressed={splitMode}
-                        aria-expanded={splitPickerOpen}
-                        aria-haspopup="dialog"
-                        aria-controls="terminal-layout-picker"
-                        title="终端布局与分屏"
-                        disabled={
-                          !activeSession ||
-                          activeSession.status === "connecting"
-                        }
-                        onClick={() => setSplitPickerOpen((open) => !open)}
+                        className="icon-button"
+                        aria-label="终端全屏"
+                        title="全屏终端"
+                        onClick={viewport.toggleFullscreen}
                       >
-                        <Columns2 size={16} aria-hidden="true" />
-                        <span>分屏</span>
-                        {splitMode && (
-                          <span className="split-count">
-                            {splitSessionIds.length}
-                          </span>
-                        )}
-                        <ChevronDown size={12} aria-hidden="true" />
+                        <Maximize2 size={16} />
                       </button>
-                      {splitPickerOpen && (
-                        <TerminalLayoutPicker
-                          sessions={sessions}
-                          activeId={active}
-                          selectedIds={splitSelection}
-                          layout={splitLayout}
-                          compact={compactSplit}
-                          onPreset={applySplitPreset}
-                          onToggle={toggleSplitSession}
-                          onEqualize={equalizePanes}
-                          onNewTerminal={() => {
-                            setSplitPickerOpen(false);
-                            newTerminal();
-                          }}
-                        />
-                      )}
-                    </div>
+                    )}
                     <span className="toolbar-divider" />
                     <button
                       className="icon-button"
@@ -1064,7 +1076,7 @@ export default function App() {
                     handles={handles}
                     preferences={workspace.preferences}
                     dark={dark}
-                    suspended={modalOpen}
+                    suspended={modalOpen || terminalToolsOpen}
                     inert={filesOpen || (monitorOpen && monitorExpanded)}
                     filesOpen={filesOpen}
                     search={terminalSearch}

@@ -11,6 +11,7 @@ interface Props {
   compact: boolean;
   onPlace: (id: string, targetId: string, placement: PanePlacement) => void;
   onFinish: () => void;
+  touchPlacement?: PanePlacement | null;
 }
 
 const labels: Record<PanePlacement, string> = {
@@ -29,8 +30,10 @@ export default function TerminalDropTarget({
   compact,
   onPlace,
   onFinish,
+  touchPlacement,
 }: Props) {
-  const [placement, setPlacement] = useState<PanePlacement | null>(null);
+  const [nativePlacement, setPlacement] = useState<PanePlacement | null>(null);
+  const placement = touchPlacement ?? nativePlacement;
   function position(event: DragEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     return canSplit

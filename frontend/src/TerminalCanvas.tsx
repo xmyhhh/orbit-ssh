@@ -81,11 +81,15 @@ export default function TerminalCanvas({
     startSplitResize,
     adjustSplitResize,
     resetSplitResize,
+    startTouchDrag,
+    consumeDragClick,
+    touchDrop,
+    autoFocusPane,
   } = layout;
   return (
     <div
       ref={terminalAreaRef}
-      className={`terminals ${splitMode ? `is-split ${compactSplit && !maximized ? "is-compact" : ""} ${maximized ? "is-maximized" : ""}` : ""}`}
+      className={`terminals ${autoFocusPane ? "is-focused-pane" : ""} ${splitMode ? `is-split ${compactSplit && !maximized ? "is-compact" : ""} ${maximized ? "is-maximized" : ""}` : ""}`}
       inert={inert}
     >
       {search !== null && activeSession && !filesOpen && (
@@ -183,7 +187,10 @@ export default function TerminalCanvas({
                     draggable={!maximized}
                     title={`${s.host.name} · 终端 #${s.terminalNumber} · 拖动调整位置，双击${maximized ? "还原" : "放大"}`}
                     aria-label={`激活 ${s.host.name} 终端 #${s.terminalNumber}`}
-                    onClick={() => activateSession(s.id)}
+                    onClick={() => {
+                      if (!consumeDragClick(s.id)) activateSession(s.id);
+                    }}
+                    onPointerDown={(event) => startTouchDrag(event, s.id)}
                     onDoubleClick={() => togglePaneMaximize(s.id)}
                     onDragStart={(event) => startSessionDrag(event, s.id)}
                     onDragEnd={() => setDraggedSessionId(null)}
@@ -265,6 +272,9 @@ export default function TerminalCanvas({
                       splitSessionIds.length < 4
                     }
                     compact={compactSplit}
+                    touchPlacement={
+                      touchDrop?.targetId === s.id ? touchDrop.placement : null
+                    }
                     onPlace={placeSessionInSplit}
                     onFinish={() => setDraggedSessionId(null)}
                   />

@@ -12,7 +12,7 @@ import {
   updateSplitRatio,
 } from "../src/splitLayout.ts";
 
-test("switching a tab replaces only the focused pane and preserves resized dividers", () => {
+test("explicitly replacing a pane preserves resized dividers", () => {
   const original = updateSplitRatio(
     createSplitLayout(["a", "b", "c"], "grid"),
     "1",

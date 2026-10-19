@@ -5,6 +5,7 @@ import "./styles.css";
 import "./terminalLayout.css";
 import "./files.css";
 import "./android.css";
+import "./terminalWorkspace.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

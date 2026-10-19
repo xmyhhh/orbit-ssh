@@ -22,6 +22,14 @@ import {
   type SplitPreset,
 } from "../splitLayout";
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import {
+  pruneWorkspaces,
+  saveWorkspaceLayout,
+  terminalTabs,
+  workspaceForSession,
+  type TerminalWorkspace,
+} from "../terminalWorkspaces";
+import { useTerminalDrag } from "./useTerminalDrag";
 
 export function useTerminalLayout({
   sessions,
@@ -32,6 +40,7 @@ export function useTerminalLayout({
   filesOpen,
   notify,
   onNewTerminal,
+  focusPane = false,
 }: {
   sessions: Session[];
   active: string;
@@ -41,8 +50,38 @@ export function useTerminalLayout({
   filesOpen: boolean;
   notify: (message: string) => void;
   onNewTerminal: () => void;
+  focusPane?: boolean;
 }) {
-  const [splitLayout, setSplitLayout] = useState<SplitLayout | null>(null);
+  const [workspaces, setWorkspaces] = useState<TerminalWorkspace[]>([]);
+  const activeWorkspace = workspaceForSession(workspaces, active);
+  const splitLayout = activeWorkspace?.layout ?? null;
+  const tabs = terminalTabs(
+    sessions.map((session) => session.id),
+    workspaces,
+  );
+  function setSplitLayout(
+    next: SetStateAction<SplitLayout | null>,
+    anchorId = active,
+    focusId = active,
+  ) {
+    const newWorkspaceId = crypto.randomUUID();
+    setWorkspaces((current) => {
+      const workspace = workspaceForSession(current, anchorId);
+      const layout =
+        typeof next === "function" ? next(workspace?.layout ?? null) : next;
+      return saveWorkspaceLayout(
+        current,
+        layout,
+        focusId,
+        workspace?.id ?? newWorkspaceId,
+      );
+    });
+  }
+  function dissolveWorkspace(id: string) {
+    setWorkspaces((current) =>
+      current.filter((workspace) => workspace.id !== id),
+    );
+  }
   const [paneMaximized, setPaneMaximized] = useState(false);
   const [splitPickerOpen, setSplitPickerOpen] = useState(false);
   const [compactSplit, setCompactSplit] = useState(
@@ -70,7 +109,8 @@ export function useTerminalLayout({
   );
   const splitSessionIds = splitLayoutIds(splitLayout);
   const splitMode = splitSessionIds.length > 1;
-  const maximized = splitMode && paneMaximized;
+  const autoFocusPane = splitMode && focusPane && !draggedSessionId;
+  const maximized = splitMode && (paneMaximized || autoFocusPane);
   const splitSelection = splitMode
     ? splitSessionIds
     : activeSession
@@ -99,22 +139,23 @@ export function useTerminalLayout({
     return () => observer.disconnect();
   }, [Boolean(activeSession)]);
   useEffect(() => {
-    if (!splitLayout) return;
-    const splitSessionIds = splitLayoutIds(splitLayout);
     const openIds = new Set(sessions.map((session) => session.id));
-    const remaining = splitSessionIds.filter((id) => openIds.has(id));
-    if (remaining.length === splitSessionIds.length) return;
-    let nextLayout: SplitLayout | null = splitLayout;
-    for (const id of splitSessionIds)
-      if (!openIds.has(id) && nextLayout)
-        nextLayout = removeSplitPane(nextLayout, id);
-    const nextIds = splitLayoutIds(nextLayout);
-    if (nextIds.length > 1) setSplitLayout(nextLayout);
-    else {
-      setSplitLayout(null);
-      if (nextIds.length === 1) setActive(nextIds[0]);
-    }
-  }, [sessions, splitLayout]);
+    setWorkspaces((current) => pruneWorkspaces(current, openIds));
+  }, [sessions]);
+  useEffect(() => {
+    setWorkspaces((current) =>
+      current.map((workspace) =>
+        splitLayoutIds(workspace.layout).includes(active) &&
+        workspace.activeId !== active
+          ? { ...workspace, activeId: active }
+          : workspace,
+      ),
+    );
+  }, [active]);
+  useEffect(() => {
+    setPaneMaximized(false);
+    setSplitResize(null);
+  }, [activeWorkspace?.id]);
   useEffect(() => {
     if (!splitMode) setPaneMaximized(false);
   }, [splitMode]);
@@ -228,7 +269,7 @@ export function useTerminalLayout({
     if (!baseLayout) return;
     if (direction === "center") {
       const next = replaceSplitPane(baseLayout, targetId, id);
-      setSplitLayout(typeof next === "string" ? null : next);
+      setSplitLayout(typeof next === "string" ? null : next, targetId, id);
       setActive(id);
       return;
     }
@@ -259,7 +300,7 @@ export function useTerminalLayout({
       placementDirection,
     );
     if (next === withoutMovingPane) return;
-    setSplitLayout(next);
+    setSplitLayout(next, targetId, id);
     setPaneMaximized(false);
     setActive(id);
   }
@@ -292,17 +333,8 @@ export function useTerminalLayout({
     );
   }
   function activateSession(id: string) {
+    setSplitPickerOpen(false);
     setActive(id);
-    setSplitLayout((current) => {
-      if (!current) return current;
-      const ids = splitLayoutIds(current);
-      if (ids.length < 2 || ids.includes(id)) return current;
-      return replaceSplitPane(
-        current,
-        ids.includes(active) ? active : ids[0],
-        id,
-      );
-    });
     if (canFocus) {
       if (active === id) handles.current.get(id)?.focus();
       else {
@@ -322,15 +354,19 @@ export function useTerminalLayout({
       activateSession(id);
       return;
     }
-    setSplitLayout((current) => {
-      const base = current ?? pending.targetId;
-      if (
-        !splitLayoutIds(base).includes(pending.targetId) ||
-        splitLayoutIds(base).length >= 4
-      )
-        return current;
-      return insertSplitPane(base, pending.targetId, id, pending.direction);
-    });
+    setSplitLayout(
+      (current) => {
+        const base = current ?? pending.targetId;
+        if (
+          !splitLayoutIds(base).includes(pending.targetId) ||
+          splitLayoutIds(base).length >= 4
+        )
+          return current;
+        return insertSplitPane(base, pending.targetId, id, pending.direction);
+      },
+      pending.targetId,
+      id,
+    );
     setPaneMaximized(false);
     setActive(id);
   }
@@ -344,8 +380,12 @@ export function useTerminalLayout({
     }
     const candidates = [
       ...splitSelection,
-      ...hostSessions.map((session) => session.id),
-      ...sessions.map((session) => session.id),
+      ...hostSessions
+        .filter((session) => !workspaceForSession(workspaces, session.id))
+        .map((session) => session.id),
+      ...sessions
+        .filter((session) => !workspaceForSession(workspaces, session.id))
+        .map((session) => session.id),
     ].filter((id, index, ids) => ids.indexOf(id) === index);
     const count = preset === "grid" ? 4 : Math.max(2, splitSelection.length);
     const selected = candidates.slice(0, count);
@@ -404,11 +444,26 @@ export function useTerminalLayout({
       current ? updateSplitRatio(current, divider.path, 0.5) : current,
     );
   }
+  const touchDrag = useTerminalDrag({
+    compact: compactSplit,
+    splitSessionIds,
+    onPlace: placeSessionInSplit,
+    onStart: (id) => {
+      setSplitPickerOpen(false);
+      setPaneMaximized(false);
+      setDraggedSessionId(id);
+    },
+    onFinish: () => setDraggedSessionId(null),
+  });
   return {
+    tabs,
+    dissolveWorkspace,
+    ...touchDrag,
     splitLayout,
     splitSessionIds,
     splitMode,
     maximized,
+    autoFocusPane,
     splitSelection,
     paneSessions,
     splitGeometry,
