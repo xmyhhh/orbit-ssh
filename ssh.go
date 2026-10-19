@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -20,10 +19,7 @@ type Credentials struct {
 	Password   string `json:"password"`
 	Passphrase string `json:"passphrase"`
 }
-type TerminalSize struct {
-	Cols int `json:"cols"`
-	Rows int `json:"rows"`
-}
+
 type remoteSession struct {
 	client      *ssh.Client
 	shell       *ssh.Session
@@ -63,16 +59,6 @@ func (a *App) session(id string) (*remoteSession, error) {
 		return nil, errors.New("连接已断开，请重新连接")
 	}
 	return s, nil
-}
-
-func validSize(size TerminalSize) TerminalSize {
-	if size.Cols < 2 || size.Cols > 1000 {
-		size.Cols = 100
-	}
-	if size.Rows < 2 || size.Rows > 500 {
-		size.Rows = 30
-	}
-	return size
 }
 
 // Unknown keys must be explicitly approved by their SHA-256 fingerprint. A changed
@@ -268,19 +254,7 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 	for _, reader := range []io.Reader{stdout, stderr} {
 		go func(r io.Reader) {
 			defer readers.Done()
-			buffer := make([]byte, 16384)
-			for {
-				n, e := r.Read(buffer)
-				if n > 0 {
-					s.output.append(buffer[:n])
-					if a.emit != nil {
-						a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
-					}
-				}
-				if e != nil {
-					return
-				}
-			}
+			a.copyTerminalOutput(id, s.output, r)
 		}(reader)
 	}
 	go func() {
@@ -328,63 +302,5 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 			}
 		}
 	}()
-	return nil
-}
-
-func (a *App) WriteTerminal(id, data string) error {
-	if len(data) > 1024*1024 {
-		return errors.New("单次输入过大")
-	}
-	a.mu.Lock()
-	local := a.localSessions[id]
-	a.mu.Unlock()
-	if local != nil {
-		local.writeMu.Lock()
-		defer local.writeMu.Unlock()
-		_, err := io.WriteString(local.terminal, data)
-		return err
-	}
-	s, e := a.session(id)
-	if e != nil {
-		return e
-	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	_, e = io.WriteString(s.stdin, data)
-	return e
-}
-func (a *App) ResizeTerminal(id string, size TerminalSize) error {
-	a.mu.Lock()
-	local := a.localSessions[id]
-	a.mu.Unlock()
-	if local != nil {
-		size = validSize(size)
-		return local.terminal.Resize(size.Cols, size.Rows)
-	}
-	s, e := a.session(id)
-	if e != nil {
-		return e
-	}
-	size = validSize(size)
-	return s.shell.WindowChange(size.Rows, size.Cols)
-}
-func (a *App) Disconnect(id string) error {
-	a.mu.Lock()
-	s := a.sessions[id]
-	local := a.localSessions[id]
-	delete(a.sessions, id)
-	delete(a.localSessions, id)
-	cancel := a.pending[id]
-	delete(a.pending, id)
-	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	if s != nil {
-		s.close()
-	}
-	if local != nil {
-		local.close()
-	}
 	return nil
 }

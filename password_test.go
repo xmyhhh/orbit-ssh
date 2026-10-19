@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/zalando/go-keyring"
 )
 
 func mockPasswordVault(t *testing.T) map[string]string {
@@ -18,14 +16,14 @@ func mockPasswordVault(t *testing.T) map[string]string {
 	getLoginPassword = func(id string) (string, error) {
 		value, ok := vault[id]
 		if !ok {
-			return "", keyring.ErrNotFound
+			return "", errCredentialNotFound
 		}
 		return value, nil
 	}
 	setLoginPassword = func(id, value string) error { vault[id] = value; return nil }
 	deleteLoginPassword = func(id string) error {
 		if _, ok := vault[id]; !ok {
-			return keyring.ErrNotFound
+			return errCredentialNotFound
 		}
 		delete(vault, id)
 		return nil

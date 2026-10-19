@@ -1,6 +1,10 @@
 package main
 
-import "sync"
+import (
+	"encoding/base64"
+	"io"
+	"sync"
+)
 
 const terminalOutputLimit = 1024 * 1024
 
@@ -30,4 +34,21 @@ func (b *terminalOutputBuffer) read() []byte {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return append([]byte(nil), b.data...)
+}
+
+// Both SSH streams and local consoles retain and emit the exact bytes they read.
+func (a *App) copyTerminalOutput(id string, output *terminalOutputBuffer, reader io.Reader) {
+	buffer := make([]byte, 16384)
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			output.append(buffer[:n])
+			if a.emit != nil {
+				a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
 }

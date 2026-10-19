@@ -1,0 +1,198 @@
+:root {
+  font-family:
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  color: var(--text);
+  background: var(--canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --canvas: #f7f8fa;
+  --surface: #ffffff;
+  --terminal-bg: #e8ede9;
+  --sidebar: #f3f5f6;
+  --surface-soft: #f7f9f8;
+  --text: #27332f;
+  --muted: #617067;
+  --faint: #647269;
+  --line: #e5eae7;
+  --line-strong: #d4ded7;
+  --split-divider: #8ca295;
+  --accent: #236e54;
+  --accent-hover: #195d45;
+  --accent-soft: #e6f0e9;
+  --accent-text: #2d7258;
+  --accent-bright: #71b493;
+  --green-tint: #edf4ee;
+  --green-line: #dce7de;
+  --warm: #f2f1ea;
+  --danger: #b6424a;
+  --danger-bg: #fff0f0;
+  --shadow: 0 12px 32px #22382a0a;
+  --modal-shadow: 0 32px 100px #132a2530;
+  --mint-bg: #e8f3ec;
+  --mint-fg: #327458;
+  --blue-bg: #eaf0f9;
+  --blue-fg: #577aa8;
+  --amber-bg: #f9f1de;
+  --amber-fg: #967733;
+  --violet-bg: #f0ecf7;
+  --violet-fg: #8b72a9;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --canvas: #171c20;
+  --surface: #1d2428;
+  --terminal-bg: #171c20;
+  --sidebar: #1b2125;
+  --surface-soft: #222b2e;
+  --text: #dee6e1;
+  --muted: #a0afa6;
+  --faint: #92a297;
+  --line: #303b3a;
+  --line-strong: #42534a;
+  --split-divider: #6f897a;
+  --accent: #7bc5a4;
+  --accent-hover: #98d9ba;
+  --accent-soft: #283d34;
+  --accent-text: #9aceb1;
+  --accent-bright: #79c9a6;
+  --green-tint: #26392f;
+  --green-line: #3b5040;
+  --warm: #30362e;
+  --danger: #f29b9f;
+  --danger-bg: #412a2e;
+  --shadow: 0 12px 32px #0000001a;
+  --modal-shadow: 0 32px 100px #0008;
+  --mint-bg: #2c4236;
+  --mint-fg: #a0d4b5;
+  --blue-bg: #2b394b;
+  --blue-fg: #a5bddf;
+  --amber-bg: #443e2c;
+  --amber-fg: #e0c67f;
+  --violet-bg: #3c334c;
+  --violet-fg: #c6afe5;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  font-size: 13px;
+  line-height: 1.5;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+button,
+input,
+textarea,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  transition:
+    background-color 0.16s,
+    color 0.16s,
+    border-color 0.16s,
+    box-shadow 0.16s;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+button svg {
+  flex-shrink: 0;
+}
+svg {
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+code,
+pre,
+kbd {
+  font-family:
+    "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+input,
+textarea {
+  min-width: 0;
+  color: var(--text);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--faint);
+  opacity: 1;
+}
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+input[type="number"] {
+  appearance: textfield;
+}
+input::-webkit-inner-spin-button {
+  appearance: none;
+}
+input,
+textarea {
+  user-select: text;
+}
+[hidden] {
+  display: none !important;
+}
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+::-webkit-scrollbar {
+  width: 7px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

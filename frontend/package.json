@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "check": "tsc -b",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:layout": "node --experimental-strip-types --test tests/splitLayout.test.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },

@@ -32,6 +32,36 @@ func TestMobileCallValidation(t *testing.T) {
 	}
 }
 
+func TestMobileTerminalHistoryAPI(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	a.historyDir = t.TempDir()
+	call := func(method string, args ...interface{}) {
+		t.Helper()
+		if _, err := mobileCall(a, method, marshalMobile(args)); err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+	}
+	record := TerminalHistoryRecord{ID: "mobile-history", Title: "Android terminal", Output: "hello", UpdatedAt: 1}
+	call("SyncTerminalHistory", []TerminalHistoryRecord{record})
+	call("AppendTerminalHistory", record, " world", []string{record.ID})
+	records := a.terminalHistorySnapshot()
+	if len(records) != 1 || records[0].Output != "hello world" {
+		t.Fatalf("history append did not reach the shared backend: %+v", records)
+	}
+	record = records[0]
+	record.Pinned = true
+	call("UpsertTerminalHistory", record, []string{record.ID})
+	if !a.terminalHistorySnapshot()[0].Pinned {
+		t.Fatal("mobile history pin was not saved")
+	}
+	call("DeleteTerminalHistory", record.ID)
+	call("AppendTerminalHistory", record, "late output", []string{record.ID})
+	if len(a.terminalHistorySnapshot()) != 0 {
+		t.Fatal("late output recreated deleted mobile history")
+	}
+	a.flushTerminalHistory()
+}
+
 // Exercise the actual Android pipe protocol against a local SSH/SFTP server,
 // including asynchronous output, DNS callbacks and the native credential vault.
 func TestMobilePipeSSHAndCredentials(t *testing.T) {

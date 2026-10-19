@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zalando/go-keyring"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -44,14 +43,14 @@ func TestSavedKeyLogin(t *testing.T) {
 	getKeyPassphrase = func(id string) (string, error) {
 		v, ok := vault[id]
 		if !ok {
-			return "", keyring.ErrNotFound
+			return "", errCredentialNotFound
 		}
 		return v, nil
 	}
 	setKeyPassphrase = func(id, value string) error { vault[id] = value; return nil }
 	deleteKeyPassphrase = func(id string) error {
 		if _, ok := vault[id]; !ok {
-			return keyring.ErrNotFound
+			return errCredentialNotFound
 		}
 		delete(vault, id)
 		return nil

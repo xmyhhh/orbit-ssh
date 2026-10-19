@@ -1,0 +1,321 @@
+.terminal-history-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.terminal-history-page .page-heading {
+  margin-bottom: 18px;
+}
+.terminal-history-page .page-heading h1 {
+  font-size: 22px;
+  letter-spacing: 0;
+}
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.history-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 3px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.history-tabs > button {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.history-tabs > button.selected {
+  color: var(--accent-text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px #2033260d;
+}
+.history-tabs > button > span {
+  color: var(--faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.history-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 140px;
+  max-width: 430px;
+  height: 35px;
+  margin: 0 0 0 auto;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.history-search:focus-within {
+  border-color: var(--accent-bright);
+}
+.history-search input {
+  min-width: 0;
+  width: 100%;
+  height: 31px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+.history-search input:focus-visible {
+  outline: none;
+}
+.history-result-count {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.history-content {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.82fr) minmax(0, 1.35fr);
+  gap: 14px;
+  flex: 1;
+  min-height: 430px;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.history-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.history-row.selected {
+  border-color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+.history-record {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 9px 10px 12px;
+  text-align: left;
+}
+.history-record-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.history-record-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-record-heading time {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.history-record-subtitle {
+  display: block;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-record > pre {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.history-record > small {
+  display: block;
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 9px;
+}
+.history-row-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px;
+}
+.history-row-actions .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.history-row-actions .icon-button.selected,
+.history-detail header .icon-button.selected {
+  color: var(--amber-fg);
+  background: var(--amber-bg);
+}
+.history-empty,
+.history-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
+  padding: 26px;
+  color: var(--muted);
+  text-align: center;
+}
+.history-empty {
+  flex: 1;
+  min-height: 190px;
+}
+.history-empty > svg,
+.history-detail-empty > svg {
+  color: var(--faint);
+}
+.history-empty strong {
+  color: var(--text);
+  font-size: 12px;
+}
+.history-empty p {
+  max-width: 340px;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.7;
+}
+.history-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.history-detail > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.history-detail > header > div:first-child {
+  min-width: 0;
+}
+.history-detail h2 {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-detail > header p,
+.history-detail > header time {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.history-detail > header > div:last-child {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+.history-truncated-note {
+  margin: 10px 14px 0;
+  color: var(--amber-fg);
+  font-size: 10px;
+}
+.history-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  color: var(--text);
+  background: var(--terminal-bg);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+.terminal-history-limit-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.terminal-history-limit-control input {
+  width: 74px;
+  height: 32px;
+  padding: 0 7px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  .history-content {
+    grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.1fr);
+  }
+}
+@media (max-width: 700px) {
+  .history-controls {
+    flex-wrap: wrap;
+  }
+  .history-search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .history-content {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .history-list {
+    max-height: 38vh;
+  }
+  .history-detail,
+  .history-detail-empty {
+    min-height: 300px;
+  }
+  .history-transcript {
+    max-height: 48vh;
+  }
+}
+.terminal-history-page .history-tabs button {
+  letter-spacing: 0;
+}
+.terminal-history-page .history-detail h2 {
+  letter-spacing: 0;
+}

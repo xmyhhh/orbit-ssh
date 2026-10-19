@@ -8,7 +8,7 @@ import {
   WrapText,
 } from "lucide-react";
 import { backend, errorText } from "./bridge";
-import { Modal } from "./Dialogs";
+import { Modal } from "./dialogs/Modal";
 import CodeEditor from "./CodeEditor";
 import {
   detectLanguage,

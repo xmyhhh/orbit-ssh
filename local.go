@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -103,19 +102,7 @@ func (a *App) streamLocalTerminal(id string, s *localSession) {
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
-		buffer := make([]byte, 16384)
-		for {
-			n, err := s.terminal.Read(buffer)
-			if n > 0 {
-				s.output.append(buffer[:n])
-				if a.emit != nil {
-					a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
+		a.copyTerminalOutput(id, s.output, s.terminal)
 	}()
 	go func() {
 		code, err := s.terminal.Wait()

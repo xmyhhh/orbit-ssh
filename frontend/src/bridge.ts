@@ -17,6 +17,7 @@ import type {
   WSLInfo,
 } from "./types";
 import { defaultShortcuts } from "./shortcuts";
+import type { TerminalHistoryRecord } from "./terminalHistory";
 
 interface Backend {
   GetPlatform(): Promise<string>;
@@ -82,10 +83,13 @@ interface Backend {
   MakeDirectory(id: string, dir: string, name: string): Promise<void>;
   DataDirectory(): Promise<string>;
   GetMCPStatus(): Promise<MCPStatus>;
-  SyncTerminalHistory(records: import("./terminalHistory").TerminalHistoryRecord[]): Promise<void>;
-  UpsertTerminalHistory(record: import("./terminalHistory").TerminalHistoryRecord, retainedIDs: string[]): Promise<void>;
+  SyncTerminalHistory(records: TerminalHistoryRecord[]): Promise<void>;
+  UpsertTerminalHistory(
+    record: TerminalHistoryRecord,
+    retainedIDs: string[],
+  ): Promise<void>;
   AppendTerminalHistory(
-    record: import("./terminalHistory").TerminalHistoryRecord,
+    record: TerminalHistoryRecord,
     outputDelta: string,
     retainedIDs: string[],
   ): Promise<void>;
