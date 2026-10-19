@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/pkg/sftp"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type RemoteFile struct {
@@ -125,7 +124,7 @@ func (a *App) UploadFile(id, dir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	local, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择要上传的文件"})
+	local, err := selectOpenFile(a.ctx, "选择要上传的文件")
 	if err != nil || local == "" {
 		return false, err
 	}
@@ -208,7 +207,7 @@ func (a *App) DownloadFile(id, remote string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "保存下载文件", DefaultFilename: path.Base(remote)})
+	dest, err := selectSaveFile(a.ctx, path.Base(remote))
 	if err != nil || dest == "" {
 		return false, err
 	}

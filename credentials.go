@@ -4,19 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
-	"github.com/zalando/go-keyring"
 )
 
 const credentialService = "OrbitSSH"
-
-var getKeyPassphrase = func(id string) (string, error) { return keyring.Get(credentialService, "key:"+id) }
-var setKeyPassphrase = func(id, value string) error { return keyring.Set(credentialService, "key:"+id, value) }
-var deleteKeyPassphrase = func(id string) error { return keyring.Delete(credentialService, "key:"+id) }
-
-var getLoginPassword = func(id string) (string, error) { return keyring.Get(credentialService, "password:"+id) }
-var setLoginPassword = func(id, value string) error { return keyring.Set(credentialService, "password:"+id, value) }
-var deleteLoginPassword = func(id string) error { return keyring.Delete(credentialService, "password:"+id) }
 
 // Keep the endpoint binding inside the encrypted vault record. Editing a host's
 // address, port or username must never send its old password to another login.
@@ -29,7 +19,7 @@ type passwordCredential struct {
 
 func savedPassword(host Host) (string, error) {
 	value, err := getLoginPassword(host.ID)
-	if errors.Is(err, keyring.ErrNotFound) {
+	if errors.Is(err, errCredentialNotFound) {
 		return "", nil
 	}
 	if err != nil {
@@ -90,7 +80,7 @@ func (a *App) ForgetPassword(hostID string) error {
 		return err
 	}
 	err := deleteLoginPassword(hostID)
-	if errors.Is(err, keyring.ErrNotFound) {
+	if errors.Is(err, errCredentialNotFound) {
 		return nil
 	}
 	if err != nil {
@@ -125,7 +115,7 @@ func (a *App) ForgetKeyPassphrase(hostID string) error {
 		return err
 	}
 	err := deleteKeyPassphrase(hostID)
-	if errors.Is(err, keyring.ErrNotFound) {
+	if errors.Is(err, errCredentialNotFound) {
 		return nil
 	}
 	return err

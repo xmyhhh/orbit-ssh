@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { backend, errorText, listen } from "./bridge";
+import { androidCall, isAndroid } from "./android";
 import { Modal } from "./Dialogs";
 import FileContextMenu from "./FileContextMenu";
 import type {
@@ -350,14 +351,32 @@ function FileBrowser({
           {side === "local" && (
             <button
               className="icon-button"
-              title="选择本地文件夹"
-              aria-label="选择本地文件夹"
+              title={isAndroid() ? "从手机导入文件" : "选择本地文件夹"}
+              aria-label={isAndroid() ? "从手机导入文件" : "选择本地文件夹"}
               disabled={session.demo || busy}
               onClick={() => void chooseFolder()}
             >
               <FolderOpen size={16} />
             </button>
           )}
+          {isAndroid() &&
+            side === "local" &&
+            selected.length === 1 &&
+            !files.find((file) => file.name === selected[0])?.isDir && (
+              <button
+                className="icon-button"
+                title="导出到手机"
+                aria-label="导出到手机"
+                onClick={() =>
+                  void androidCall(
+                    "ExportLocalFile",
+                    child(directory.path, selected[0], side),
+                  ).catch((error) => setError(errorText(error)))
+                }
+              >
+                <ArrowDownToLine size={16} />
+              </button>
+            )}
           <button
             className="icon-button"
             title={`${label}主目录`}
@@ -611,7 +630,7 @@ function FileBrowser({
                     title={`${f.name}${f.isSymlink ? " · 符号链接" : ""}\n${f.mode}\n${f.isDir ? "双击或按 Enter 打开文件夹" : "双击或按 Enter 打开文本"}`}
                     disabled={disabled}
                     onClick={(e) => {
-                      if (e.detail === 0) {
+                      if (e.detail === 0 || isAndroid()) {
                         e.stopPropagation();
                         open(f);
                       }
@@ -728,6 +747,7 @@ export default function FilesPane({
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [queueOpen, setQueueOpen] = useState(true);
   const [enqueueing, setEnqueueing] = useState(false);
+  const [androidFileSide, setAndroidFileSide] = useState<Side>("remote");
   const [preview, setPreview] = useState<{
     name: string;
     side: Side;
@@ -838,7 +858,11 @@ export default function FilesPane({
             className="button primary compact"
             disabled={!canTransfer || !local.selected.length}
             onClick={() => void enqueue("upload")}
-            title="上传左侧所选项目到右侧当前目录"
+            title={
+              isAndroid()
+                ? "上传本地所选项目到远程当前目录"
+                : "上传左侧所选项目到右侧当前目录"
+            }
           >
             <Upload size={14} aria-hidden="true" />
             上传{local.selected.length > 0 && ` (${local.selected.length})`}
@@ -848,7 +872,11 @@ export default function FilesPane({
             className="button secondary compact"
             disabled={!canTransfer || !remote.selected.length}
             onClick={() => void enqueue("download")}
-            title="下载右侧所选项目到左侧当前目录"
+            title={
+              isAndroid()
+                ? "下载远程所选项目到本地当前目录"
+                : "下载右侧所选项目到左侧当前目录"
+            }
           >
             <ArrowLeft size={13} aria-hidden="true" />
             <ArrowDownToLine size={14} aria-hidden="true" />
@@ -872,7 +900,27 @@ export default function FilesPane({
           连接已断开，重新连接后可继续浏览和传输。
         </div>
       )}
-      <div className="file-browsers">
+      {isAndroid() && (
+        <div className="android-file-tabs" role="tablist" aria-label="文件位置">
+          <button
+            role="tab"
+            aria-selected={androidFileSide === "local"}
+            onClick={() => setAndroidFileSide("local")}
+          >
+            <HardDrive size={15} /> 本地文件
+            {local.selected.length > 0 && ` (${local.selected.length})`}
+          </button>
+          <button
+            role="tab"
+            aria-selected={androidFileSide === "remote"}
+            onClick={() => setAndroidFileSide("remote")}
+          >
+            <Server size={15} /> 远程文件
+            {remote.selected.length > 0 && ` (${remote.selected.length})`}
+          </button>
+        </div>
+      )}
+      <div className={`file-browsers android-file-side-${androidFileSide}`}>
         <FileBrowser
           side="local"
           state={local}
@@ -1013,9 +1061,7 @@ export default function FilesPane({
               })}
             </div>
           ) : (
-            <div className="transfer-queue-empty">
-              暂无传输
-            </div>
+            <div className="transfer-queue-empty">暂无传输</div>
           ))}
       </section>
       <div className="file-workspace-status">
@@ -1023,7 +1069,11 @@ export default function FilesPane({
           <ShieldCheck size={12} aria-hidden="true" />
           {session.demo ? "演示模式" : "SFTP"}
         </span>
-        <span>双击打开 · Ctrl / Shift 多选</span>
+        <span>
+          {isAndroid()
+            ? "点文件名打开 · 勾选后传输"
+            : "双击打开 · Ctrl / Shift 多选"}
+        </span>
       </div>
       {preview && (
         <Suspense

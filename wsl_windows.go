@@ -68,14 +68,18 @@ type windowsTerminal struct {
 }
 
 func startWindowsTerminal(executable string, args []string, size TerminalSize) (*windowsTerminal, error) {
+	return startWindowsTerminalInDirectory(executable, args, "", size)
+}
+
+func startWindowsTerminalInDirectory(executable string, args []string, dir string, size TerminalSize) (*windowsTerminal, error) {
 	if err := windows.NewLazySystemDLL("kernel32.dll").NewProc("CreatePseudoConsole").Find(); err != nil {
-		return nil, fmt.Errorf("WSL 内嵌终端需要 Windows 10 1809 或更新版本")
+		return nil, fmt.Errorf("内嵌终端需要 Windows 10 1809 或更新版本")
 	}
 	pty, err := conpty.New(size.Cols, size.Rows, 0)
 	if err != nil {
 		return nil, err
 	}
-	_, handle, err := pty.Spawn(executable, append([]string{executable}, args...), &syscall.ProcAttr{Env: append(os.Environ(), "TERM=xterm-256color")})
+	_, handle, err := pty.Spawn(executable, append([]string{executable}, args...), &syscall.ProcAttr{Dir: dir, Env: append(os.Environ(), "TERM=xterm-256color")})
 	if err != nil {
 		_ = pty.Close()
 		return nil, err
@@ -105,7 +109,7 @@ func (s *windowsTerminal) Resize(cols, rows int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return fmt.Errorf("WSL 终端已关闭")
+		return fmt.Errorf("本地终端已关闭")
 	}
 	return s.pty.Resize(cols, rows)
 }
@@ -114,7 +118,7 @@ func (s *windowsTerminal) Close() error {
 		s.mu.Lock()
 		s.closed = true
 		s.mu.Unlock()
-		// Stop only this terminal's wsl.exe, never terminate the distribution.
+		// Stop only this terminal's process, never an entire WSL distribution.
 		_ = windows.TerminateProcess(s.process, 0)
 		<-s.done
 		_ = s.pty.Close()

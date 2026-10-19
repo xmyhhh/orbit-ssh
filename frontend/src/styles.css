@@ -2828,12 +2828,14 @@ textarea {
 .page-heading {
   margin-bottom: 25px;
 }
-.wsl-distributions {
+.wsl-distributions,
+.shell-options {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.wsl-distributions > button {
+.wsl-distributions > button,
+.shell-options > button {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2843,11 +2845,13 @@ textarea {
   border-radius: 7px;
   text-align: left;
 }
-.wsl-distributions > button:hover {
+.wsl-distributions > button:hover,
+.shell-options > button:hover {
   background: var(--accent-soft);
   border-color: var(--green-line);
 }
-.wsl-distributions strong {
+.wsl-distributions strong,
+.shell-options strong {
   flex: 1;
   overflow-wrap: anywhere;
 }

@@ -25,6 +25,7 @@ export interface Preferences {
   fontSize: number;
   lineHeight: number;
   confirmClose: boolean;
+  closeToTray: boolean;
 }
 export interface Workspace {
   hosts: Host[];
@@ -142,6 +143,7 @@ export interface Session {
   terminalNumber: number;
   demo: boolean;
   wslDistribution?: string;
+  localShell?: LocalShell;
   status: "connecting" | "connected" | "closed";
   error?: string;
 }
@@ -149,6 +151,16 @@ export interface WSLInfo {
   supported: boolean;
   installed: boolean;
   distributions: { name: string; running: boolean }[];
+  message: string;
+}
+export interface LocalShell {
+  id: string;
+  name: string;
+  path: string;
+}
+export interface LocalShellInfo {
+  supported: boolean;
+  shells: LocalShell[];
   message: string;
 }
 export interface TerminalHandle {

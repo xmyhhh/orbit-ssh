@@ -2,7 +2,7 @@
 
 把服务器终端、文件和监控放在同一个窗口。
 
-Orbit SSH 是一款个人 SSH 桌面工具，适合日常连接 Linux 服务器、维护文件，以及在 Windows 上使用 WSL。无需注册账号，主机配置和登录凭据保存在本机。
+Orbit SSH 是一款个人 SSH 桌面工具，适合日常连接 Linux 服务器、维护文件，以及在 Windows 上使用本地 Shell 和 WSL。无需注册账号，主机配置和登录凭据保存在本机。
 
 **[下载 v1.0 · Windows x64](https://github.com/xmyhhh/orbit-ssh/releases/download/v1.0/OrbitSSH-v1.0-windows-x64.exe)** · [查看发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v1.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
@@ -37,9 +37,11 @@ Orbit SSH 是一款个人 SSH 桌面工具，适合日常连接 Linux 服务器�
 
 1. 下载 **`OrbitSSH-v1.0-windows-x64.exe`**，保存到你喜欢的文件夹。
 2. 双击运行，无需安装 Orbit SSH，也无需安装 Go 或 Node.js。
-3. 点击「新建连接」，添加第一台服务器。
+3. 启动后进入「远程主机」首页，点击「新建连接」添加第一台服务器。
 
 本次发布仅提供 **Windows x64** 可执行文件。需要已安装 Microsoft Edge WebView2 Runtime；Windows 11 通常自带。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。
+
+仓库还提供 **Android 9+ ARM64** 本地构建：运行 `.\android\build.ps1`，生成 `build/bin/OrbitSSH-v1.0.2-android-arm64.apk`。安装与手机端操作见 [Android 说明](docs/ANDROID.md)。
 
 WSL 是可选功能。只有使用 WSL 终端时，才需要另外安装 WSL 和 Linux 发行版。
 
@@ -55,6 +57,8 @@ WSL 是可选功能。只有使用 WSL 终端时，才需要另外安装 WSL 和
 | 编辑远程文本 | 直接打开配置或代码，使用语法高亮、查找替换、撤销和自动换行，保存到服务器。 |
 | 查看服务器状态 | 查看 Linux 服务器的 CPU、内存、交换空间、磁盘和进程，可调整刷新间隔或暂停采样。 |
 | 打开 WSL | 自动发现本机已安装的发行版，直接打开交互终端，同一发行版可开多个会话。 |
+| 打开本地 Shell | 在窗口中运行 Windows PowerShell、CMD 或已安装的 PowerShell 7，支持多个独立终端。 |
+| 常驻后台 | Windows 启动后显示系统托盘图标，默认关闭窗口时保留终端和传输；从托盘菜单恢复窗口或退出应用。 |
 | 复用常用命令 | 内置 40 条 Linux 命令片段，支持分类、搜索、自定义和编辑；插入后按 Enter 执行。 |
 | 调整外观 | 浅色、深色或跟随系统，在偏好设置中调整终端字号和行距。 |
 
@@ -80,6 +84,14 @@ WSL 是可选功能。只有使用 WSL 终端时，才需要另外安装 WSL 和
 
 远程文本编辑支持不超过 **2 MB 的 UTF-8 文件**，覆盖常见脚本、配置和代码的语法高亮。文件传输需要服务器启用 SFTP；目前不支持断点续传，符号链接和特殊文件会跳过。
 
+## 在窗口中使用本地 Shell
+
+从左侧点击「本地 Shell」，选择 **Windows PowerShell**、**CMD** 或检测到的 **PowerShell 7** 即可打开交互终端，无需添加主机或配置 SSH。安装新的 PowerShell 7 后，可在选择窗口中点击「刷新」重新检测。
+
+终端默认从当前 Windows 用户的主目录启动。点击「新建终端」、会话标签旁的「＋」，或按 `Ctrl + Shift + T`，会打开相同 Shell 的独立会话。输入 `exit` 结束当前终端后，可点击「重新打开」。关闭一个终端不会影响其他会话。
+
+本地 Shell 需要 Windows 10 1809 或更新版本，支持中文输入输出、复制粘贴、输出搜索和字号调整。文件管理与服务器监控用于 SSH 连接。
+
 ## 在窗口中使用 WSL
 
 从左侧打开 WSL，选择已安装的发行版即可进入终端，无需为发行版配置 SSH 服务或密码。
@@ -87,6 +99,14 @@ WSL 是可选功能。只有使用 WSL 终端时，才需要另外安装 WSL 和
 如果列表为空，请先在 PowerShell 中运行 `wsl --install`，按照系统提示安装发行版，再回到应用刷新。WSL 内嵌终端需要 Windows 10 1809 或更新版本，以及可正常运行的 WSL 环境。
 
 每个 WSL 终端独立运行，关闭标签只结束当前会话，不会关闭整个发行版。v1.0 中，WSL 提供终端功能；文件管理和服务器监控用于 SSH 连接。
+
+## 关闭窗口与后台常驻
+
+Windows 版启动后会在系统托盘显示 Orbit SSH 图标，图标可能收纳在任务栏右侧的「^」中。默认点击窗口关闭按钮或按 `Alt + F4` 时，窗口会隐藏到托盘，SSH、本地 Shell、WSL 会话和文件传输继续运行，未保存的编辑内容也会保留。
+
+点击托盘图标即可恢复窗口；右键菜单提供「打开 Orbit SSH」「隐藏到托盘」和「退出 Orbit SSH」。要完全退出，请选择托盘菜单中的「退出 Orbit SSH」；存在活动会话或未保存文件时，仍会按原有设置确认，取消后可以继续使用。
+
+如果希望关闭窗口时直接退出，在「偏好设置」中关闭「关闭窗口后常驻后台」。退出应用会结束会话和传输；此设置会保存在本机。后台常驻目前用于 Windows 版。
 
 ## 常用快捷键
 
@@ -96,7 +116,7 @@ WSL 是可选功能。只有使用 WSL 终端时，才需要另外安装 WSL 和
 | --- | --- |
 | `Ctrl + K` | 搜索或快速切换主机 |
 | `Ctrl + T` | 新建主机连接 |
-| `Ctrl + Shift + T` | 为当前主机或 WSL 发行版新建终端 |
+| `Ctrl + Shift + T` | 为当前主机、本地 Shell 或 WSL 发行版新建终端 |
 | `Ctrl + Shift + F` | 搜索终端输出 |
 | `Ctrl + C` | 有选中文本时复制；无选中时向终端发送中断 |
 | `Ctrl + V` | 粘贴剪贴板内容，多行文本会先确认 |

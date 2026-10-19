@@ -1,3 +1,4 @@
+import "./android";
 import {
   builtinSnippets,
   snippetCatalogVersion,
@@ -7,6 +8,7 @@ import type {
   Credentials,
   Directory,
   LocalDirectory,
+  LocalShellInfo,
   FilePreview,
   RemoteTextFile,
   Transfer,
@@ -22,6 +24,12 @@ import type {
 
 interface Backend {
   GetPlatform(): Promise<string>;
+  GetLocalShellInfo(): Promise<LocalShellInfo>;
+  ConnectLocalShell(
+    id: string,
+    shellID: string,
+    size: TerminalSize,
+  ): Promise<void>;
   GetWSLInfo(): Promise<WSLInfo>;
   ConnectWSL(
     id: string,
@@ -107,7 +115,7 @@ export async function writeClipboard(text: string): Promise<void> {
 }
 export const backend = () => {
   if (!window.go?.main?.App)
-    throw new Error("真实 SSH 连接需要在桌面应用中使用");
+    throw new Error("真实 SSH 连接需要在 Orbit SSH 应用中使用");
   return window.go.main.App;
 };
 export function listen(
@@ -127,6 +135,7 @@ export const defaults: Workspace = {
     fontSize: 14,
     lineHeight: 1.35,
     confirmClose: true,
+    closeToTray: true,
   },
   knownHosts: {},
 };

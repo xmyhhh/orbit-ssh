@@ -1,3 +1,5 @@
+//go:build !android && !androidtest
+
 package main
 
 import (

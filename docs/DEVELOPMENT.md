@@ -10,6 +10,8 @@ Orbit SSH 使用 Wails v2、Go、React、TypeScript 和 xterm.js，桌面界面�
 
 v1.0 的发布目标是 Windows x64。macOS、Linux 和其他架构需要在对应环境构建并验证。
 
+Android ARM64 本地构建、安装与平台差异见 [Android 构建说明](ANDROID.md)。在 Windows 仓库根目录运行 `.\android\build.ps1` 可生成签名 APK。
+
 ## 本地开发
 
 在仓库根目录运行：
@@ -22,7 +24,7 @@ cd ..
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 ```
 
-单独运行 `npm run dev` 可预览前端界面；网页预览使用独立 localStorage，不会连接桌面配置。SSH、SFTP、系统凭据和 WSL 功能需要桌面环境。
+单独运行 `npm run dev` 可预览前端界面；网页预览使用独立 localStorage，不会连接桌面配置。SSH、SFTP、系统凭据、本地 Shell 和 WSL 功能需要桌面环境。
 
 ## 检查与测试
 
@@ -35,6 +37,10 @@ go vet ./...
 ```
 
 Go 会嵌入 `frontend/dist`，请先完成前端构建，再执行 Go 检查，避免同时改写 dist。默认测试使用本地 SSH / SFTP 服务和模拟凭据库，不接触用户配置。
+
+Windows 本地终端测试会通过真实 ConPTY 启动检测到的 PowerShell、CMD 和 PowerShell 7，验证独立会话、中文输出、用户主目录、尺寸调整与退出事件；不需要安装 WSL 发行版。本地 Shell 与 WSL 共用会话输入输出和关闭逻辑。
+
+Windows 系统托盘通过 Win32 通知区域 API 实现，使用内嵌应用图标，不增加 CGo 依赖。托盘测试在有 Explorer 通知区域的会话中验证真实图标注册、菜单回调、任务栏恢复通知和退出清理；没有通知区域时跳过这项桌面集成测试。关闭行为测试覆盖保留会话和编辑内容、取消退出以及旧配置的默认迁移。
 
 真实服务器监控测试需显式设置 `ORBIT_TEST_MONITOR_HOST` 为应用中已保存的主机名称或 ID，再运行：
 

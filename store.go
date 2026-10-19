@@ -38,6 +38,7 @@ type Preferences struct {
 	FontSize     int     `json:"fontSize"`
 	LineHeight   float64 `json:"lineHeight"`
 	ConfirmClose bool    `json:"confirmClose"`
+	CloseToTray  bool    `json:"closeToTray"`
 }
 
 type State struct {
@@ -57,7 +58,7 @@ type Store struct {
 func defaultState() State {
 	return State{Hosts: []Host{}, Snippets: append([]Snippet{}, builtinSnippets.Snippets...),
 		SnippetCatalogVersion: builtinSnippets.Version,
-		Preferences:           Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true}, KnownHosts: map[string]string{}}
+		Preferences:           Preferences{Theme: "light", HostLayout: "grid", FontSize: 14, LineHeight: 1.35, ConfirmClose: true, CloseToTray: true}, KnownHosts: map[string]string{}}
 }
 
 func openStore(path string) (*Store, error) {

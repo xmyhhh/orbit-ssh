@@ -751,10 +751,12 @@ export function SnippetDialog({
 
 export function PreferencesDialog({
   preferences,
+  platform,
   onChange,
   onClose,
 }: {
   preferences: Preferences;
+  platform: string;
   onChange: (value: Preferences) => Promise<void>;
   onClose: () => void;
 }) {
@@ -841,6 +843,28 @@ export function PreferencesDialog({
           <option value={1.5}>宽松</option>
         </select>
       </div>
+      {platform === "windows" && (
+        <div className="setting-row">
+          <div>
+            <strong>关闭窗口后常驻后台</strong>
+            <p className="field-hint">
+              隐藏到系统托盘，保持终端和文件传输运行。
+            </p>
+          </div>
+          <button
+            className={`switch ${preferences.closeToTray ? "on" : ""}`}
+            role="switch"
+            aria-label="关闭窗口后常驻后台"
+            aria-checked={preferences.closeToTray}
+            disabled={busy}
+            onClick={() =>
+              void change({ closeToTray: !preferences.closeToTray })
+            }
+          >
+            <span />
+          </button>
+        </div>
+      )}
       <div className="setting-row">
         <div>
           <strong>退出前确认</strong>

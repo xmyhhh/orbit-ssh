@@ -1,0 +1,127 @@
+:root[data-platform="android"] {
+  overscroll-behavior: none;
+}
+[data-platform="android"] .app {
+  height: 100dvh;
+}
+[data-platform="android"] .terminal-session {
+  padding: 4px 4px 0;
+}
+[data-platform="android"] .terminal-mount {
+  min-height: 0;
+}
+.android-terminal-keys {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 7px 4px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.android-terminal-keys button {
+  min-width: 42px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  font:
+    12px ui-monospace,
+    monospace;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+.android-terminal-keys button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.android-file-tabs {
+  display: none;
+}
+@media (max-width: 650px) {
+  [data-platform="android"] .icon-button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  [data-platform="android"] .terminal-toolbar {
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  [data-platform="android"] .terminal-toolbar > div {
+    flex-shrink: 0;
+  }
+  [data-platform="android"] .terminal-toolbar code {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  [data-platform="android"] .file-browsers {
+    display: block;
+  }
+  [data-platform="android"] .file-browser {
+    display: none;
+    height: 100%;
+    min-height: 0;
+  }
+  [data-platform="android"] .android-file-side-local > .local,
+  [data-platform="android"] .android-file-side-remote > .remote {
+    display: flex;
+  }
+  [data-platform="android"] .android-file-tabs {
+    display: flex;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .android-file-tabs button {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 42px;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+  }
+  .android-file-tabs button[aria-selected="true"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-bottom-color: var(--accent);
+  }
+  [data-platform="android"] .file-browser.remote {
+    border-left: 0;
+    border-top: 0;
+  }
+  [data-platform="android"] .file-workspace-heading,
+  [data-platform="android"] .transfer-toolbar {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  [data-platform="android"] .transfer-toolbar {
+    flex-wrap: wrap;
+  }
+  [data-platform="android"] .browser-table .file-modified,
+  [data-platform="android"] .browser-table .file-mode {
+    display: none;
+  }
+  [data-platform="android"] .modal-scrim {
+    padding: 8px;
+    align-items: center;
+  }
+  [data-platform="android"] .modal {
+    max-height: calc(100dvh - 16px);
+    padding: 18px 16px;
+  }
+  [data-platform="android"] input,
+  [data-platform="android"] select,
+  [data-platform="android"] textarea {
+    font-size: 14px;
+  }
+  [data-platform="android"] .tab-close,
+  [data-platform="android"] .session-close {
+    opacity: 1;
+  }
+}

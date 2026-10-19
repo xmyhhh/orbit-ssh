@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"sync"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -24,6 +21,7 @@ type App struct {
 	transferRuns  map[string]bool
 	fileEditMu    sync.Mutex
 	dirtyEditors  map[string]bool
+	tray          trayState
 }
 
 func NewApp() *App {
@@ -32,8 +30,8 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.emit = func(name string, args ...interface{}) { runtime.EventsEmit(ctx, name, args...) }
-	dir, err := os.UserConfigDir()
+	a.emit = platformEvents(ctx)
+	dir, err := platformConfigDirectory()
 	if err != nil {
 		a.storeErr = err
 		return
@@ -140,7 +138,7 @@ func (a *App) SavePreferences(p Preferences) error {
 }
 
 func (a *App) SelectKeyFile() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 SSH 私钥文件", ShowHiddenFiles: true})
+	return selectOpenFile(a.ctx, "选择 SSH 私钥文件")
 }
 
 func (a *App) DataDirectory() (string, error) {
@@ -151,6 +149,37 @@ func (a *App) DataDirectory() (string, error) {
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {
+	closeToTray := a.store != nil && a.store.snapshot().Preferences.CloseToTray
+	a.tray.mu.Lock()
+	if a.tray.exiting {
+		a.tray.mu.Unlock()
+		return false
+	}
+	if a.tray.prompting {
+		a.tray.mu.Unlock()
+		return true
+	}
+	requested := a.tray.quitRequested
+	a.tray.quitRequested = false
+	if !requested && closeToTray && a.tray.ready && !a.tray.stopped && a.tray.hideWindow != nil {
+		hide := a.tray.hideWindow
+		a.tray.mu.Unlock()
+		hide()
+		return true
+	}
+	a.tray.prompting = true
+	a.tray.mu.Unlock()
+	blocked := a.confirmExit(ctx)
+	a.tray.mu.Lock()
+	a.tray.prompting = false
+	if requested && !blocked {
+		a.tray.exiting = true
+	}
+	a.tray.mu.Unlock()
+	return blocked
+}
+
+func (a *App) confirmExit(ctx context.Context) bool {
 	a.mu.Lock()
 	count := len(a.sessions) + len(a.localSessions) + len(a.pending)
 	dirty := len(a.dirtyEditors) > 0
@@ -162,7 +191,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	if a.store == nil || count == 0 || !a.store.snapshot().Preferences.ConfirmClose {
 		return false
 	}
-	confirmed, err := confirmAction(ctx, "关闭 Orbit SSH？", "仍有终端会话，关闭窗口将结束这些会话。", "结束并退出")
+	confirmed, err := confirmAction(ctx, "退出 Orbit SSH？", "仍有终端会话，退出应用将结束这些会话。", "结束并退出")
 	return err != nil || !confirmed
 }
 
@@ -180,6 +209,7 @@ func (a *App) SetEditorDirty(id string, dirty bool) {
 }
 
 func (a *App) shutdown(_ context.Context) {
+	a.stopTray()
 	a.transferMu.Lock()
 	for _, job := range a.transfers {
 		job.cancel()

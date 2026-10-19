@@ -13,7 +13,6 @@ import {
   FolderClosed,
   FolderOpen,
   Grid2X2,
-  Home,
   LayoutList,
   LoaderCircle,
   Menu,
@@ -33,6 +32,7 @@ import {
 } from "lucide-react";
 import type {
   Host,
+  LocalShell,
   Preferences,
   Session,
   Snippet,
@@ -61,10 +61,24 @@ import { TerminalPane } from "./TerminalPane";
 import FilesPane from "./FilesPane";
 import MonitorPanel from "./MonitorPanel";
 import WSLDialog from "./WSLDialog";
+import LocalShellDialog from "./LocalShellDialog";
 import { snippetCategories, snippetCategory } from "./snippets";
 
-type Page = "workspace" | "hosts" | "snippets";
+type Page = "hosts" | "snippets";
 type HostFilter = "all" | "favorite" | "recent";
+type LocalSessionTarget =
+  | { localShell: LocalShell; wslDistribution?: never }
+  | { wslDistribution: string; localShell?: never };
+
+function isLocalSession(session?: Session) {
+  return Boolean(session?.localShell || session?.wslDistribution);
+}
+
+function sessionAddress(session: Session) {
+  if (session.localShell) return `本地 · ${session.localShell.name}`;
+  if (session.wslDistribution) return `WSL · ${session.wslDistribution}`;
+  return `${session.host.username}@${session.host.address}:${session.host.port}`;
+}
 interface Confirmation {
   title: string;
   message: string;
@@ -72,9 +86,8 @@ interface Confirmation {
   danger?: boolean;
   run: () => Promise<void> | void;
 }
-const pageNames = {
-  workspace: "工作空间",
-  hosts: "全部主机",
+const pageNames: Record<Page, string> = {
+  hosts: "远程主机",
   snippets: "命令片段",
 };
 
@@ -106,16 +119,18 @@ export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>(defaults);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [page, setPage] = useState<Page>("workspace");
+  const [page, setPage] = useState<Page>("hosts");
   const [group, setGroup] = useState("");
+  const pageTitle = (page === "hosts" && group) || pageNames[page];
   const [groupsOpen, setGroupsOpen] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<HostFilter>("all");
   const layout = workspace.preferences.hostLayout === "list" ? "list" : "grid";
   const [platform, setPlatform] = useState("");
   const [wslOpen, setWSLOpen] = useState(false);
+  const [localShellOpen, setLocalShellOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [active, setActive] = useState("workspace");
+  const [active, setActive] = useState("home");
   const [hostEditor, setHostEditor] = useState<{
     host?: Host;
     isNew?: boolean;
@@ -178,7 +193,8 @@ export default function App() {
     paletteOpen ||
     helpOpen ||
     confirmation ||
-    wslOpen,
+    wslOpen ||
+    localShellOpen,
   );
 
   function notify(message: string) {
@@ -210,7 +226,7 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
   useEffect(() => {
-    if (activeSession?.wslDistribution) {
+    if (isLocalSession(activeSession)) {
       setFilesOpen(false);
       setMonitorOpen(false);
       setMonitorExpanded(false);
@@ -359,7 +375,7 @@ export default function App() {
   function navigate(next: Page, nextGroup = "") {
     setPage(next);
     setGroup(nextGroup);
-    setActive("workspace");
+    setActive("home");
     setSidebarOpen(false);
     setQuery("");
     setFilter("all");
@@ -390,7 +406,9 @@ export default function App() {
     setFilesOpen(false);
     setMonitorExpanded(false);
     setTerminalSearch(null);
-    if (activeSession?.wslDistribution)
+    if (activeSession?.localShell)
+      void openLocalShell(activeSession.localShell);
+    else if (activeSession?.wslDistribution)
       void openWSLTerminal(activeSession.wslDistribution);
     else if (activeSession)
       chooseHost(
@@ -481,7 +499,7 @@ export default function App() {
         current === id
           ? sessionsRef.current.some((s) => s.id === previousActive)
             ? previousActive
-            : "workspace"
+            : "home"
           : current,
       );
       throw e;
@@ -491,35 +509,60 @@ export default function App() {
   }
   async function openWSLTerminal(distribution: string) {
     setWSLOpen(false);
+    await openLocalSession({ wslDistribution: distribution });
+  }
+  async function openLocalShell(shell: LocalShell) {
+    setLocalShellOpen(false);
+    await openLocalSession({ localShell: shell });
+  }
+  async function openLocalSession(target: LocalSessionTarget) {
+    const name = target.localShell
+      ? target.localShell.name
+      : target.wslDistribution;
     const host: Host = {
-      id: `wsl:${distribution}`,
-      name: distribution,
-      address: distribution,
+      id: target.localShell
+        ? `local:${target.localShell.id}`
+        : `wsl:${target.wslDistribution}`,
+      name,
+      address: name,
       port: 0,
       username: "",
-      group: "WSL",
+      group: target.localShell ? "本地 Shell" : "WSL",
       authType: "password",
       keyPath: "",
       color: "mint",
       favorite: false,
       lastConnected: "",
     };
-    const session = { ...allocateSession(host), wslDistribution: distribution };
+    const session = { ...allocateSession(host), ...target };
     const previousActive = active;
     setSessions((items) => [...items, session]);
     setActive(session.id);
     setSidebarOpen(false);
+    setFilesOpen(false);
+    setMonitorOpen(false);
+    setMonitorExpanded(false);
     setTerminalSearch(null);
     try {
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       });
       if (!sessionsRef.current.some((item) => item.id === session.id)) return;
-      await backend().ConnectWSL(
-        session.id,
-        distribution,
-        handles.current.get(session.id)?.size() ?? { cols: 100, rows: 30 },
-      );
+      const size = handles.current.get(session.id)?.size() ?? {
+        cols: 100,
+        rows: 30,
+      };
+      if (target.localShell)
+        await backend().ConnectLocalShell(
+          session.id,
+          target.localShell.id,
+          size,
+        );
+      else await backend().ConnectWSL(session.id, target.wslDistribution, size);
+      if (!sessionsRef.current.some((item) => item.id === session.id)) {
+        await backend().Disconnect(session.id);
+        return;
+      }
       setSessions((items) =>
         items.map((item) =>
           item.id === session.id && item.status !== "closed"
@@ -528,12 +571,17 @@ export default function App() {
         ),
       );
     } catch (e) {
+      await backend()
+        .Disconnect(session.id)
+        .catch(() => {});
+      if (terminalNumbers.current.get(host.id) === session.terminalNumber)
+        terminalNumbers.current.set(host.id, session.terminalNumber - 1);
       setSessions((items) => items.filter((item) => item.id !== session.id));
       setActive((current) =>
         current === session.id
           ? sessionsRef.current.some((item) => item.id === previousActive)
             ? previousActive
-            : "workspace"
+            : "home"
           : current,
       );
       notify(errorText(e));
@@ -577,7 +625,7 @@ export default function App() {
             remaining.length - 1,
           )
         ]?.id ??
-        "workspace"
+        "home"
       );
     });
     const failed = results.find((r) => r.status === "rejected");
@@ -593,9 +641,11 @@ export default function App() {
       return;
     }
     setConfirmation({
-      title: "关闭这台主机的全部会话？",
-      message: items[0].wslDistribution
-        ? `将结束 ${items[0].host.name} 的 ${items.length} 个 WSL 终端。`
+      title: isLocalSession(items[0])
+        ? "结束这组终端的全部会话？"
+        : "关闭这台主机的全部会话？",
+      message: isLocalSession(items[0])
+        ? `将结束 ${items[0].host.name} 的 ${items.length} 个本地终端，前台任务会中断。`
         : `将关闭 ${items[0].host.name} 的 ${items.length} 个终端，这些终端的文件传输和前台任务会中断。`,
       action: "关闭全部会话",
       run: () => removeSessions(items),
@@ -608,13 +658,13 @@ export default function App() {
       workspace.preferences.confirmClose
     )
       setConfirmation({
-        title: session.wslDistribution
-          ? "结束这个 WSL 终端？"
+        title: isLocalSession(session)
+          ? "结束这个本地终端？"
           : "断开这次连接？",
-        message: session.wslDistribution
-          ? `将结束 ${session.host.name} 的终端 #${session.terminalNumber}。`
+        message: isLocalSession(session)
+          ? `将结束 ${session.host.name} 的终端 #${session.terminalNumber}，前台任务会中断。`
           : `将关闭 ${session.host.name} 的终端 #${session.terminalNumber}，此终端的文件传输和前台任务会中断。`,
-        action: "断开连接",
+        action: isLocalSession(session) ? "结束终端" : "断开连接",
         run: () => removeSession(session.id),
       });
     else void removeSession(session.id).catch((e) => notify(errorText(e)));
@@ -715,7 +765,7 @@ export default function App() {
       <aside className="sidebar">
         <button
           className="brand"
-          onClick={() => navigate("workspace")}
+          onClick={() => navigate("hosts")}
           aria-label="Orbit SSH 首页"
         >
           <span className="brand-symbol">
@@ -734,35 +784,31 @@ export default function App() {
         <nav aria-label="主导航">
           <button
             className={
-              page === "workspace" && active === "workspace" ? "active" : ""
-            }
-            onClick={() => navigate("workspace")}
-          >
-            <Home size={18} />
-            <span>工作空间</span>
-            <span className="nav-active-dot" />
-          </button>
-          <button
-            className={
-              page === "hosts" && !group && active === "workspace"
+              page === "hosts" && !group && active === "home"
                 ? "active"
                 : ""
             }
             onClick={() => navigate("hosts")}
           >
             <Server size={18} />
-            <span>全部主机</span>
+            <span>远程主机</span>
             <span className="count">{workspace.hosts.length}</span>
           </button>
           {platform === "windows" && (
-            <button onClick={() => setWSLOpen(true)}>
-              <TerminalSquare size={18} />
-              <span>WSL</span>
-            </button>
+            <>
+              <button onClick={() => setLocalShellOpen(true)}>
+                <TerminalSquare size={18} />
+                <span>本地 Shell</span>
+              </button>
+              <button onClick={() => setWSLOpen(true)}>
+                <TerminalSquare size={18} />
+                <span>WSL</span>
+              </button>
+            </>
           )}
           <button
             className={
-              page === "snippets" && active === "workspace" ? "active" : ""
+              page === "snippets" && active === "home" ? "active" : ""
             }
             onClick={() => navigate("snippets")}
           >
@@ -795,7 +841,7 @@ export default function App() {
                 <button
                   key={g}
                   className={
-                    group === g && active === "workspace" ? "selected" : ""
+                    group === g && active === "home" ? "selected" : ""
                   }
                   onClick={() => navigate("hosts", g)}
                 >
@@ -845,7 +891,7 @@ export default function App() {
             >
               <Menu size={19} />
             </button>
-            <strong>{activeSession ? "终端会话" : pageNames[page]}</strong>
+            <strong>{activeSession ? "终端会话" : pageTitle}</strong>
           </div>
           <div className="topbar-actions">
             <button
@@ -872,12 +918,12 @@ export default function App() {
         >
           <button
             role="tab"
-            aria-selected={active === "workspace"}
-            className={`workspace-tab ${active === "workspace" ? "selected" : ""}`}
-            onClick={() => setActive("workspace")}
+            aria-selected={active === "home"}
+            className={`workspace-tab ${active === "home" ? "selected" : ""}`}
+            onClick={() => setActive("home")}
           >
-            <LayoutList size={15} />
-            工作空间
+            {page === "hosts" ? <Server size={15} /> : <Code2 size={15} />}
+            {pageTitle}
           </button>
           {[...sessionGroups].map(([hostID, items]) => {
             const host = items[0].host;
@@ -891,7 +937,7 @@ export default function App() {
                   role="tab"
                   aria-selected={selected}
                   aria-label={`${host.name} · ${items.length} 个会话`}
-                  title={`${items[0].wslDistribution ? `WSL · ${host.name}` : `${host.username}@${host.address}:${host.port}`} · ${items.length} 个会话`}
+                  title={`${sessionAddress(items[0])} · ${items.length} 个会话`}
                   onClick={() => selectHostSessions(items)}
                 >
                   {items.some((s) => s.status === "connecting") ? (
@@ -915,7 +961,7 @@ export default function App() {
                 <button
                   className="tab-close"
                   aria-label={`关闭 ${host.name} 的全部会话`}
-                  title="关闭这台主机的全部会话"
+                  title="关闭这组终端的全部会话"
                   onClick={() => closeHostSessions(items)}
                 >
                   <X size={13} aria-hidden="true" />
@@ -936,7 +982,7 @@ export default function App() {
           <span className="tabbar-space" />
           <span className="tabbar-end">
             {sessions.length
-              ? `${sessionGroups.size} 台主机 · ${sessions.length} 个会话`
+              ? `${sessionGroups.size} 个终端组 · ${sessions.length} 个会话`
               : "无活动会话"}
           </span>
         </div>
@@ -949,7 +995,7 @@ export default function App() {
           ) : loadError ? (
             <div className="full-state">
               <ShieldCheck size={30} />
-              <h2>工作空间暂时无法读取</h2>
+              <h2>配置暂时无法读取</h2>
               <p>{loadError}</p>
               <button className="button primary" onClick={() => void load()}>
                 重试
@@ -957,7 +1003,7 @@ export default function App() {
             </div>
           ) : (
             <>
-              <div className="dashboard-scroll" hidden={active !== "workspace"}>
+              <div className="dashboard-scroll" hidden={active !== "home"}>
                 <div className="dashboard">
                   {page === "snippets" && (
                     <section className="page-heading">
@@ -1099,9 +1145,7 @@ export default function App() {
                       <div className="hosts-section">
                         <div className="section-heading hosts-heading">
                           <div>
-                            <h1>
-                              {page === "hosts" ? group || "全部主机" : "主机"}
-                            </h1>
+                            <h1>{pageTitle}</h1>
                             <span className="subtle-count">
                               {workspace.hosts.length}
                             </span>
@@ -1231,7 +1275,7 @@ export default function App() {
                                 setGroup("");
                               }}
                             >
-                              显示全部主机
+                              显示全部远程主机
                             </button>
                           </div>
                         )}
@@ -1295,7 +1339,7 @@ export default function App() {
                     ))}
                     <button
                       className="tab-add"
-                      aria-label="为当前主机新建终端"
+                      aria-label="为当前主机或 Shell 新建终端"
                       title="新建终端 · Ctrl Shift T"
                       disabled={activeSession.status === "connecting"}
                       onClick={newTerminal}
@@ -1310,12 +1354,13 @@ export default function App() {
                       className={`status-dot ${activeSession?.status === "closed" ? "offline" : ""}`}
                     />
                     <code>
-                      {activeSession?.wslDistribution ||
+                      {activeSession?.localShell?.name ||
+                        activeSession?.wslDistribution ||
                         `${activeSession?.host.username}@${activeSession?.host.address}`}
                     </code>
                     <span className="tag neutral">
-                      {activeSession?.wslDistribution
-                        ? "WSL · 本地"
+                      {isLocalSession(activeSession)
+                        ? `${activeSession?.wslDistribution ? "WSL" : "本地 Shell"} · ${activeSession?.status === "connected" ? "运行中" : activeSession?.status === "connecting" ? "启动中" : "已结束"}`
                         : activeSession?.demo
                           ? "本地演示"
                           : activeSession?.status === "connected"
@@ -1328,7 +1373,7 @@ export default function App() {
                   <div>
                     <button
                       className="button toolbar-button new-terminal-button"
-                      title="为当前主机新建终端 · Ctrl Shift T"
+                      title="为当前主机或 Shell 新建终端 · Ctrl Shift T"
                       disabled={activeSession?.status === "connecting"}
                       onClick={newTerminal}
                     >
@@ -1373,7 +1418,7 @@ export default function App() {
                     >
                       <Settings2 size={16} />
                     </button>
-                    {!activeSession?.wslDistribution && (
+                    {!isLocalSession(activeSession) && (
                       <>
                         <span className="toolbar-divider" />
                         <button
@@ -1509,17 +1554,20 @@ export default function App() {
                         {s.status === "closed" && (
                           <div className="reconnect-bar">
                             <span>
-                              连接已结束{s.error ? ` · ${s.error}` : ""}
+                              {isLocalSession(s) ? "终端已结束" : "连接已结束"}
+                              {s.error ? ` · ${s.error}` : ""}
                             </span>
                             <button
                               className="button secondary compact"
                               onClick={() =>
-                                s.wslDistribution
-                                  ? void openWSLTerminal(s.wslDistribution)
-                                  : chooseHost(s.host)
+                                s.localShell
+                                  ? void openLocalShell(s.localShell)
+                                  : s.wslDistribution
+                                    ? void openWSLTerminal(s.wslDistribution)
+                                    : chooseHost(s.host)
                               }
                             >
-                              重新连接
+                              {isLocalSession(s) ? "重新打开" : "重新连接"}
                               <ArrowRight size={13} />
                             </button>
                           </div>
@@ -1529,7 +1577,7 @@ export default function App() {
                   </div>
                   {monitorOpen &&
                     activeSession &&
-                    !activeSession.wslDistribution && (
+                    !isLocalSession(activeSession) && (
                       <MonitorPanel
                         key={activeSession.id}
                         session={activeSession}
@@ -1540,7 +1588,7 @@ export default function App() {
                     )}
                   {filesOpen &&
                     activeSession &&
-                    !activeSession.wslDistribution && (
+                    !isLocalSession(activeSession) && (
                       <FilesPane
                         key={activeSession.id}
                         session={activeSession}
@@ -1551,12 +1599,18 @@ export default function App() {
                 </div>
                 <div className="terminal-status">
                   <span>
-                    <ShieldCheck size={12} />
-                    {activeSession?.wslDistribution
-                      ? "WSL 本地终端"
-                      : activeSession?.demo
-                        ? "本地体验终端"
-                        : "SSH 加密通道"}
+                    {isLocalSession(activeSession) ? (
+                      <TerminalSquare size={12} />
+                    ) : (
+                      <ShieldCheck size={12} />
+                    )}
+                    {activeSession?.localShell
+                      ? `${activeSession.localShell.name} · 本地终端`
+                      : activeSession?.wslDistribution
+                        ? "WSL 本地终端"
+                        : activeSession?.demo
+                          ? "本地体验终端"
+                          : "SSH 加密通道"}
                   </span>
                   <span>
                     UTF-8<span>·</span>xterm-256color<span>·</span>
@@ -1596,6 +1650,12 @@ export default function App() {
           )}
         </main>
       </div>
+      {localShellOpen && (
+        <LocalShellDialog
+          onSelect={(shell) => void openLocalShell(shell)}
+          onClose={() => setLocalShellOpen(false)}
+        />
+      )}
       {wslOpen && (
         <WSLDialog
           onSelect={(name) => void openWSLTerminal(name)}
@@ -1646,6 +1706,7 @@ export default function App() {
       {preferencesOpen && (
         <PreferencesDialog
           preferences={workspace.preferences}
+          platform={platform}
           onChange={savePreferences}
           onClose={() => setPreferencesOpen(false)}
         />
@@ -1674,7 +1735,7 @@ export default function App() {
               <kbd>Ctrl / ⌘ Shift F</kbd>
             </div>
             <div>
-              <span>同主机新建终端</span>
+              <span>为当前主机或 Shell 新建终端</span>
               <kbd>Ctrl / ⌘ Shift T</kbd>
             </div>
             <div>

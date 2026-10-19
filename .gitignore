@@ -15,3 +15,6 @@ output/
 !.env.example
 *.pem
 *.key
+android/build/
+android/*.keystore
+android/local.properties

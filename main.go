@@ -1,3 +1,5 @@
+//go:build !android && !androidtest
+
 package main
 
 import (
@@ -18,7 +20,7 @@ func main() {
 		Title: "Orbit SSH", Width: 1440, Height: 900, MinWidth: 900, MinHeight: 600,
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 255},
 		AssetServer:      &assetserver.Options{Assets: assets},
-		OnStartup:        app.startup, OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose,
+		OnStartup:        app.desktopStartup, OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose,
 		Bind: []interface{}{app},
 	}); err != nil {
 		log.Fatal(err)

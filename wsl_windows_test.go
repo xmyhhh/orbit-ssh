@@ -5,22 +5,33 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-// Exercise the actual ConPTY used by WSL without requiring an installed distro.
+// Exercise the public local-shell API and the ConPTY shared with WSL.
 func TestWindowsLocalTerminals(t *testing.T) {
+	info := NewApp().GetLocalShellInfo()
+	if !info.Supported || len(info.Shells) == 0 {
+		t.Fatalf("no Windows shells discovered: %+v", info)
+	}
+	for _, shell := range info.Shells {
+		t.Run(shell.ID, func(t *testing.T) { testWindowsLocalShell(t, shell) })
+	}
+}
+
+func testWindowsLocalShell(t *testing.T, shell LocalShell) {
 	a := NewApp()
 	a.ctx = context.Background()
-	a.localSessions = map[string]*localSession{}
 	t.Cleanup(func() { a.shutdown(context.Background()) })
 	type event struct{ id, text string }
-	events := make(chan event, 128)
+	events := make(chan event, 1024)
+	closed := make(chan string, 8)
 	a.emit = func(name string, args ...interface{}) {
+		if strings.HasPrefix(name, "ssh:closed:") {
+			closed <- strings.TrimPrefix(name, "ssh:closed:")
+		}
 		if strings.HasPrefix(name, "ssh:data:") {
 			data, _ := base64.StdEncoding.DecodeString(args[0].(string))
 			id := strings.TrimPrefix(name, "ssh:data:")
@@ -31,20 +42,14 @@ func TestWindowsLocalTerminals(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"local-first", "local-second"} {
-		terminal, err := startWindowsTerminal(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"), []string{"/D", "/Q"}, TerminalSize{Cols: 100, Rows: 30})
-		if err != nil {
+		if err := a.ConnectLocalShell(id, shell.ID, TerminalSize{Cols: 100, Rows: 30}); err != nil {
 			t.Fatal(err)
 		}
-		s := &localSession{terminal: terminal}
-		a.localSessions[id] = s
-	}
-	for id, s := range a.localSessions {
-		a.streamLocalTerminal(id, s)
 	}
 	outputs := map[string]string{}
 	readUntil := func(id, marker string) {
 		t.Helper()
-		timer := time.NewTimer(8 * time.Second)
+		timer := time.NewTimer(15 * time.Second)
 		defer timer.Stop()
 		for !strings.Contains(outputs[id], marker) {
 			select {
@@ -55,17 +60,40 @@ func TestWindowsLocalTerminals(t *testing.T) {
 			}
 		}
 	}
-	for _, id := range []string{"local-first", "local-second"} {
-		if err := a.WriteTerminal(id, "echo marker-"+id+"\r"); err != nil {
+	sendMarker := func(id, suffix string) {
+		t.Helper()
+		// Assemble the marker in the shell so echoed input cannot satisfy the check.
+		command := "[Console]::WriteLine('marker-' + '" + suffix + "')\r"
+		if shell.ID == "cmd" {
+			command = "set \"ORBIT_TEST_MARKER=" + suffix + "\"\recho marker-%ORBIT_TEST_MARKER%\r"
+		}
+		if err := a.WriteTerminal(id, command); err != nil {
 			t.Fatal(err)
 		}
-		readUntil(id, "marker-"+id)
+		readUntil(id, "marker-"+suffix)
+	}
+	for _, id := range []string{"local-first", "local-second"} {
+		sendMarker(id, id)
 		if err := a.ResizeTerminal(id, TerminalSize{Cols: 115, Rows: 35}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if strings.Contains(outputs["local-first"], "marker-local-second") {
+	if strings.Contains(outputs["local-first"], "marker-local-second") || strings.Contains(outputs["local-second"], "marker-local-first") {
 		t.Fatal("terminal output crossed sessions")
+	}
+	sendMarker("local-second", "中文输出")
+	command := "[Console]::WriteLine('home-' + [bool]((Get-Location).Path -eq $HOME))\r"
+	marker := "home-True"
+	if shell.ID == "cmd" {
+		command = "if /I \"%CD%\"==\"%USERPROFILE%\" echo home-%ORBIT_TEST_MARKER%\r"
+		marker = "home-中文输出"
+	}
+	if err := a.WriteTerminal("local-second", command); err != nil {
+		t.Fatal(err)
+	}
+	readUntil("local-second", marker)
+	if err := a.ConnectLocalShell("local-second", shell.ID, TerminalSize{}); err == nil {
+		t.Fatal("duplicate session ID accepted")
 	}
 	if err := a.Disconnect("local-first"); err != nil {
 		t.Fatal(err)
@@ -73,10 +101,7 @@ func TestWindowsLocalTerminals(t *testing.T) {
 	if err := a.WriteTerminal("local-first", "closed"); err == nil {
 		t.Fatal("closed terminal accepted input")
 	}
-	if err := a.WriteTerminal("local-second", "echo sibling-survives\r"); err != nil {
-		t.Fatal(err)
-	}
-	readUntil("local-second", "sibling-survives")
+	sendMarker("local-second", "sibling-survives")
 	a.mu.Lock()
 	s := a.localSessions["local-second"]
 	a.mu.Unlock()
@@ -86,5 +111,41 @@ func TestWindowsLocalTerminals(t *testing.T) {
 	code, err := s.terminal.Wait()
 	if err != nil || code != 0 {
 		t.Fatalf("terminal exit = %d, %v", code, err)
+	}
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case id := <-closed:
+			if id == "local-second" {
+				if err := a.WriteTerminal(id, "closed"); err == nil {
+					t.Fatal("exited terminal still accepted input")
+				}
+				return
+			}
+		case <-timer.C:
+			t.Fatal("terminal exit was not reported")
+		}
+	}
+}
+
+func TestWindowsLocalShellValidation(t *testing.T) {
+	a := NewApp()
+	for _, id := range []string{"", strings.Repeat("x", 129)} {
+		if err := a.ConnectLocalShell(id, "cmd", TerminalSize{}); err == nil {
+			t.Fatalf("invalid session ID %q accepted", id)
+		}
+	}
+	if err := a.ConnectLocalShell("invalid-shell", "cmd.exe /c echo unexpected", TerminalSize{}); err == nil {
+		t.Fatal("arbitrary shell command accepted")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	a.ctx = ctx
+	if err := a.ConnectLocalShell("cancelled", "cmd", TerminalSize{}); err == nil {
+		t.Fatal("cancelled session started")
+	}
+	if len(a.pending) != 0 || len(a.localSessions) != 0 {
+		t.Fatal("failed connection leaked session state")
 	}
 }

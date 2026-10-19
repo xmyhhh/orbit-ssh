@@ -1,0 +1,139 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"runtime"
+	"sync"
+)
+
+type LocalShell struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type LocalShellInfo struct {
+	Supported bool         `json:"supported"`
+	Shells    []LocalShell `json:"shells"`
+	Message   string       `json:"message"`
+}
+
+type localTerminal interface {
+	io.ReadWriteCloser
+	Resize(int, int) error
+	Wait() (uint32, error)
+}
+
+type localSession struct {
+	terminal localTerminal
+	name     string
+	writeMu  sync.Mutex
+	closed   sync.Once
+}
+
+func (s *localSession) close() { s.closed.Do(func() { _ = s.terminal.Close() }) }
+
+func (a *App) GetPlatform() string { return runtime.GOOS }
+
+func (a *App) GetLocalShellInfo() LocalShellInfo { return inspectLocalShells() }
+
+func (a *App) ConnectLocalShell(id, shellID string, size TerminalSize) error {
+	if runtime.GOOS != "windows" {
+		return errors.New("本地 Shell 目前仅支持 Windows")
+	}
+	return a.connectLocalTerminal(id, "本地 Shell", size, func(ctx context.Context, size TerminalSize) (localTerminal, error) {
+		return startLocalShell(shellID, size)
+	})
+}
+
+func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start func(context.Context, TerminalSize) (localTerminal, error)) error {
+	if id == "" || len(id) > 128 {
+		return errors.New("无效的会话 ID")
+	}
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	a.mu.Lock()
+	if a.sessions[id] != nil || a.localSessions[id] != nil || a.pending[id] != nil {
+		a.mu.Unlock()
+		cancel()
+		return errors.New("会话已存在")
+	}
+	if a.pending == nil {
+		a.pending = map[string]context.CancelFunc{}
+	}
+	a.pending[id] = cancel
+	a.mu.Unlock()
+	defer func() { cancel(); a.mu.Lock(); delete(a.pending, id); a.mu.Unlock() }()
+	if err := ctx.Err(); err != nil {
+		return errors.New("启动已取消")
+	}
+	terminal, err := start(ctx, validSize(size))
+	if err != nil {
+		return fmt.Errorf("无法启动 %s：%w", name, err)
+	}
+	a.mu.Lock()
+	if ctx.Err() != nil {
+		a.mu.Unlock()
+		// ConPTY needs a reader to drain output while the console closes.
+		go func() { _, _ = io.Copy(io.Discard, terminal) }()
+		_ = terminal.Close()
+		return errors.New("启动已取消")
+	}
+	s := &localSession{terminal: terminal, name: name}
+	if a.localSessions == nil {
+		a.localSessions = map[string]*localSession{}
+	}
+	a.localSessions[id] = s
+	delete(a.pending, id)
+	// Start the reader before Disconnect can close this terminal.
+	a.streamLocalTerminal(id, s)
+	a.mu.Unlock()
+	return nil
+}
+
+func (a *App) streamLocalTerminal(id string, s *localSession) {
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		buffer := make([]byte, 16384)
+		for {
+			n, err := s.terminal.Read(buffer)
+			if n > 0 && a.emit != nil {
+				a.emit("ssh:data:"+id, base64.StdEncoding.EncodeToString(buffer[:n]))
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	go func() {
+		code, err := s.terminal.Wait()
+		s.close()
+		<-readDone
+		a.mu.Lock()
+		if a.localSessions[id] == s {
+			delete(a.localSessions, id)
+		}
+		a.mu.Unlock()
+		name := s.name
+		if name == "" {
+			name = "本地"
+		}
+		message := name + " 终端已结束"
+		if err != nil {
+			message = err.Error()
+		} else if code != 0 {
+			message = fmt.Sprintf("%s 已退出（%d）", name, code)
+		}
+		if a.emit != nil {
+			a.emit("ssh:closed:"+id, message)
+		}
+	}()
+}

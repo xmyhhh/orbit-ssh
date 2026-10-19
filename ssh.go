@@ -158,7 +158,7 @@ func (a *App) Connect(id, hostID string, credentials Credentials, acceptedFinger
 	a.pending[id] = cancel
 	a.mu.Unlock()
 	defer func() { cancel(); a.mu.Lock(); delete(a.pending, id); a.mu.Unlock() }()
-	conn, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", address)
+	conn, err := dialSSH(ctx, address)
 	if err != nil {
 		return fmt.Errorf("无法连接 %s：%w", address, err)
 	}

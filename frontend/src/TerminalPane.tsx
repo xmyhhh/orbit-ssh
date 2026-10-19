@@ -20,6 +20,7 @@ import TerminalContextMenu, {
   type TerminalAction,
 } from "./TerminalContextMenu";
 import type { Session, TerminalHandle } from "./types";
+import { androidCall, isAndroid } from "./android";
 import "@xterm/xterm/css/xterm.css";
 
 interface Props {
@@ -113,6 +114,8 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       y: number;
       hasSelection: boolean;
     } | null>(null);
+    const [control, setControl] = useState(false);
+    const controlRef = useRef(false);
     const latest = useRef({
       session,
       active,
@@ -183,6 +186,12 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     }
 
     function send(text: string) {
+      if (controlRef.current && text.length === 1) {
+        const code = text.toUpperCase().charCodeAt(0);
+        if (code >= 64 && code <= 95) text = String.fromCharCode(code & 31);
+        controlRef.current = false;
+        setControl(false);
+      }
       if (session.demo) demoType(text);
       else if (latest.current.session.status === "connected") {
         writes.current = writes.current
@@ -443,7 +452,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         ? () => {}
         : listen(`ssh:closed:${session.id}`, (message) => {
             term.writeln(
-              `\r\n\x1b[90m[${session.wslDistribution ? "终端已结束" : "连接已断开"}]\x1b[0m`,
+              `\r\n\x1b[90m[${session.localShell || session.wslDistribution ? "终端已结束" : "连接已断开"}]\x1b[0m`,
             );
             latest.current.onClosed(session.id, String(message));
           });
@@ -452,10 +461,14 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           "\x1b[32mOrbit SSH\x1b[0m · 本地演示\r\n输入 help 查看命令，colors 预览配色。\r\n",
         );
         prompt();
-      } else
-        term.writeln(
-          `\x1b[90m${session.wslDistribution ? `正在启动 WSL · ${session.wslDistribution}` : `正在连接 ${session.host.username}@${session.host.address}:${session.host.port}`} …\x1b[0m\r\n`,
-        );
+      } else {
+        const message = session.localShell
+          ? `正在启动 ${session.localShell.name}`
+          : session.wslDistribution
+            ? `正在启动 WSL · ${session.wslDistribution}`
+            : `正在连接 ${session.host.username}@${session.host.address}:${session.host.port}`;
+        term.writeln(`\x1b[90m${message} …\x1b[0m\r\n`);
+      }
       resize();
       const element = container.current!;
       return () => {
@@ -504,6 +517,57 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           ref={container}
           aria-label={`${session.host.name} 终端 #${session.terminalNumber}`}
         />
+        {isAndroid() && active && (
+          <div
+            className="android-terminal-keys"
+            role="toolbar"
+            aria-label="终端辅助按键"
+          >
+            {[
+              ["Esc", "\u001b"],
+              ["Tab", "\t"],
+              ["Ctrl", ""],
+              ["↑", "\u001b[A"],
+              ["↓", "\u001b[B"],
+              ["←", "\u001b[D"],
+              ["→", "\u001b[C"],
+              ["中断", "\u0003"],
+            ].map(([label, value]) => (
+              <button
+                key={label}
+                aria-label={label === "中断" ? "发送 Ctrl+C" : label}
+                aria-pressed={label === "Ctrl" ? control : undefined}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (label === "Ctrl") {
+                    controlRef.current = !controlRef.current;
+                    setControl(controlRef.current);
+                  } else send(value);
+                  terminal.current?.focus();
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={pasteFromClipboard}
+            >
+              粘贴
+            </button>
+            <button
+              aria-label="显示软键盘"
+              onClick={() => {
+                terminal.current?.focus();
+                void androidCall("ShowKeyboard").catch(() =>
+                  latest.current.onError("无法打开软键盘"),
+                );
+              }}
+            >
+              键盘
+            </button>
+          </div>
+        )}
         {active && menu && (
           <TerminalContextMenu
             {...menu}

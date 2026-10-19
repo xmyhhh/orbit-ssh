@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	wails "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type LocalDirectory struct {
@@ -30,7 +28,7 @@ func (a *App) ListLocalDirectory(dir string) (LocalDirectory, error) {
 	}
 	if dir == "" {
 		var err error
-		dir, err = os.UserHomeDir()
+		dir, err = platformLocalDirectory()
 		if err != nil {
 			return LocalDirectory{}, err
 		}
@@ -67,7 +65,7 @@ func (a *App) ListLocalDirectory(dir string) (LocalDirectory, error) {
 }
 
 func (a *App) SelectLocalDirectory() (string, error) {
-	return wails.OpenDirectoryDialog(a.ctx, wails.OpenDialogOptions{Title: "选择本地文件夹", ShowHiddenFiles: true})
+	return selectDirectory(a.ctx)
 }
 
 func (a *App) MakeLocalDirectory(dir, name string) error {
