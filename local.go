@@ -44,7 +44,7 @@ func (a *App) GetLocalShellInfo() LocalShellInfo { return inspectLocalShells() }
 
 func (a *App) ConnectLocalShell(id, shellID string, size TerminalSize) error {
 	if !localShellsSupported {
-		return errors.New("本地 Shell 目前仅支持 Windows 和 macOS")
+		return errors.New("本地 Shell 目前仅支持 Windows、macOS 和 Linux")
 	}
 	return a.connectLocalTerminal(id, "本地 Shell", size, func(ctx context.Context, size TerminalSize) (localTerminal, error) {
 		return startLocalShell(shellID, size)
