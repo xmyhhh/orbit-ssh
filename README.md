@@ -2,11 +2,11 @@
 
 把服务器终端、文件和监控放在同一个窗口。
 
-Orbit SSH 是一款面向 Windows 和 Android 的个人 SSH 工具，适合日常连接 Linux 服务器、维护文件、配置 SSH 隧道，以及在 Windows 上使用本地 Shell 和 WSL。无需注册账号，主机配置和登录凭据保存在当前设备。
+Orbit SSH 是一款面向 Windows、macOS 和 Android 的个人 SSH 工具，适合日常连接 Linux 服务器、维护文件、配置 SSH 隧道，以及在 Windows 上使用本地 Shell 和 WSL。无需注册账号，主机配置和登录凭据保存在当前设备。
 
 **v3.0（Windows x64）：[安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/OrbitSSH-v3.0-windows-x64-setup.exe) · [便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/OrbitSSH-v3.0-windows-x64-portable.zip)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v3.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
-**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.0 只发布 Windows 桌面版。
+**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.0 只发布 Windows 桌面版；macOS 版可在本机构建，参见[开发与构建说明](docs/DEVELOPMENT.md)。
 
 ![Orbit SSH v3.0 首页：主机卡片、分组、收藏和搜索](docs/images/v3-home.png)
 
@@ -71,7 +71,7 @@ Orbit SSH 是一款面向 Windows 和 Android 的个人 SSH 工具，适合日�
 
 Windows 安装版会把程序安装到当前用户目录（默认 `%LOCALAPPDATA%\Programs\Orbit SSH`），卸载入口在 Windows 设置或开始菜单中；主机配置、凭据和终端历史保存在 `%APPDATA%\OrbitSSH`，覆盖安装和卸载都不会删除。安装版会检测并安装 Microsoft Edge WebView2 Runtime；便携版需要系统已有 WebView2，Windows 11 通常已自带。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。WSL 是可选功能，使用时需另外安装 WSL 和 Linux 发行版。
 
-Android 安装、文件导入导出、软键盘和本地构建见 [Android 说明](docs/ANDROID.md)。手机端主要面向前台使用，系统回收应用会结束会话和传输。Windows 本地 Shell、WSL、托盘和 MCP 集成用于桌面端。
+Android 安装、文件导入导出、软键盘和本地构建见 [Android 说明](docs/ANDROID.md)。手机端主要面向前台使用，系统回收应用会结束会话和传输。MCP 集成用于桌面端；WSL 目前只提供 Windows 版本。macOS 可以在本机构建和运行，本地 Shell 使用系统自带的 zsh、bash 等 Shell，见[开发与构建说明](docs/DEVELOPMENT.md)。
 
 ## 你可以用它做什么
 
@@ -95,8 +95,8 @@ Android 安装、文件导入导出、软键盘和本地构建见 [Android 说�
 | 编辑远程文本 | 直接打开配置或代码，使用语法高亮、查找替换、撤销和自动换行，保存到服务器。 |
 | 查看服务器状态 | 查看 Linux 服务器的 CPU、内存、交换空间、磁盘、网络速率、磁盘 I/O、温度和前 500 个进程，可调整刷新间隔或暂停采样；可向进程发送 TERM、KILL、HUP 等信号。 |
 | 打开 WSL | 自动发现本机已安装的发行版，直接打开交互终端，同一发行版可开多个会话。 |
-| 打开本地 Shell | 在窗口中运行 Windows PowerShell、CMD 或已安装的 PowerShell 7，支持多个独立终端。 |
-| 常驻后台 | Windows 启动后显示系统托盘图标，默认关闭窗口时保留终端和传输；从托盘菜单恢复窗口或退出应用。 |
+| 打开本地 Shell | 在窗口中运行本机 Shell：Windows 上是 PowerShell、CMD、PowerShell 7，macOS 上是 zsh、bash、fish 等，支持多个独立终端。 |
+| 常驻后台 | Windows 显示系统托盘图标，macOS 显示菜单栏图标，默认关闭窗口时保留终端和传输；从图标菜单恢复窗口或退出应用。 |
 | 连接 AI 工具 | 通过本机 MCP 让 AI 查看终端和历史，也可授权 AI 配置主机、创建连接并操作同一个终端；连接创建和终端输入默认关闭。 |
 | 调整外观 | 浅色、深色或跟随系统，在偏好设置中调整终端字号和行距。 |
 
@@ -241,11 +241,11 @@ X Server 使用 cookie 认证时可选择对应的 Xauthority 文件；留空会
 
 ## 在窗口中使用本地 Shell
 
-从左侧点击「本地 Shell」，右侧会以卡片或列表展示检测到的 **Windows PowerShell**、**CMD** 和 **PowerShell 7**。点击对应项目即可打开交互终端，无需添加主机或配置 SSH。卡片和列表的切换方式与「远程主机」相同，并会记住选择；安装新的 PowerShell 7 后，可在页面中点击「刷新」重新检测。
+从左侧点击「本地 Shell」，右侧会以卡片或列表展示检测到的 Shell：Windows 上是 **Windows PowerShell**、**CMD** 和 **PowerShell 7**，macOS 上是登录 Shell 以及 **zsh**、**bash**、**fish** 等常见 Shell。点击对应项目即可打开交互终端，无需添加主机或配置 SSH。卡片和列表的切换方式与「远程主机」相同，并会记住选择；安装新的 Shell 后，可在页面中点击「刷新」重新检测。
 
-终端默认从当前 Windows 用户的主目录启动。点击「新建终端」、会话标签旁的「＋」，或按 `Ctrl + Shift + T`，会打开相同 Shell 的独立会话。输入 `exit` 结束当前终端后，可点击「重新打开」。关闭一个终端不会影响其他会话。
+终端默认从当前用户的主目录启动。点击「新建终端」、会话标签旁的「＋」，或按 `Ctrl + Shift + T`，会打开相同 Shell 的独立会话。输入 `exit` 结束当前终端后，可点击「重新打开」。关闭一个终端不会影响其他会话。
 
-本地 Shell 需要 Windows 10 1809 或更新版本，支持中文输入输出、复制粘贴、输出搜索和字号调整。文件管理与服务器监控用于 SSH 连接。
+本地 Shell 支持中文输入输出、复制粘贴、输出搜索和字号调整。Windows 需要 Windows 10 1809 或更新版本，macOS 需要 11.0 或更新版本；文件管理与服务器监控用于 SSH 连接。
 
 ## 在窗口中使用 WSL
 
@@ -257,11 +257,11 @@ X Server 使用 cookie 认证时可选择对应的 Xauthority 文件；留空会
 
 ## 关闭窗口与后台常驻
 
-Windows 版启动后会在系统托盘显示 Orbit SSH 图标，图标可能收纳在任务栏右侧的「^」中。默认点击窗口关闭按钮或按 `Alt + F4` 时，窗口会隐藏到托盘，SSH、本地 Shell、WSL 会话和文件传输继续运行，未保存的编辑内容也会保留。
+Windows 版启动后会在系统托盘显示 Orbit SSH 图标，图标可能收纳在任务栏右侧的「^」中；macOS 版会在菜单栏右侧显示同一个图标。默认点击窗口关闭按钮时，窗口会隐藏到托盘或菜单栏，SSH、本地 Shell、WSL 会话和文件传输继续运行，未保存的编辑内容也会保留。
 
-点击托盘图标即可恢复窗口；右键菜单提供「打开 Orbit SSH」「隐藏到托盘」和「退出 Orbit SSH」。要完全退出，请选择托盘菜单中的「退出 Orbit SSH」；存在活动会话或未保存文件时，仍会按原有设置确认，取消后可以继续使用。
+点击图标即可打开菜单，「打开 Orbit SSH」恢复窗口，菜单还提供「隐藏到托盘」或「隐藏到菜单栏」和「退出 Orbit SSH」。要完全退出，请选择菜单中的「退出 Orbit SSH」；存在活动会话或未保存文件时，仍会按原有设置确认，取消后可以继续使用。
 
-如果希望关闭窗口时直接退出，在「偏好设置」中关闭「关闭窗口后常驻后台」。退出应用会结束会话和传输；此设置会保存在本机。后台常驻目前用于 Windows 版。
+如果希望关闭窗口时直接退出，在「偏好设置」中关闭「关闭窗口后常驻后台」。退出应用会结束会话和传输；此设置会保存在本机。后台常驻用于 Windows 和 macOS 桌面版。
 
 ## 常用快捷键
 
@@ -289,10 +289,10 @@ Windows 版启动后会在系统托盘显示 Orbit SSH 图标，图标可能收�
 
 Orbit SSH 无需账号，不提供云同步或联网激活。SSH / SFTP 连接直接访问你添加的服务器。
 
-- **主机与偏好设置**：Windows 保存在 `%APPDATA%\OrbitSSH\workspace.json`，Android 保存在应用私有目录，包含主机信息、分组、隧道规则、主题和已信任的服务器指纹。
-- **密码与私钥口令**：Windows 使用凭据管理器，Android 使用 Keystore 加密保存，均不写入配置 JSON。系统凭据库不可用时会提示，不会改为明文保存。
-- **私钥**：Windows 保留在原始文件位置，Android 导入到应用私有目录，配置中仅记录路径。
-- **终端历史**：保存在配置目录的 `terminal-history` 子目录，可在应用中查看和删除。Windows 与 Android 的配置、凭据和历史分别保存。
+- **主机与偏好设置**：Windows 保存在 `%APPDATA%\OrbitSSH\workspace.json`，macOS 保存在 `~/Library/Application Support/OrbitSSH/workspace.json`，Android 保存在应用私有目录，包含主机信息、分组、隧道规则、主题和已信任的服务器指纹。
+- **密码与私钥口令**：Windows 使用凭据管理器，macOS 使用钥匙串，Android 使用 Keystore 加密保存，均不写入配置 JSON。系统凭据库不可用时会提示，不会改为明文保存。
+- **私钥**：Windows 和 macOS 保留在原始文件位置，Android 导入到应用私有目录，配置中仅记录路径。
+- **终端历史**：保存在配置目录的 `terminal-history` 子目录，可在应用中查看和删除。Windows、macOS 与 Android 的配置、凭据和历史分别保存。
 
 备份时，请先退出应用，再复制配置文件。配置备份包含服务器地址和用户名，请妥善保管。密码和私钥口令不会随该文件迁移，私钥也需要单独备份。
 
@@ -320,7 +320,7 @@ Windows 更新时退出旧版后运行新版即可沿用本机配置，删除 EX
 
 ### v3.0 支持哪些系统和架构？
 
-本次 Release 提供 Windows x64 安装版和便携版。暂未提供 Windows ARM64、macOS 或 Linux 安装包；其他桌面平台需要在相应系统自行构建和验证，参见[开发与构建说明](docs/DEVELOPMENT.md)。Android 版仍为 [v2.0](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) 的 ARM64 APK。
+本次 Release 提供 Windows x64 安装版和便携版。暂未提供 Windows ARM64、macOS 或 Linux 安装包；macOS 和 Linux 需要在对应系统自行构建和验证，参见[开发与构建说明](docs/DEVELOPMENT.md)。Android 版仍为 [v2.0](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) 的 ARM64 APK。
 
 ## 反馈问题
 

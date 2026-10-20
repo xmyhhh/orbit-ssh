@@ -8,7 +8,9 @@ Orbit SSH 使用 Wails v2、Go、React、TypeScript 和 xterm.js，桌面界面�
 - Node.js 22.18 或更新版本及 npm（推荐 Node.js 24 LTS；前端测试使用内置 TypeScript 类型擦除）。
 - 对应平台的 [Wails 构建依赖](https://wails.io/docs/gettingstarted/installation)。Windows 需要 WebView2；macOS 需要 Xcode Command Line Tools；Linux 需要 GTK / WebKitGTK 和可用的 Secret Service。需要 CGO 的构建环境还需 C 编译工具。
 
-v2.0 的发布目标是 Windows x64 和 Android ARM64。macOS、Linux 和其他架构需要在对应环境构建并验证。
+Wails v2.11 的绑定生成器使用较旧的 `golang.org/x/tools`，无法读取 Go 1.25 及更高版本的导出数据，会报 `internal error: package "context" without types was imported from "orbitssh"`。使用 Go 1.24 构建本项目；如需更新 Wails 再一并验证。
+
+v2.0 的发布目标是 Windows x64 和 Android ARM64。macOS、Linux 和其他架构需要在对应环境构建并验证。macOS 的构建入口见 [macOS 构建](#macos-构建)。
 
 Android ARM64 本地构建、安装与平台差异见 [Android 构建说明](ANDROID.md)。在 Windows 仓库根目录运行 `.\android\build.ps1` 可生成签名 APK。
 
@@ -16,19 +18,26 @@ Android ARM64 本地构建、安装与平台差异见 [Android 构建说明](AND
 
 在仓库根目录运行：
 
-```powershell
+```bash
 cd frontend
 npm ci
+cd ..
+# 首次构建需要先生成 Wails 前端绑定，否则 tsc 找不到 frontend/wailsjs
+mkdir -p frontend/dist && touch frontend/dist/gitkeep
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 generate module
+cd frontend
 npm run build
 cd ..
 go run github.com/wailsapp/wails/v2/cmd/wails@v2.11.0 dev
 ```
 
+`frontend/wailsjs` 由 Wails CLI 生成，不提交到 Git；`go run ... wails dev` 也会自动生成，只需在单独执行 `npm run build` 前先生成一次。
+
 单独运行 `npm run dev` 可预览前端界面；网页预览使用独立 localStorage，不会连接桌面配置。SSH、SFTP、系统凭据、本地 Shell 和 WSL 功能需要桌面环境。
 
 ## 检查与测试
 
-```powershell
+```bash
 cd frontend
 npm test
 npm run build
@@ -39,6 +48,8 @@ go vet ./...
 ```
 
 Go 会嵌入 `frontend/dist`，请先完成前端构建，再执行 Go 检查，避免同时改写 dist。默认测试使用本地 SSH / SFTP 服务和模拟凭据库，不接触用户配置。
+
+并发改动后建议再跑一次 `go test -race ./...` 和 `go test -race -tags androidtest ./...`，会话心跳等后台协程不会直接读取 `App` 上的可替换字段。
 
 Windows 本地终端测试会通过真实 ConPTY 启动检测到的 PowerShell、CMD 和 PowerShell 7，验证独立会话、中文输出、用户主目录、尺寸调整与退出事件；不需要安装 WSL 发行版。本地 Shell 与 WSL 共用会话输入输出和关闭逻辑。
 
@@ -87,6 +98,35 @@ Windows 构建通过后可复用同一份前端资源生成 Android 包：
 
 发布附件为 `OrbitSSH-v2.0-windows-x64-setup.exe`、`OrbitSSH-v2.0-windows-x64-portable.zip`、`OrbitSSH-v2.0-android-arm64.apk` 和 `SHA256SUMS.txt`。APK 使用既有 `android/orbit-local.keystore` 签名，保留该文件以便后续覆盖升级；密钥和二进制产物均不提交到 Git。
 
+## macOS 构建
+
+在 macOS 上构建需要 Go 1.24 或更新版本、Node.js 22.18 或更新版本，以及 Xcode Command Line Tools。Wails CLI 通过 `go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0` 安装。
+
+在仓库根目录运行：
+
+```bash
+# 构建 build/bin/Orbit SSH.app
+./scripts/build-macos.sh
+
+# Apple Silicon 与 Intel 通用二进制，并打包为可分发 zip
+./scripts/build-macos.sh --platform darwin/universal --package
+```
+
+脚本依次生成缺失的 Wails 前端绑定、运行前端测试与构建、桌面及 Android 桥接 Go 测试、Go 静态检查，最后调用 Wails 编译并签名。可用 `--platform` 指定构建目标（`darwin/arm64`、`darwin/amd64`、`darwin/universal`），用 `--sign-identity` 指定签名身份（默认 `-` 为临时签名，传入 `none` 可跳过签名），用 `--output-name` 修改 App 内可执行文件名，用 `--skip-frontend` 复用已有的 `frontend/dist` 和 `frontend/wailsjs`，用 `--wails-path` 指定 Wails CLI。`--package` 会把 App、`LICENSE.txt` 和 `README.txt` 一起压缩到 `output/release`，并输出 SHA-256 校验值。
+
+App 的 Bundle 标识符由 `build/darwin/Info.plist` 固定为 `io.orbitssh.macos`，与 Android 的 `io.orbitssh.android` 保持一致；未提供该文件时 Wails 会生成默认模板，标识符会退化为 `com.wails.<项目名>`。
+
+macOS 版的平台差异：
+
+- 系统托盘和 WSL 目前只实现 Windows 版本，界面会隐藏对应入口；关闭窗口即退出应用，不支持「隐藏到托盘」。
+- 本地 Shell 在 macOS 上通过伪终端（PTY）运行，使用 `github.com/creack/pty` 启动登录 Shell 及 zsh、bash、sh、fish、tcsh、csh、ksh，Windows 上继续使用 ConPTY。实现分别位于 `local_darwin.go` 和 `local_windows.go`，`local_other.go` 为其余平台保留占位实现。
+- 后台常驻在 macOS 上通过菜单栏图标实现，位于 `tray_darwin.go`、`tray_darwin.m` 和 `tray_darwin_callbacks.go`。菜单栏图标使用 SF Symbols（macOS 11 起），低版本回退为自绘的模板图标；菜单栏操作必须回到主线程，所以 Objective-C 侧统一用 `dispatch_async(dispatch_get_main_queue(), ...)`。`.m` 文件必须带 `//go:build darwin && !android && !androidtest`，否则 `go test -tags androidtest` 会因为缺少 cgo 而无法编译。
+- 主机配置、凭据和终端历史保存在 `~/Library/Application Support/OrbitSSH`，密码与私钥口令存入 macOS 钥匙串，私钥保留在原始文件位置。
+- SSH Agent 读取 `SSH_AUTH_SOCK`；macOS 默认不常驻运行 `ssh-agent`，使用前先执行 `eval "$(ssh-agent -s)"` 并用 `ssh-add` 加载密钥。
+- X11 转发需要 XQuartz，认证 cookie 从 `~/.Xauthority` 或 `XAUTHORITY` 指向的文件读取。
+
+脚本默认使用临时签名（ad-hoc），它只能保证本机运行和钥匙串访问稳定。临时签名的 App 在其他机器上仍会被 Gatekeeper 拦截，正式分发需要使用开发者证书签名并公证。
+
 ## 模块边界
 
 | 位置 | 职责 |
@@ -99,7 +139,8 @@ Windows 构建通过后可复用同一份前端资源生成 Android 包：
 | `frontend/src/TerminalCatalog.tsx` | 本地 Shell 和 WSL 共用的卡片、刷新、加载、错误及空状态。 |
 | `frontend/src/styles/` | 基础样式、应用外壳、主机页、终端、对话框、响应布局、监控和历史；`styles.css` 固定导入顺序。 |
 | `terminal.go`、`terminal_output.go` | SSH 与本地终端共用的输入、尺寸、关闭 API，以及输出缓存和转发。 |
-| `ssh.go`、`local.go`、`wsl*.go` | 各类连接的启动、平台实现与生命周期。 |
+| `ssh.go`、`local.go`、`local_*.go`、`wsl*.go` | 各类连接的启动、平台实现与生命周期。 |
+| `tray.go`、`tray_*.go` | 托盘状态机与各平台的系统托盘、菜单栏实现。 |
 | `tunneling.go`、`x11.go` | 主机共享的本地、远程和 SOCKS5 TCP 转发，以及每个 SSH 终端的 X11 认证与转发。 |
 | `mcp_server.go`、`mcp_transport.go` | MCP 监听与状态、HTTP 和 JSON-RPC 协议。 |
 | `mcp_tools.go`、`mcp_terminal.go`、`mcp_token.go` | MCP 工具、终端读取与检索、令牌持久化。 |
