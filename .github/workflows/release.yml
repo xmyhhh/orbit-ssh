@@ -44,15 +44,21 @@ jobs:
           - os: macos-latest
             platform: darwin/arm64
             asset: macos-arm64
+            tags: ''
           - os: macos-26-intel
             platform: darwin/amd64
             asset: macos-x64
+            tags: ''
           - os: windows-latest
             platform: windows/amd64
             asset: windows-x64
+            tags: ''
           - os: ubuntu-24.04
             platform: linux/amd64
             asset: linux-x64
+            # Ubuntu 24.04 only ships WebKitGTK 4.1, so the ABI tag is
+            # required. Without it the build looks for webkit2gtk-4.0.
+            tags: '-tags webkit2_41'
     steps:
       - uses: actions/checkout@v7
 
@@ -102,7 +108,7 @@ jobs:
           fi
 
       - name: Build the application
-        run: wails build -platform ${{ matrix.platform }}
+        run: wails build -platform ${{ matrix.platform }} ${{ matrix.tags }}
 
       - name: Build the Windows installer
         if: runner.os == 'Windows'

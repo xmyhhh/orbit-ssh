@@ -129,7 +129,15 @@ macOS 版的平台差异：
 
 ## Linux 构建
 
-在 Linux 上构建需要 Go 1.24 或更新版本、Node.js 22.18 或更新版本，以及 Wails 的 GTK / WebKitGTK 依赖。Ubuntu 24.04 需要 `libgtk-3-dev` 和 `libwebkit2gtk-4.1-dev`（22.04 只有 WebKitGTK 4.0，无法构建 Wails v2.11）。
+在 Linux 上构建需要 Go 1.24 或更新版本、Node.js 22.18 或更新版本，以及 Wails 的 GTK / WebKitGTK 依赖。
+
+WebKitGTK 有 4.0 和 4.1 两个 ABI。Ubuntu 24.04 和 Debian 12 只提供 4.1，Ubuntu 22.04 提供 4.0。构建时用 `-tags webkit2_41` 选择 4.1，缺省会去找 `webkit2gtk-4.0` 并报 *Package webkit2gtk-4.0 was not found*：
+
+```bash
+# Ubuntu 24.04 / Debian 12 及以上
+sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+wails build -platform linux/amd64 -tags webkit2_41
+```
 
 ```bash
 sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
