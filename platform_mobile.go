@@ -23,6 +23,17 @@ func platformEvents(context.Context) func(string, ...interface{}) {
 	}
 }
 
+// notifyBackgroundState tells the host how many sessions are running so it
+// can keep the engine alive while the app sits in the background.
+func notifyBackgroundState(count int) {
+	if androidBridge == nil {
+		return
+	}
+	// The host only needs the count, so a slow answer must not stall the
+	// engine while a session is starting.
+	_, _ = androidBridge.nativeWithin("setBackground", []interface{}{count}, 3*time.Second)
+}
+
 func nativeValue(method string, args ...interface{}) (string, error) {
 	data, err := androidBridge.native(method, args)
 	if err != nil {

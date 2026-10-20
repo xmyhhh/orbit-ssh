@@ -27,6 +27,10 @@ func platformEvents(ctx context.Context) func(string, ...interface{}) {
 	return func(name string, args ...interface{}) { runtime.EventsEmit(ctx, name, args...) }
 }
 
+// notifyBackgroundState does nothing on the desktop, where the window keeps
+// the process alive on its own.
+func notifyBackgroundState(int) {}
+
 func selectOpenFile(ctx context.Context, title string) (string, error) {
 	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{Title: title, ShowHiddenFiles: true})
 }

@@ -13,9 +13,6 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.OpenableColumns;
 import android.database.Cursor;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
-import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -34,49 +31,44 @@ import android.widget.FrameLayout;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
-
 /** A local WebView and the shared Go SSH engine, connected by private pipes. */
-public final class MainActivity extends Activity {
+public final class MainActivity extends Activity implements OrbitEngine.Listener {
     private static final String ORIGIN = "https://appassets.androidplatform.net/";
-    private static final String KEY_ALIAS = "OrbitSSH.Credentials.v1";
     private static final String APPEARANCE_PREFS = "OrbitSSH.Appearance";
     private static final int PICK_DOCUMENT = 10;
     private static final int EXPORT_DOCUMENT = 11;
-    private final ExecutorService workers = Executors.newFixedThreadPool(4);
+    private final ExecutorService workers = Executors.newFixedThreadPool(2, new ThreadFactory() {
+        private int counter;
+        @Override public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "orbit-ui-" + (++counter));
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
     private final AtomicBoolean failed = new AtomicBoolean();
-    private final Object pipeLock = new Object();
+    private OrbitEngine engine;
     private WebView webView;
     private FrameLayout webContainer;
     private TerminalActionMode terminalActions;
     private TextView loading;
     private boolean darkAppearance;
     private boolean terminalFullscreen;
+    private volatile boolean interfaceShown;
+    private boolean quitting;
     private int surfaceColor = Color.WHITE;
     private int canvasColor = Color.rgb(247, 248, 250);
-    private Process backend;
-    private BufferedWriter backendInput;
     private File localFiles;
     private Picker pendingPicker;
     private volatile boolean closing;
@@ -114,9 +106,41 @@ public final class MainActivity extends Activity {
         loading.setGravity(17);
         loading.setTextSize(20);
         setContentView(loading);
+        engine = OrbitEngine.get(this);
+        engine.setListener(this);
+        requestNotificationPermission();
         createWebView();
         applySystemAppearance();
-        workers.execute(this::startBackend);
+        engine.startAsync(getFilesDir(), localFiles);
+        // The engine may already be running from an earlier window.
+        if (engine.isReady()) showInterface();
+    }
+
+    /**
+     * The background service needs the notification permission on Android 13
+     * and newer, otherwise its notification is never shown.
+     */
+    private void requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        try {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+        } catch (Exception ignored) {
+            // The service still runs without the permission.
+        }
+    }
+
+    /** Shows the app shell once the engine is ready to serve calls. */
+    private void showInterface() {
+        if (interfaceShown) return;
+        interfaceShown = true;
+        runOnUiThread(() -> {
+            if (closing) return;
+            setContentView(webContainer);
+            applySystemAppearance();
+            webContainer.requestApplyInsets();
+            webView.loadUrl(ORIGIN);
+        });
     }
 
     private void applySystemAppearance() {
@@ -262,58 +286,41 @@ public final class MainActivity extends Activity {
         return "application/octet-stream";
     }
 
-    private void startBackend() {
+    @Override public void onEngineMessage(JSONObject message) {
+        deliver(message);
+    }
+
+    @Override public void onEngineNative(JSONObject request) {
+        String id = request.optString("id");
         try {
-            File executable = new File(getApplicationInfo().nativeLibraryDir, "liborbit.so");
-            ProcessBuilder builder = new ProcessBuilder(executable.getAbsolutePath(), getFilesDir().getAbsolutePath(), localFiles.getAbsolutePath());
-            builder.directory(getFilesDir());
-            builder.environment().put("TMPDIR", getCacheDir().getAbsolutePath());
-            backend = builder.start();
-            backendInput = new BufferedWriter(new OutputStreamWriter(backend.getOutputStream(), StandardCharsets.UTF_8));
-            Thread errors = new Thread(() -> {
-                // Drain stderr so a runtime diagnostic cannot stall the engine.
-                try (InputStream input = backend.getErrorStream()) {
-                    byte[] buffer = new byte[4096];
-                    while (input.read(buffer) >= 0) { }
-                } catch (Exception ignored) { }
-            }, "orbit-stderr");
-            errors.setDaemon(true);
-            errors.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(backend.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    JSONObject message = new JSONObject(line);
-                    String type = message.optString("type");
-                    if (type.equals("ready")) {
-                        runOnUiThread(() -> {
-                            if (closing) return;
-                            setContentView(webContainer);
-                            applySystemAppearance();
-                            webContainer.requestApplyInsets();
-                            webView.loadUrl(ORIGIN);
-                        });
-                    } else if (type.equals("native")) {
-                        workers.execute(() -> handleNative(message));
-                    } else if (type.equals("fatal")) {
-                        fatal(message.optString("error", "后端启动失败"));
-                    } else {
-                        deliver(message);
-                    }
-                }
+            String method = request.getString("method");
+            JSONArray args = request.optJSONArray("args");
+            if (method.equals("pickFile")) {
+                String kind = args.optString(0).contains("私钥") ? "key" : "file";
+                runOnUiThread(() -> openPicker(new Picker(id, true, kind, null)));
+            } else if (method.equals("importFiles")) {
+                runOnUiThread(() -> openPicker(new Picker(id, true, "import", null)));
+            } else if (method.equals("confirm")) {
+                runOnUiThread(() -> {
+                    new AlertDialog.Builder(this).setTitle(args.optString(0)).setMessage(args.optString(1))
+                        .setPositiveButton(args.optString(2), (dialog, which) -> engine.replyNative(id, true, null))
+                        .setNegativeButton("取消", (dialog, which) -> engine.replyNative(id, false, null))
+                        .setOnCancelListener(dialog -> engine.replyNative(id, false, null)).show();
+                });
+            } else {
+                engine.replyNative(id, null, "不支持的系统操作");
             }
-            if (!closing) fatal("SSH 后端已停止，请重新打开应用。");
         } catch (Exception error) {
-            if (!closing) fatal("无法启动 SSH 后端：" + message(error));
+            engine.replyNative(id, null, message(error));
         }
     }
 
+    @Override public void onEngineFatal(String error) {
+        fatal(error);
+    }
+
     private void writeBackend(JSONObject message) throws Exception {
-        synchronized (pipeLock) {
-            if (closing || backendInput == null) throw new IllegalStateException("SSH 后端尚未启动");
-            backendInput.write(message.toString());
-            backendInput.newLine();
-            backendInput.flush();
-        }
+        engine.send(message);
     }
 
     private void deliver(JSONObject message) {
@@ -323,13 +330,14 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void reply(String id, boolean nativeReply, Object data, String error) {
+    /** Answers a request that came from the web view. */
+    private void reply(String id, Object data, String error) {
         try {
-            JSONObject result = new JSONObject().put("type", nativeReply ? "nativeResult" : "result").put("id", id).put("data", data == null ? JSONObject.NULL : data);
+            JSONObject result = new JSONObject().put("type", "result").put("id", id).put("data", data == null ? JSONObject.NULL : data);
             if (error != null) result.put("error", error);
-            if (nativeReply) writeBackend(result); else deliver(result);
+            deliver(result);
         } catch (Exception failure) {
-            if (!closing) fatal("Android 桥接中断，请重新打开应用。");
+            fatal("Android 桥接中断，请重新打开应用。");
         }
     }
 
@@ -354,7 +362,7 @@ public final class MainActivity extends Activity {
                     writeBackend(request);
                 }
             } catch (Exception error) {
-                reply(id, false, null, message(error));
+                reply(id, null, message(error));
             }
         }
     }
@@ -364,20 +372,20 @@ public final class MainActivity extends Activity {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (method.equals("ClipboardGetText")) {
                 ClipData data = clipboard.getPrimaryClip();
-                reply(id, false, data == null || data.getItemCount() == 0 ? "" : data.getItemAt(0).coerceToText(this).toString(), null);
+                reply(id, data == null || data.getItemCount() == 0 ? "" : data.getItemAt(0).coerceToText(this).toString(), null);
             } else if (method.equals("ClipboardSetText")) {
                 clipboard.setPrimaryClip(ClipData.newPlainText("Orbit SSH", args.getString(0)));
-                reply(id, false, true, null);
+                reply(id, true, null);
             } else if (method.equals("ShowTerminalActions")) {
                 terminalActions.show(args.getString(0), args.getString(1), args.getJSONObject(2), args.getBoolean(3));
-                reply(id, false, true, null);
+                reply(id, true, null);
             } else if (method.equals("HideTerminalActions")) {
                 terminalActions.hide(args.getString(0));
-                reply(id, false, true, null);
+                reply(id, true, null);
             } else if (method.equals("SetTerminalFullscreen")) {
                 terminalFullscreen = args.getBoolean(0);
                 applyTerminalFullscreen();
-                reply(id, false, true, null);
+                reply(id, true, null);
             } else if (method.equals("SetSystemAppearance")) {
                 boolean dark = args.getBoolean(0);
                 int surface = Color.parseColor(args.getString(1));
@@ -388,99 +396,22 @@ public final class MainActivity extends Activity {
                 applySystemAppearance();
                 getSharedPreferences(APPEARANCE_PREFS, MODE_PRIVATE).edit()
                     .putBoolean("dark", dark).putInt("surface", surface).putInt("canvas", canvas).apply();
-                reply(id, false, true, null);
+                reply(id, true, null);
             } else {
                 InputMethodManager keyboard = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
                 webView.requestFocus();
                 keyboard.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT);
-                reply(id, false, true, null);
+                reply(id, true, null);
             }
         } catch (Exception error) {
-            reply(id, false, null, message(error));
+            reply(id, null, message(error));
         }
-    }
-
-    private void handleNative(JSONObject request) {
-        String id = request.optString("id");
-        try {
-            String method = request.getString("method");
-            JSONArray args = request.optJSONArray("args");
-            Object value;
-            switch (method) {
-                case "vaultGet": value = vaultGet(args.getString(0)); break;
-                case "vaultSet": vaultSet(args.getString(0), args.getString(1)); value = ""; break;
-                case "vaultDelete":
-                    if (!vault().edit().remove(args.getString(0)).commit()) throw new IllegalStateException("无法清除凭据");
-                    value = "";
-                    break;
-                case "resolve":
-                    JSONArray addresses = new JSONArray();
-                    for (InetAddress address : InetAddress.getAllByName(args.getString(0))) addresses.put(address.getHostAddress());
-                    value = addresses;
-                    break;
-                case "downloadPath":
-                    String name = new File(args.getString(0)).getName();
-                    value = new File(localFiles, name).getAbsolutePath();
-                    break;
-                case "pickFile":
-                    String kind = args.optString(0).contains("私钥") ? "key" : "file";
-                    runOnUiThread(() -> openPicker(new Picker(id, true, kind, null)));
-                    return;
-                case "importFiles":
-                    runOnUiThread(() -> openPicker(new Picker(id, true, "import", null)));
-                    return;
-                case "confirm":
-                    runOnUiThread(() -> {
-                        new AlertDialog.Builder(this).setTitle(args.optString(0)).setMessage(args.optString(1))
-                            .setPositiveButton(args.optString(2), (dialog, which) -> reply(id, true, true, null))
-                            .setNegativeButton("取消", (dialog, which) -> reply(id, true, false, null))
-                            .setOnCancelListener(dialog -> reply(id, true, false, null)).show();
-                    });
-                    return;
-                default: throw new IllegalArgumentException("不支持的系统操作");
-            }
-            reply(id, true, value, null);
-        } catch (Exception error) {
-            reply(id, true, null, message(error));
-        }
-    }
-
-    private SharedPreferences vault() { return getSharedPreferences("encrypted-credentials", MODE_PRIVATE); }
-
-    private synchronized SecretKey vaultKey() throws Exception {
-        KeyStore store = KeyStore.getInstance("AndroidKeyStore");
-        store.load(null);
-        if (!store.containsAlias(KEY_ALIAS)) {
-            KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            generator.init(new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setKeySize(256).build());
-            generator.generateKey();
-        }
-        return (SecretKey) store.getKey(KEY_ALIAS, null);
-    }
-
-    private String vaultGet(String key) throws Exception {
-        String encoded = vault().getString(key, null);
-        if (encoded == null) throw new IllegalStateException("CREDENTIAL_NOT_FOUND");
-        JSONObject record = new JSONObject(encoded);
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.DECRYPT_MODE, vaultKey(), new GCMParameterSpec(128, Base64.decode(record.getString("iv"), Base64.NO_WRAP)));
-        cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
-        return new String(cipher.doFinal(Base64.decode(record.getString("data"), Base64.NO_WRAP)), StandardCharsets.UTF_8);
-    }
-
-    private void vaultSet(String key, String value) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, vaultKey());
-        cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
-        JSONObject record = new JSONObject().put("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
-            .put("data", Base64.encodeToString(cipher.doFinal(value.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP));
-        if (!vault().edit().putString(key, record.toString()).commit()) throw new IllegalStateException("无法保存加密凭据");
     }
 
     private void openPicker(Picker picker) {
         if (pendingPicker != null) {
-            reply(picker.id, picker.nativeReply, null, "请先完成当前文件选择");
+            if (picker.nativeReply) engine.replyNative(picker.id, null, "请先完成当前文件选择");
+            else reply(picker.id, null, "请先完成当前文件选择");
             return;
         }
         pendingPicker = picker;
@@ -497,7 +428,8 @@ public final class MainActivity extends Activity {
             }
         } catch (Exception error) {
             pendingPicker = null;
-            reply(picker.id, picker.nativeReply, null, message(error));
+            if (picker.nativeReply) engine.replyNative(picker.id, null, message(error));
+            else reply(picker.id, null, message(error));
         }
     }
 
@@ -508,7 +440,9 @@ public final class MainActivity extends Activity {
         pendingPicker = null;
         if (picker == null) return;
         if (resultCode != RESULT_OK || data == null) {
-            reply(picker.id, picker.nativeReply, picker.kind.equals("export") ? false : "", null);
+            Object value = picker.kind.equals("export") ? (Object) Boolean.FALSE : (Object) "";
+            if (picker.nativeReply) engine.replyNative(picker.id, value, null);
+            else reply(picker.id, value, null);
             return;
         }
         workers.execute(() -> {
@@ -517,7 +451,8 @@ public final class MainActivity extends Activity {
                     try (InputStream input = new FileInputStream(picker.source); OutputStream output = getContentResolver().openOutputStream(data.getData(), "wt")) {
                         copy(input, output);
                     }
-                    reply(picker.id, picker.nativeReply, true, null);
+                    if (picker.nativeReply) engine.replyNative(picker.id, true, null);
+                    else reply(picker.id, true, null);
                 } else {
                     File selected = null;
                     ClipData clips = data.getClipData();
@@ -526,10 +461,14 @@ public final class MainActivity extends Activity {
                         Uri uri = clips == null ? data.getData() : clips.getItemAt(i).getUri();
                         selected = importDocument(uri, picker.kind.equals("key"));
                     }
-                    reply(picker.id, picker.nativeReply, picker.kind.equals("import") ? localFiles.getAbsolutePath() : selected.getAbsolutePath(), null);
+                    Object value = picker.kind.equals("import") ? localFiles.getAbsolutePath() : selected.getAbsolutePath();
+                    if (picker.nativeReply) engine.replyNative(picker.id, value, null);
+                    else reply(picker.id, value, null);
                 }
             } catch (Exception error) {
-                reply(picker.id, picker.nativeReply, null, "文件操作失败：" + message(error));
+                String reason = "文件操作失败：" + message(error);
+                if (picker.nativeReply) engine.replyNative(picker.id, null, reason);
+                else reply(picker.id, null, reason);
             }
         });
     }
@@ -597,7 +536,7 @@ public final class MainActivity extends Activity {
 
     private void confirmExit() {
         new AlertDialog.Builder(this).setTitle("退出 Orbit SSH？").setMessage("退出将断开终端会话并停止文件传输，未保存的编辑将丢失。")
-            .setPositiveButton("退出", (dialog, which) -> finish()).setNegativeButton("取消", null).show();
+            .setPositiveButton("退出", (dialog, which) -> { quitting = true; finish(); }).setNegativeButton("取消", null).show();
     }
 
     private void fatal(String error) {
@@ -616,10 +555,13 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         closing = true;
         if (terminalActions != null) terminalActions.finish();
-        synchronized (pipeLock) {
-            try { if (backendInput != null) backendInput.close(); } catch (Exception ignored) { }
+        if (engine != null) {
+            engine.setListener(null);
+            // A confirmed exit ends the engine. Otherwise it keeps running so
+            // background sessions survive, and the foreground service holds
+            // the process while sessions are open.
+            if (quitting || !engine.hasActiveSessions()) engine.stop();
         }
-        if (backend != null) backend.destroy();
         if (webView != null) {
             webView.removeJavascriptInterface("OrbitAndroid");
             webView.destroy();

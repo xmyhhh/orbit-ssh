@@ -118,14 +118,51 @@ App 的 Bundle 标识符由 `build/darwin/Info.plist` 固定为 `io.orbitssh.mac
 
 macOS 版的平台差异：
 
-- 系统托盘和 WSL 目前只实现 Windows 版本，界面会隐藏对应入口；关闭窗口即退出应用，不支持「隐藏到托盘」。
-- 本地 Shell 在 macOS 上通过伪终端（PTY）运行，使用 `github.com/creack/pty` 启动登录 Shell 及 zsh、bash、sh、fish、tcsh、csh、ksh，Windows 上继续使用 ConPTY。实现分别位于 `local_darwin.go` 和 `local_windows.go`，`local_other.go` 为其余平台保留占位实现。
+- 系统托盘使用菜单栏图标实现，WSL 只提供 Windows 版本，界面会隐藏对应入口。
+- 本地 Shell 在 macOS 上通过伪终端（PTY）运行，使用 `github.com/creack/pty` 启动登录 Shell 及 zsh、bash、sh、fish、tcsh、csh、ksh，Windows 上继续使用 ConPTY。实现分别位于 `local_darwin.go` 和 `local_windows.go`，`local_unix.go` 存放 macOS 与 Linux 共用的伪终端实现，`local_linux.go` 提供 Linux 的 Shell 列表，`local_other.go` 为其余平台保留占位实现。
 - 后台常驻在 macOS 上通过菜单栏图标实现，位于 `tray_darwin.go`、`tray_darwin.m` 和 `tray_darwin_callbacks.go`。菜单栏图标使用 SF Symbols（macOS 11 起），低版本回退为自绘的模板图标；菜单栏操作必须回到主线程，所以 Objective-C 侧统一用 `dispatch_async(dispatch_get_main_queue(), ...)`。`.m` 文件必须带 `//go:build darwin && !android && !androidtest`，否则 `go test -tags androidtest` 会因为缺少 cgo 而无法编译。
 - 主机配置、凭据和终端历史保存在 `~/Library/Application Support/OrbitSSH`，密码与私钥口令存入 macOS 钥匙串，私钥保留在原始文件位置。
 - SSH Agent 读取 `SSH_AUTH_SOCK`；macOS 默认不常驻运行 `ssh-agent`，使用前先执行 `eval "$(ssh-agent -s)"` 并用 `ssh-add` 加载密钥。
 - X11 转发需要 XQuartz，认证 cookie 从 `~/.Xauthority` 或 `XAUTHORITY` 指向的文件读取。
 
 脚本默认使用临时签名（ad-hoc），它只能保证本机运行和钥匙串访问稳定。临时签名的 App 在其他机器上仍会被 Gatekeeper 拦截，正式分发需要使用开发者证书签名并公证。
+
+## Linux 构建
+
+在 Linux 上构建需要 Go 1.24 或更新版本、Node.js 22.18 或更新版本，以及 Wails 的 GTK / WebKitGTK 依赖。Ubuntu 24.04 需要 `libgtk-3-dev` 和 `libwebkit2gtk-4.1-dev`（22.04 只有 WebKitGTK 4.0，无法构建 Wails v2.11）。
+
+```bash
+sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+wails build -platform linux/amd64
+```
+
+产物为 `build/bin/OrbitSSH`。Linux 版的平台差异：
+
+- 系统托盘按 StatusNotifierItem 规范实现，纯 Go 的 D-Bus 客户端，不引入 cgo，也不占用 GTK 主循环，实现在 `tray_linux.go`。KDE Plasma 原生支持；GNOME 需要安装 AppIndicator 扩展，否则托盘图标不会出现，窗口行为不受影响。
+- 本地 Shell 通过伪终端运行，复用 `local_unix.go` 中的 PTY 实现，Shell 列表在 `local_linux.go`。WSL 仍然只提供 Windows 版本。
+- 密码与私钥口令保存在 Secret Service，需要系统提供 `org.freedesktop.secrets` 服务；GNOME 之外的桌面可能需要安装 `libsecret` 与 `gnome-keyring`。
+- X11 转发需要本机运行 X Server，`XAUTHORITY` 的读取方式与其他平台一致。
+
+## GitHub Actions 发布
+
+`.github/workflows/release.yml` 在推送 `v*` 标签时触发，在 GitHub 托管的 runner 上构建 macOS（arm64 与 x64）、Windows x64 和 Linux x64，并把四个平台的产物合并成一个 Release：
+
+- 产物命名为 `OrbitSSH-v<版本>-<平台>-<架构>.<ext>`，与既有发布保持一致。
+- 每个平台的构建在独立 job 中进行，Linux 依赖 `ubuntu-24.04` 的 WebKitGTK 4.1。
+- 汇总 job 生成 `SHA256SUMS.txt`，发布说明优先读取 `docs/releases/<标签>.md`，缺失时使用占位文本。
+- 工作流会校验标签与 `wails.json`、`frontend/package.json` 的版本号一致，不一致直接失败，避免出现文件名与程序版本对不上的发布。
+- 仓库为 public，所有 runner 免费且不限量。
+
+发布前需要先更新 `wails.json` 的 `info.productVersion` 和 `frontend/package.json` 的 `version`，再打标签：
+
+```bash
+# 1. 更新版本号并提交
+# 2. 打标签推送
+git tag v3.1 && git push origin v3.1
+```
+
+Android 的 APK 仍使用 `android/build.ps1` 本地构建，签名密钥保留在本地；需要把 APK 一起发布时，在汇总 job 中追加 `actions/upload-artifact` 即可。
 
 ## 模块边界
 

@@ -46,6 +46,12 @@ func (b *mobileBridge) send(message mobileMessage) {
 }
 
 func (b *mobileBridge) native(method string, args []interface{}) (json.RawMessage, error) {
+	return b.nativeWithin(method, args, 5*time.Minute)
+}
+
+// nativeWithin sends a native request and waits at most the given duration.
+// Short timeouts keep the engine responsive when the host does not answer.
+func (b *mobileBridge) nativeWithin(method string, args []interface{}, timeout time.Duration) (json.RawMessage, error) {
 	b.mu.Lock()
 	b.nextID++
 	id := "native-" + strconv.FormatUint(b.nextID, 10)
@@ -54,7 +60,7 @@ func (b *mobileBridge) native(method string, args []interface{}) (json.RawMessag
 	b.mu.Unlock()
 	defer func() { b.mu.Lock(); delete(b.pending, id); b.mu.Unlock() }()
 	b.send(mobileMessage{Type: "native", ID: id, Method: method, Args: marshalMobile(args)})
-	timer := time.NewTimer(5 * time.Minute)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case reply := <-result:

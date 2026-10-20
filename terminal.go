@@ -79,5 +79,6 @@ func (a *App) Disconnect(id string) error {
 	if local != nil {
 		local.close()
 	}
+	a.syncBackgroundState()
 	return nil
 }

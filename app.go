@@ -18,6 +18,7 @@ type App struct {
 	sessions          map[string]*remoteSession
 	localSessions     map[string]*localSession
 	pending           map[string]context.CancelFunc
+	closing           bool
 	forwardMu         sync.Mutex
 	forwards          map[string]*hostForwarding
 	emit              func(string, ...interface{})
@@ -274,6 +275,7 @@ func (a *App) shutdown(_ context.Context) {
 	}
 	a.transferMu.Unlock()
 	a.mu.Lock()
+	a.closing = true
 	sessions := a.sessions
 	locals := a.localSessions
 	pending := a.pending
@@ -295,4 +297,19 @@ func (a *App) shutdown(_ context.Context) {
 	for _, s := range locals {
 		s.close()
 	}
+	a.syncBackgroundState()
+}
+
+// syncBackgroundState reports the number of live sessions to the host so a
+// mobile build can keep the engine alive in the background.
+func (a *App) syncBackgroundState() {
+	a.mu.Lock()
+	count := len(a.sessions) + len(a.localSessions)
+	closing := a.closing
+	a.mu.Unlock()
+	if closing {
+		// The engine is going away, the host stops the service on its own.
+		return
+	}
+	notifyBackgroundState(count)
 }

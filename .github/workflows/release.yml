@@ -1,0 +1,195 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'ci-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的版本标签，例如 v3.1'
+        required: true
+        type: string
+      dry-run:
+        description: '只构建并上传产物，不创建 Release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  # A ci-* tag or a dry run only builds the artifacts, so a test never
+  # publishes a release by accident.
+  DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry-run) || startsWith(github.ref_name, 'ci-') }}
+  GO_VERSION: '1.24'
+  NODE_VERSION: '22'
+  WAILS_VERSION: 'v2.11.0'
+
+jobs:
+  build:
+    name: Build ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin/arm64
+            asset: macos-arm64
+          - os: macos-26-intel
+            platform: darwin/amd64
+            asset: macos-x64
+          - os: windows-latest
+            platform: windows/amd64
+            asset: windows-x64
+          - os: ubuntu-24.04
+            platform: linux/amd64
+            asset: linux-x64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install the Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Resolve the asset version
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(node -p "require('./wails.json').info.productVersion.split('.').slice(0,2).join('.')")"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "ASSET_VERSION=$app" >> "$GITHUB_ENV"
+          else
+            echo "ASSET_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Check the version against the tag
+        if: env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#v}"
+          app="$(node -p "require('./wails.json').info.productVersion.split('.').slice(0,2).join('.')")"
+          pkg="$(node -p "require('./frontend/package.json').version.split('.').slice(0,2).join('.')")"
+          if [ "$tag" != "$app" ] || [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match wails.json ($app) or frontend/package.json ($pkg)"
+            exit 1
+          fi
+
+      - name: Build the application
+        run: wails build -platform ${{ matrix.platform }}
+
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: wails build -platform windows/amd64 -nsis -s
+
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${ASSET_VERSION}"
+          mkdir -p dist
+          # ditto keeps the bundle layout, the symlinks and the permissions.
+          ditto -c -k --sequesterRsrc --keepParent \
+            "build/bin/Orbit SSH.app" \
+            "dist/OrbitSSH-v${version}-${{ matrix.asset }}.zip"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${ASSET_VERSION}"
+          mkdir -p dist
+          7z a -tzip "dist/OrbitSSH-v${version}-${{ matrix.asset }}-portable.zip" "build/bin/OrbitSSH.exe"
+          for setup in build/bin/*Setup.exe; do
+            if [ -f "$setup" ]; then
+              cp "$setup" "dist/OrbitSSH-v${version}-${{ matrix.asset }}-setup.exe"
+              break
+            fi
+          done
+          ls -l dist
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${ASSET_VERSION}"
+          mkdir -p dist
+          tar -czf "dist/OrbitSSH-v${version}-${{ matrix.asset }}.tar.gz" -C build/bin OrbitSSH
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.asset }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Write the checksums
+        run: |
+          set -euo pipefail
+          cd assets
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Prepare the release notes
+        run: |
+          set -euo pipefail
+          notes="docs/releases/${RELEASE_TAG}.md"
+          if [ -f "$notes" ]; then
+            cp "$notes" release-notes.md
+          else
+            printf '## Orbit SSH %s\n\nSee the assets to download this version.\n' "$RELEASE_TAG" > release-notes.md
+          fi
+
+      - name: Create the release
+        if: env.DRY_RUN != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Orbit SSH ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            assets/*

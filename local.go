@@ -96,6 +96,7 @@ func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start fun
 	// Start the reader before Disconnect can close this terminal.
 	a.streamLocalTerminal(id, s)
 	a.mu.Unlock()
+	a.syncBackgroundState()
 	return nil
 }
 
@@ -114,6 +115,7 @@ func (a *App) streamLocalTerminal(id string, s *localSession) {
 			delete(a.localSessions, id)
 		}
 		a.mu.Unlock()
+		a.syncBackgroundState()
 		name := s.name
 		if name == "" {
 			name = "本地"

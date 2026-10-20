@@ -445,6 +445,7 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 	delete(a.pending, id)
 	a.mu.Unlock()
 	keepClient = true
+	a.syncBackgroundState()
 	var readers sync.WaitGroup
 	readers.Add(2)
 	for _, reader := range []io.Reader{stdout, stderr} {
@@ -461,6 +462,7 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 			delete(a.sessions, id)
 		}
 		a.mu.Unlock()
+		a.syncBackgroundState()
 		s.close()
 		message := "会话已结束"
 		if waitErr != nil {
