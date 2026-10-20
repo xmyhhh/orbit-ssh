@@ -66,7 +66,7 @@ npm run build
 cd ..
 go test ./...
 go vet ./...
-go test -tags androidtest -run '^TestMobile' -v -timeout 45s .
+go test -tags androidtest -run '^TestMobile' -v -timeout 45s ./src/app/
 ```
 
 移动端协议测试在主机上运行，连接临时 SSH / SFTP 服务，验证首次指纹确认、终端 Unicode 输出、SFTP 浏览、系统 DNS 回调、保存凭据后重连和凭据不进入配置。原生文件选择、Android Keystore、软键盘和后台生命周期仍需安装到 Android 设备验证。

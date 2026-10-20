@@ -122,7 +122,7 @@ interface Backend {
 }
 declare global {
   interface Window {
-    go?: { main: { App: Backend } };
+    go?: { app: { App: Backend } };
     runtime?: {
       ClipboardGetText?: () => Promise<string>;
       ClipboardSetText?: (text: string) => Promise<boolean>;
@@ -134,7 +134,7 @@ declare global {
     };
   }
 }
-export const isDesktop = () => Boolean(window.go?.main?.App);
+export const isDesktop = () => Boolean(window.go?.app?.App);
 export async function readClipboard(): Promise<string> {
   if (window.runtime?.ClipboardGetText)
     return window.runtime.ClipboardGetText();
@@ -147,9 +147,9 @@ export async function writeClipboard(text: string): Promise<void> {
   } else await navigator.clipboard.writeText(text);
 }
 export const backend = () => {
-  if (!window.go?.main?.App)
+  if (!window.go?.app?.App)
     throw new Error("真实 SSH 连接需要在 Orbit SSH 应用中使用");
-  return window.go.main.App;
+  return window.go.app.App;
 };
 export function listen(
   name: string,

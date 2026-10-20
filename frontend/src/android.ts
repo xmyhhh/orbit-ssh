@@ -59,8 +59,8 @@ if (isAndroid()) {
   // Preserve the existing desktop API so all SSH, SFTP, monitoring and editor
   // behavior uses the same backend and components on both platforms.
   window.go = {
-    main: {
-      App: new Proxy({} as NonNullable<Window["go"]>["main"]["App"], {
+    app: {
+      App: new Proxy({} as NonNullable<Window["go"]>["app"]["App"], {
         get:
           (_target, method) =>
           (...args: unknown[]) =>

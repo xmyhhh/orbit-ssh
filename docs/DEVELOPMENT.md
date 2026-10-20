@@ -16,6 +16,8 @@ Android ARM64 本地构建、安装与平台差异见 [Android 构建说明](AND
 
 ## 本地开发
 
+Go 源码放在 `src/` 下，仓库根目录只保留 Wails 需要的入口文件：`main.go` 内嵌前端资源并启动 `src/app`，`main_mobile.go` 是 Android 后端的入口。`src/app` 承载 `App` 结构体和全部对外方法，`src/platform`、`src/local`、`src/tray`、`src/sshagent`、`src/mcp` 和 `src/mobile` 提供各平台与各功能的实现。Wails 绑定的方法必须和 `App` 结构体在同一个包里，所以新增对外方法要放在 `src/app`。
+
 在仓库根目录运行：
 
 ```bash
@@ -119,8 +121,8 @@ App 的 Bundle 标识符由 `build/darwin/Info.plist` 固定为 `io.orbitssh.mac
 macOS 版的平台差异：
 
 - 系统托盘使用菜单栏图标实现，WSL 只提供 Windows 版本，界面会隐藏对应入口。
-- 本地 Shell 在 macOS 上通过伪终端（PTY）运行，使用 `github.com/creack/pty` 启动登录 Shell 及 zsh、bash、sh、fish、tcsh、csh、ksh，Windows 上继续使用 ConPTY。实现分别位于 `local_darwin.go` 和 `local_windows.go`，`local_unix.go` 存放 macOS 与 Linux 共用的伪终端实现，`local_linux.go` 提供 Linux 的 Shell 列表，`local_other.go` 为其余平台保留占位实现。
-- 后台常驻在 macOS 上通过菜单栏图标实现，位于 `tray_darwin.go`、`tray_darwin.m` 和 `tray_darwin_callbacks.go`。菜单栏图标使用 SF Symbols（macOS 11 起），低版本回退为自绘的模板图标；菜单栏操作必须回到主线程，所以 Objective-C 侧统一用 `dispatch_async(dispatch_get_main_queue(), ...)`。`.m` 文件必须带 `//go:build darwin && !android && !androidtest`，否则 `go test -tags androidtest` 会因为缺少 cgo 而无法编译。
+- 本地 Shell 在 macOS 上通过伪终端（PTY）运行，使用 `github.com/creack/pty` 启动登录 Shell 及 zsh、bash、sh、fish、tcsh、csh、ksh，Windows 上继续使用 ConPTY。实现分别位于 `src/local/local_darwin.go` 和 `src/local/local_windows.go`，`src/local/pty_unix.go` 存放 macOS 与 Linux 共用的伪终端实现，`src/local/local_linux.go` 提供 Linux 的 Shell 列表，`src/local/local_other.go` 为其余平台保留占位实现。
+- 后台常驻在 macOS 上通过菜单栏图标实现，位于 `src/tray/tray_darwin.go`、`src/tray/tray_darwin.m` 和 `src/tray/tray_darwin_callbacks.go`。菜单栏图标使用 SF Symbols（macOS 11 起），低版本回退为自绘的模板图标；菜单栏操作必须回到主线程，所以 Objective-C 侧统一用 `dispatch_async(dispatch_get_main_queue(), ...)`。`.m` 文件必须带 `//go:build darwin && !android && !androidtest`，否则 `go test -tags androidtest` 会因为缺少 cgo 而无法编译。
 - 主机配置、凭据和终端历史保存在 `~/Library/Application Support/OrbitSSH`，密码与私钥口令存入 macOS 钥匙串，私钥保留在原始文件位置。
 - SSH Agent 读取 `SSH_AUTH_SOCK`；macOS 默认不常驻运行 `ssh-agent`，使用前先执行 `eval "$(ssh-agent -s)"` 并用 `ssh-add` 加载密钥。
 - X11 转发需要 XQuartz，认证 cookie 从 `~/.Xauthority` 或 `XAUTHORITY` 指向的文件读取。
@@ -147,8 +149,8 @@ wails build -platform linux/amd64
 
 产物为 `build/bin/OrbitSSH`。Linux 版的平台差异：
 
-- 系统托盘按 StatusNotifierItem 规范实现，纯 Go 的 D-Bus 客户端，不引入 cgo，也不占用 GTK 主循环，实现在 `tray_linux.go`。KDE Plasma 原生支持；GNOME 需要安装 AppIndicator 扩展，否则托盘图标不会出现，窗口行为不受影响。
-- 本地 Shell 通过伪终端运行，复用 `local_unix.go` 中的 PTY 实现，Shell 列表在 `local_linux.go`。WSL 仍然只提供 Windows 版本。
+- 系统托盘按 StatusNotifierItem 规范实现，纯 Go 的 D-Bus 客户端，不引入 cgo，也不占用 GTK 主循环，实现在 `src/tray/tray_linux.go`。KDE Plasma 原生支持；GNOME 需要安装 AppIndicator 扩展，否则托盘图标不会出现，窗口行为不受影响。
+- 本地 Shell 通过伪终端运行，复用 `src/local/pty_unix.go` 中的 PTY 实现，Shell 列表在 `src/local/local_linux.go`。WSL 仍然只提供 Windows 版本。
 - 密码与私钥口令保存在 Secret Service，需要系统提供 `org.freedesktop.secrets` 服务；GNOME 之外的桌面可能需要安装 `libsecret` 与 `gnome-keyring`。
 - X11 转发需要本机运行 X Server，`XAUTHORITY` 的读取方式与其他平台一致。
 
@@ -176,6 +178,15 @@ Android 的 APK 仍使用 `android/build.ps1` 本地构建，签名密钥保留�
 
 | 位置 | 职责 |
 | --- | --- |
+| `main.go`、`main_mobile.go` | 模块根目录的入口，负责内嵌前端资源并启动 `src/app`。 |
+| `trayasset_*.go` | 内嵌 `build/` 里的托盘图标，交给 `src/tray` 使用。 |
+| `src/app/` | `App` 结构体与全部对外方法，以及 SSH、SFTP、监控、转发和工作区等业务逻辑。 |
+| `src/platform/` | 操作系统相关能力：配置目录、凭据库、事件、文件对话框和 SSH 连接。 |
+| `src/local/` | 本地 Shell 与 WSL 使用的伪终端（PTY / ConPTY）实现。 |
+| `src/tray/` | 各平台的系统托盘与菜单栏实现。 |
+| `src/sshagent/` | 各平台的 SSH Agent 接入方式。 |
+| `src/mcp/` | MCP 客户端配置管理：TOML / JSONC 合并、备份、客户端目录解析和令牌。 |
+| `src/mobile/` | Android 主机与 Go 后端之间的管道协议。 |
 | `frontend/src/App.tsx` | 组合页面、导航和操作入口。 |
 | `frontend/src/hooks/` | 会话连接与回滚、终端布局、历史持久化及可刷新的异步数据。 |
 | `frontend/src/TerminalCanvas.tsx`、`splitLayout.ts` | 保持终端挂载，绘制窗格与分隔线；纯布局算法独立测试。 |
@@ -183,23 +194,23 @@ Android 的 APK 仍使用 `android/build.ps1` 本地构建，签名密钥保留�
 | `frontend/src/files/` | 目录状态、文件浏览交互、传输队列和路径工具；`FilesPane.tsx` 负责组合。 |
 | `frontend/src/TerminalCatalog.tsx` | 本地 Shell 和 WSL 共用的卡片、刷新、加载、错误及空状态。 |
 | `frontend/src/styles/` | 基础样式、应用外壳、主机页、终端、对话框、响应布局、监控和历史；`styles.css` 固定导入顺序。 |
-| `terminal.go`、`terminal_output.go` | SSH 与本地终端共用的输入、尺寸、关闭 API，以及输出缓存和转发。 |
-| `ssh.go`、`local.go`、`local_*.go`、`wsl*.go` | 各类连接的启动、平台实现与生命周期。 |
-| `tray.go`、`tray_*.go` | 托盘状态机与各平台的系统托盘、菜单栏实现。 |
-| `tunneling.go`、`x11.go` | 主机共享的本地、远程和 SOCKS5 TCP 转发，以及每个 SSH 终端的 X11 认证与转发。 |
-| `mcp_server.go`、`mcp_transport.go` | MCP 监听与状态、HTTP 和 JSON-RPC 协议。 |
-| `mcp_tools.go`、`mcp_terminal.go`、`mcp_token.go` | MCP 工具、终端读取与检索、令牌持久化。 |
-| `mcp_connections.go`、`frontend/src/hooks/useMCPConnections.ts` | MCP 主机创建、凭据保留在后端的连接请求，以及前端终端挂载后启动 SSH 的衔接。 |
-| `mcp_install.go`、`mcp_install_clients.go`、`mcp_install_json.go`、`mcp_install_cli.go` | 六种 MCP 客户端的 TOML / JSONC 配置合并与备份、客户端目录解析、桌面一键接入 API，以及启动图形界面前处理的 `install` 命令。 |
-| `mobile_bridge.go`、`mobile_api.go`、`android/src/` | Android 管道协议、公开 API 白名单与系统接口，复用同一个 Go 后端。 |
+| `src/app/terminal.go`、`terminal_output.go` | SSH 与本地终端共用的输入、尺寸、关闭 API，以及输出缓存和转发。 |
+| `src/app/ssh.go`、`local.go`、`wsl*.go` | 各类连接的启动、平台实现与生命周期。 |
+| `src/app/tray.go`、`src/tray/` | 托盘状态机与各平台的系统托盘、菜单栏实现。 |
+| `src/app/tunneling.go`、`x11.go` | 主机共享的本地、远程和 SOCKS5 TCP 转发，以及每个 SSH 终端的 X11 认证与转发。 |
+| `src/app/mcp_server.go`、`mcp_transport.go` | MCP 监听与状态、HTTP 和 JSON-RPC 协议。 |
+| `src/app/mcp_tools.go`、`mcp_terminal.go`、`src/mcp/token.go` | MCP 工具、终端读取与检索、令牌持久化。 |
+| `src/app/mcp_connections.go`、`frontend/src/hooks/useMCPConnections.ts` | MCP 主机创建、凭据保留在后端的连接请求，以及前端终端挂载后启动 SSH 的衔接。 |
+| `src/mcp/`、`src/app/mcp_install_cli.go` | 六种 MCP 客户端的 TOML / JSONC 配置合并与备份、客户端目录解析、桌面一键接入 API，以及启动图形界面前处理的 `install` 命令。 |
+| `src/mobile/`、`src/app/mobile_api.go`、`android/src/` | Android 管道协议、公开 API 白名单与系统接口，复用同一个 Go 后端。 |
 
-公开的 `App` 方法同时供 Wails 和 Android 桥接使用；移动实现时保留签名、事件名称和数据格式。布局变化必须保持 `TerminalPane` 的会话 ID 和挂载状态，避免重复连接或丢失终端内容。样式入口按现有覆盖顺序加载，新增规则放到对应功能文件中。
+公开的 `App` 方法同时供 Wails 和 Android 桥接使用；移动实现时保留签名、事件名称和数据格式。绑定的方法必须和 `App` 结构体放在同一个包里，因此 `src/app` 承载了全部对外方法，其余包只提供不含 `App` 方法的实现。布局变化必须保持 `TerminalPane` 的会话 ID 和挂载状态，避免重复连接或丢失终端内容。样式入口按现有覆盖顺序加载，新增规则放到对应功能文件中。
 
 ## 数据与实现约定
 
 端口转发规则与 X11 设置随主机保存，旧配置默认不启用。每个启用转发的主机使用一个独立 SSH 连接维护监听，按终端引用计数，在最后一个终端关闭时释放；启动失败回收已创建的监听。X11 使用终端自身的 SSH 连接，先登记 `x11` 通道处理器再发送 `x11-req`，并在打开 shell 前完成请求。实际 Xauthority cookie 不传给服务器，也不写入配置。
 
-`tunneling_test.go` 使用本地 SSH 服务验证真实 TCP 数据、三种 SOCKS5 地址格式、远程 DNS、半关闭、多个终端共享以及启动回滚；`x11_test.go` 用模拟 X Server 验证通道数据、随机 cookie 替换、错误认证拦截和 Xauthority 匹配。这些测试无需系统安装 sshd 或 X Server。
+`src/app/tunneling_test.go` 使用本地 SSH 服务验证真实 TCP 数据、三种 SOCKS5 地址格式、远程 DNS、半关闭、多个终端共享以及启动回滚；`src/app/x11_test.go` 用模拟 X Server 验证通道数据、随机 cookie 替换、错误认证拦截和 Xauthority 匹配。这些测试无需系统安装 sshd 或 X Server。
 
 配置位置：
 
