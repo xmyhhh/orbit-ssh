@@ -63,6 +63,24 @@ function Get-GitHubToken {
 }
 
 $gh = Resolve-Gh $GhPath
+
+# Native commands report failures through the exit code, so stderr must not
+# abort the script before the code can be inspected.
+function Invoke-Gh([string[]]$Arguments, [switch]$AllowFailure) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $gh @Arguments
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0 -and -not $AllowFailure) {
+        throw "gh $($Arguments -join ' ') failed with exit code $code"
+    }
+    return $code
+}
+
 $token = Get-GitHubToken
 if (-not $token) {
     throw 'No GitHub token available. Set GH_TOKEN or sign in with a Git credential helper.'
@@ -75,23 +93,20 @@ try {
         Sort-Object Name
     if (-not $assets) { throw "No release assets found in $outputPath" }
 
-    $existing = & $gh release view $Tag --json tagName --jq '.tagName' 2>$null
-    if ($LASTEXITCODE -eq 0 -and $existing) {
+    $existing = Invoke-Gh @('release', 'view', $Tag, '--json', 'tagName', '--jq', '.tagName') -AllowFailure
+    if ($existing -eq 0) {
         Write-Host "Release $Tag already exists; uploading assets to it."
     } else {
         $notes = Get-Content -LiteralPath $NotesFile -Raw
-        & $gh release create $Tag --title $Title --notes $notes --target main
-        if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE" }
+        Invoke-Gh @('release', 'create', $Tag, '--title', $Title, '--notes', $notes, '--target', 'main') | Out-Null
     }
 
     foreach ($asset in $assets) {
         Write-Host "Uploading $($asset.Name)..."
-        & $gh release upload $Tag $asset.FullName --clobber
-        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed for $($asset.Name)" }
+        Invoke-Gh @('release', 'upload', $Tag, $asset.FullName, '--clobber') | Out-Null
     }
 
-    & $gh release view $Tag
-    if ($LASTEXITCODE -ne 0) { throw 'gh release view failed' }
+    Invoke-Gh @('release', 'view', $Tag) | Out-Null
 } finally {
     $env:GH_TOKEN = $previousToken
 }
