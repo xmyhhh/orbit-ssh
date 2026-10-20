@@ -2,6 +2,8 @@ node_modules/
 frontend/dist/
 frontend/wailsjs/
 build/bin/
+# Binary produced by "go build ./..." in the repository root.
+/orbitssh
 build/windows/installer/payload/
 build/windows/installer/OrbitSSH-setup.exe
 *.log
