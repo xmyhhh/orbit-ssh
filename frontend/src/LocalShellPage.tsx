@@ -6,13 +6,24 @@ import type { LocalShell, Session } from "./types";
 
 const loadLocalShells = () => backend().GetLocalShellInfo();
 
+const shellColors = ["blue", "mint", "violet", "amber"];
+
+function shellDescription(id: string, platform: string) {
+  if (platform === "darwin") return "本机 Shell 终端";
+  if (id === "cmd") return "Windows 命令提示符";
+  if (id === "pwsh") return "PowerShell 7 终端";
+  return "PowerShell 终端";
+}
+
 export default function LocalShellPage({
   onOpen,
   sessions,
+  platform,
   ...layout
 }: TerminalCatalogLayoutProps & {
   onOpen: (shell: LocalShell) => void;
   sessions: Session[];
+  platform: string;
 }) {
   const {
     data: info,
@@ -33,23 +44,26 @@ export default function LocalShellPage({
       errorTitle="无法读取本地 Shell"
       emptyTitle="没有可用的本地 Shell"
       emptyMessage={
-        info?.message || "安装 PowerShell 或 CMD 后，点击刷新重新检测。"
+        info?.message ||
+        (platform === "darwin"
+          ? "安装 zsh、bash 等 Shell 后，点击刷新重新检测。"
+          : "安装 PowerShell 或 CMD 后，点击刷新重新检测。")
       }
     >
-      {info?.shells.map((shell) => (
+      {info?.shells.map((shell, index) => (
         <TerminalCatalogCard
           key={shell.id}
           name={shell.name}
           address={shell.path}
-          description={
-            shell.id === "cmd" ? "Windows 命令提示符" : "PowerShell 终端"
-          }
+          description={shellDescription(shell.id, platform)}
           color={
-            shell.id === "cmd"
-              ? "mint"
-              : shell.id === "pwsh"
-                ? "violet"
-                : "blue"
+            platform === "darwin"
+              ? shellColors[index % shellColors.length]
+              : shell.id === "cmd"
+                ? "mint"
+                : shell.id === "pwsh"
+                  ? "violet"
+                  : "blue"
           }
           activeCount={
             sessions.filter(

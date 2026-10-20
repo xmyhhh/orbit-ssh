@@ -103,27 +103,27 @@ export default function AppSidebar({
           <span>远程主机</span>
           <span className="count">{hosts.length}</span>
         </button>
+        {(platform === "windows" || platform === "darwin") && (
+          <button
+            className={page === "local" && active === "home" ? "active" : ""}
+            onClick={() => navigate("local")}
+            title="本地 Shell"
+            aria-label="本地 Shell"
+          >
+            <TerminalSquare size={18} />
+            <span>本地 Shell</span>
+          </button>
+        )}
         {platform === "windows" && (
-          <>
-            <button
-              className={page === "local" && active === "home" ? "active" : ""}
-              onClick={() => navigate("local")}
-              title="本地 Shell"
-              aria-label="本地 Shell"
-            >
-              <TerminalSquare size={18} />
-              <span>本地 Shell</span>
-            </button>
-            <button
-              className={page === "wsl" && active === "home" ? "active" : ""}
-              onClick={() => navigate("wsl")}
-              title="WSL"
-              aria-label="WSL"
-            >
-              <TerminalSquare size={18} />
-              <span>WSL</span>
-            </button>
-          </>
+          <button
+            className={page === "wsl" && active === "home" ? "active" : ""}
+            onClick={() => navigate("wsl")}
+            title="WSL"
+            aria-label="WSL"
+          >
+            <TerminalSquare size={18} />
+            <span>WSL</span>
+          </button>
         )}
         <button
           className={page === "history" && active === "home" ? "active" : ""}

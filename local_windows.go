@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 )
 
+const localShellsSupported = true
+
 func inspectLocalShells() LocalShellInfo {
 	info := LocalShellInfo{Supported: true, Shells: []LocalShell{}}
 	add := func(id, name, path string) {

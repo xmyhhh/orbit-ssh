@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/charmbracelet/x/conpty v0.2.0
+	github.com/creack/pty v1.1.24
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pkg/sftp v1.13.10
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a

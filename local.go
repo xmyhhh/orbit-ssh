@@ -43,8 +43,8 @@ func (a *App) GetPlatform() string { return runtime.GOOS }
 func (a *App) GetLocalShellInfo() LocalShellInfo { return inspectLocalShells() }
 
 func (a *App) ConnectLocalShell(id, shellID string, size TerminalSize) error {
-	if runtime.GOOS != "windows" {
-		return errors.New("本地 Shell 目前仅支持 Windows")
+	if !localShellsSupported {
+		return errors.New("本地 Shell 目前仅支持 Windows 和 macOS")
 	}
 	return a.connectLocalTerminal(id, "本地 Shell", size, func(ctx context.Context, size TerminalSize) (localTerminal, error) {
 		return startLocalShell(shellID, size)

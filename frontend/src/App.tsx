@@ -1016,6 +1016,7 @@ export default function App() {
                         onLayoutChange={setHostLayout}
                         onOpen={(shell) => void openLocalShell(shell)}
                         sessions={sessions}
+                        platform={platform}
                       />
                     ) : page === "wsl" ? (
                       <WSLPage
