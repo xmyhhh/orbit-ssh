@@ -17,7 +17,7 @@ func TestCloseConfirmation(t *testing.T) {
 	a.pending["connecting"] = func() {}
 	original := showMessageDialog
 	t.Cleanup(func() { showMessageDialog = original })
-	yes, no := "断开并退出", "取消"
+	yes, no := "结束并退出", "取消"
 	if goruntime.GOOS == "windows" {
 		yes, no = "Yes", "No"
 	}

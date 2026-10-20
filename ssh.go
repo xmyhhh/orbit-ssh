@@ -470,7 +470,8 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 			a.emit("ssh:closed:"+id, message)
 		}
 	}()
-	go a.keepAlive(s)
+	// Read the interval here so the goroutine never touches a.store.
+	go a.keepAlive(s, a.store.snapshot().Preferences.KeepAliveSeconds)
 	return nil
 }
 
@@ -523,8 +524,7 @@ func (a *App) persistTrust(hostID string, trusts []hopTrust, acceptedFingerprint
 	return nil
 }
 
-func (a *App) keepAlive(s *remoteSession) {
-	interval := a.store.snapshot().Preferences.KeepAliveSeconds
+func (a *App) keepAlive(s *remoteSession, interval int) {
 	if interval <= 0 {
 		return
 	}
