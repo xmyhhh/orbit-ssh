@@ -1,4 +1,4 @@
-//go:build !windows || android || androidtest
+//go:build (!windows && !darwin) || android || androidtest
 
 package main
 

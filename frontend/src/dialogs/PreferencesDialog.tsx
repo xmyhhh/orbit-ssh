@@ -713,12 +713,14 @@ export function PreferencesDialog({
         {activeSection === "behavior" && (
           <section className="preferences-section">
             <div className="settings-label">窗口与应用行为</div>
-            {platform === "windows" && (
+            {(platform === "windows" || platform === "darwin") && (
               <div className="setting-row">
                 <div>
                   <strong>关闭窗口后常驻后台</strong>
                   <p className="field-hint">
-                    隐藏到系统托盘，保持终端和文件传输运行。
+                    {platform === "darwin"
+                      ? "隐藏到菜单栏，保持终端和文件传输运行。"
+                      : "隐藏到系统托盘，保持终端和文件传输运行。"}
                   </p>
                 </div>
                 <button

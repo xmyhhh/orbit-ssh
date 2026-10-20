@@ -41,6 +41,7 @@ func (a *App) desktopStartup(ctx context.Context) {
 		log.Printf("System tray unavailable: %v", err)
 		return
 	}
+	log.Printf("System tray ready")
 	a.tray.mu.Lock()
 	if a.tray.stopped {
 		a.tray.mu.Unlock()
