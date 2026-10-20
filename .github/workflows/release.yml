@@ -45,20 +45,26 @@ jobs:
             platform: darwin/arm64
             asset: macos-arm64
             tags: ''
+            args: ''
           - os: macos-26-intel
             platform: darwin/amd64
             asset: macos-x64
             tags: ''
+            args: ''
           - os: windows-latest
             platform: windows/amd64
             asset: windows-x64
             tags: ''
+            # The installer ships the WebView2 bootstrapper, so the app uses the
+            # runtime that is already installed.
+            args: '-webview2 browser'
           - os: ubuntu-24.04
             platform: linux/amd64
             asset: linux-x64
             # Ubuntu 24.04 only ships WebKitGTK 4.1, so the ABI tag is
             # required. Without it the build looks for webkit2gtk-4.0.
             tags: '-tags webkit2_41'
+            args: ''
     steps:
       - uses: actions/checkout@v7
 
@@ -108,12 +114,7 @@ jobs:
           fi
 
       - name: Build the application
-        run: wails build -platform ${{ matrix.platform }} ${{ matrix.tags }}
-
-      - name: Build the Windows installer
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        run: wails build -platform windows/amd64 -nsis -s
+        run: wails build -platform ${{ matrix.platform }} ${{ matrix.args }} ${{ matrix.tags }}
 
       - name: Package macOS
         if: runner.os == 'macOS'
@@ -129,19 +130,14 @@ jobs:
 
       - name: Package Windows
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          version="${ASSET_VERSION}"
-          mkdir -p dist
-          7z a -tzip "dist/OrbitSSH-v${version}-${{ matrix.asset }}-portable.zip" "build/bin/OrbitSSH.exe"
-          for setup in build/bin/*Setup.exe; do
-            if [ -f "$setup" ]; then
-              cp "$setup" "dist/OrbitSSH-v${version}-${{ matrix.asset }}-setup.exe"
-              break
-            fi
-          done
-          ls -l dist
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+          # The portable archive and the installer are built by the same
+          # script as the local release, so both contain the license, the
+          # readme and the WebView2 bootstrapper.
+          ./scripts/package-windows.ps1 -SkipBuild -ReleaseLabel "v${{ env.ASSET_VERSION }}" -OutputDirectory dist
+          Get-ChildItem dist | Select-Object Name, Length
 
       - name: Package Linux
         if: runner.os == 'Linux'
@@ -164,6 +160,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # The release notes live in the repository, so the sources are needed to
+      # read them.
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: assets

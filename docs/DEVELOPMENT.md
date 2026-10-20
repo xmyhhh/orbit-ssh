@@ -160,7 +160,8 @@ wails build -platform linux/amd64
 
 - 产物命名为 `OrbitSSH-v<版本>-<平台>-<架构>.<ext>`，与既有发布保持一致。
 - 每个平台的构建在独立 job 中进行，Linux 依赖 `ubuntu-24.04` 的 WebKitGTK 4.1。
-- 汇总 job 生成 `SHA256SUMS.txt`，发布说明优先读取 `docs/releases/<标签>.md`，缺失时使用占位文本。
+- Windows 的便携版和安装版由 `scripts/package-windows.ps1` 生成，和本地发布用的是同一套脚本，因此两个压缩包都带有许可证、说明和 WebView2 引导程序；脚本会自行下载并校验 NSIS。
+- 汇总 job 检出仓库以读取 `docs/releases/<标签>.md` 作为发布说明，缺失时使用占位文本；同一个 job 生成 `SHA256SUMS.txt`。
 - 工作流会校验标签与 `wails.json`、`frontend/package.json` 的版本号一致，不一致直接失败，避免出现文件名与程序版本对不上的发布。
 - 仓库为 public，所有 runner 免费且不限量。
 
