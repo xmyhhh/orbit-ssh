@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { backend, errorText } from "./bridge";
 import type { Metrics, ProcessMetric, Session } from "./types";
+import { Select } from "./ui/Select";
 
 export function bytes(value: number) {
   if (value === 0) return "0 B";
@@ -371,15 +372,18 @@ export default function MonitorPanel({
           {status}
         </span>
         <div>
-          <select
-            aria-label="监控刷新间隔"
-            value={interval}
-            onChange={(e) => setIntervalSeconds(Number(e.target.value))}
-          >
-            <option value={3}>3 秒</option>
-            <option value={5}>5 秒</option>
-            <option value={10}>10 秒</option>
-          </select>
+          <Select
+            ariaLabel="监控刷新间隔"
+            size="sm"
+            className="monitor-select"
+            value={String(interval)}
+            onChange={(value) => setIntervalSeconds(Number(value))}
+            options={[
+              { value: "3", label: "3 秒" },
+              { value: "5", label: "5 秒" },
+              { value: "10", label: "10 秒" },
+            ]}
+          />
           <button
             className="icon-button"
             onClick={() => setPaused((p) => !p)}
@@ -628,18 +632,21 @@ export default function MonitorPanel({
                     }}
                   />
                 </label>
-                <select
-                  aria-label="进程排序"
+                <Select
+                  ariaLabel="进程排序"
+                  size="sm"
+                  className="monitor-select"
                   value={sort}
-                  onChange={(e) => {
-                    setSort(e.target.value as typeof sort);
+                  onChange={(value) => {
+                    setSort(value as typeof sort);
                     setLimit(50);
                   }}
-                >
-                  <option value="cpu">CPU ↓</option>
-                  <option value="memory">内存 ↓</option>
-                  <option value="pid">PID ↑</option>
-                </select>
+                  options={[
+                    { value: "cpu", label: "CPU ↓" },
+                    { value: "memory", label: "内存 ↓" },
+                    { value: "pid", label: "PID ↑" },
+                  ]}
+                />
               </div>
               <div className="process-table-wrap">
                 <table className="process-table">
@@ -720,22 +727,25 @@ export default function MonitorPanel({
                     {detail.state}
                   </small>
                   <div className="process-actions">
-                    <select
-                      aria-label="发送信号"
+                    <Select
+                      ariaLabel="发送信号"
+                      size="sm"
+                      className="process-actions-select"
                       value={signal}
                       disabled={actionBusy || session.demo}
-                      onChange={(e) => setSignal(e.target.value)}
-                    >
-                      <option value="TERM">SIGTERM · 正常结束</option>
-                      <option value="KILL">SIGKILL · 强制结束</option>
-                      <option value="HUP">SIGHUP · 重载配置</option>
-                      <option value="INT">SIGINT · 中断</option>
-                      <option value="QUIT">SIGQUIT · 退出并转储</option>
-                      <option value="STOP">SIGSTOP · 暂停</option>
-                      <option value="CONT">SIGCONT · 继续</option>
-                      <option value="USR1">SIGUSR1</option>
-                      <option value="USR2">SIGUSR2</option>
-                    </select>
+                      onChange={(value) => setSignal(value)}
+                      options={[
+                        { value: "TERM", label: "SIGTERM · 正常结束" },
+                        { value: "KILL", label: "SIGKILL · 强制结束" },
+                        { value: "HUP", label: "SIGHUP · 重载配置" },
+                        { value: "INT", label: "SIGINT · 中断" },
+                        { value: "QUIT", label: "SIGQUIT · 退出并转储" },
+                        { value: "STOP", label: "SIGSTOP · 暂停" },
+                        { value: "CONT", label: "SIGCONT · 继续" },
+                        { value: "USR1", label: "SIGUSR1" },
+                        { value: "USR2", label: "SIGUSR2" },
+                      ]}
+                    />
                     <button
                       className={`button compact ${signal === "KILL" ? "danger" : "secondary"}`}
                       disabled={actionBusy || session.demo}

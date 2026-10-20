@@ -127,7 +127,8 @@
   }
   [data-platform="android"] input,
   [data-platform="android"] select,
-  [data-platform="android"] textarea {
+  [data-platform="android"] textarea,
+  [data-platform="android"] .select-trigger {
     font-size: 14px;
   }
   [data-platform="android"] .tab-close,

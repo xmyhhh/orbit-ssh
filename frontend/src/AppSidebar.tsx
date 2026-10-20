@@ -82,11 +82,11 @@ export default function AppSidebar({
       <button
         className="sidebar-search"
         onClick={onPalette}
-        title="搜索或快速切换"
-        aria-label="搜索或快速切换"
+        title="快速搜索主机、工作流和终端历史"
+        aria-label="快速搜索主机、工作流和终端历史"
       >
         <Search size={16} />
-        <span>搜索或快速切换</span>
+        <span>快速搜索</span>
         <kbd>⌃ K</kbd>
       </button>
       <span className="nav-label">工作台</span>

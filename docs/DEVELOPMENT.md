@@ -63,19 +63,18 @@ go test -run '^TestMonitorLiveHost$' -v
 .\scripts\build-windows.ps1
 
 # 生成便携版和安装版
-.\scripts\package-windows.ps1 -ReleaseLabel v2.0
+.\scripts\package-windows.ps1 -ReleaseLabel v3.0
 ```
 
 `build-windows.ps1` 默认输出 `build/bin/OrbitSSH-windows-x64.exe`，也可用 `-OutputName` 修改文件名（只接受文件名，输出目录固定为 `build/bin`）。脚本依次运行前端测试与构建、桌面及 Android 桥接 Go 测试、Go 静态检查，最后调用 Wails 编译。可用 `-WailsPath` 指定 CLI；否则优先使用已安装的 CLI、本地 `output/tools/wails.exe`，再使用仓库锁定的 Wails 版本。构建不会清理已有产物，也不会同步或整理 go.mod。
 
 `package-windows.ps1` 会先调用同一构建入口（可用 `-SkipBuild` 复用 `build/bin/OrbitSSH.exe`），然后在 `output/release` 生成：
 
-- `OrbitSSH-v2.0-windows-x64-portable.zip`：便携版，解压后直接运行 `OrbitSSH.exe`，压缩包内附 `LICENSE.txt` 和 `README.txt`。
-- `OrbitSSH-v2.0-windows-x64-setup.exe`：安装版，按当前用户安装，默认目录为 `%LOCALAPPDATA%\Programs\Orbit SSH`。
+- `OrbitSSH-v3.0-windows-x64-portable.zip`：便携版，解压后直接运行 `OrbitSSH.exe`，压缩包内附 `LICENSE.txt` 和 `README.txt`。
+- `OrbitSSH-v3.0-windows-x64-setup.exe`：安装版，按当前用户安装，默认目录为 `%LOCALAPPDATA%\Programs\Orbit SSH`。
 - `SHA256SUMS.txt`：上述文件的 SHA-256 校验值。
 
 安装版重复运行时会关闭正在运行的 Orbit SSH、卸载旧版本并覆盖安装，不会删除 `%APPDATA%\OrbitSSH` 中的主机配置、凭据和终端历史。安装包内置 Microsoft Edge WebView2 引导程序，检测到运行库缺失时会尝试静默安装。首次打包会自动下载固定版本的 NSIS 3.13 到 `output/tools` 并校验 SHA-256；也可用 `-NsisPath` 指定 `makensis.exe`。`-PortableOnly` / `-InstallerOnly` 可只生成一种包，`-OutputDirectory` 可修改输出目录，`-ReleaseLabel` 控制文件名中的版本标签；构建 Android 后可传 `-ExtraArtifact .\OrbitSSH-v2.0-android-arm64.apk`，把 APK 一并写入 `SHA256SUMS.txt`。
-
 生成的绑定、前端构建目录及二进制产物不提交到 Git；`output/` 下的发布文件作为 GitHub Release 附件上传。
 
 发布标签使用 `v2.0`，npm 与 Wails 的产品版本使用 `2.0.0`，界面显示 `v2.0`，Android 为 `versionName="2.0"`、`versionCode="6"`。发布说明保存在 [docs/releases/v2.0.md](releases/v2.0.md)。

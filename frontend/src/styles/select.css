@@ -1,0 +1,166 @@
+/* Shared dropdown control used by every <Select> instance in the app. */
+.select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 0.16s,
+    box-shadow 0.16s,
+    background-color 0.16s;
+}
+.select-trigger:hover:not(:disabled) {
+  border-color: var(--accent-bright);
+}
+.select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.select-trigger--sm {
+  height: 30px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.select-trigger--md {
+  height: 32px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+.select-trigger--lg {
+  height: 39px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+.select-trigger.is-placeholder {
+  color: var(--faint);
+}
+.select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-chevron {
+  flex-shrink: 0;
+  color: var(--faint);
+  transition: transform 0.16s;
+}
+.select-trigger[aria-expanded="true"] .select-chevron {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+.select-popup {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px #152e2526;
+  animation: appear 0.12s ease-out;
+}
+.select-popup.drop-up {
+  transform: translateY(-100%);
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+.select-option:hover:not(:disabled),
+.select-option.is-active:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.select-option[aria-selected="true"] {
+  color: var(--accent-text);
+  font-weight: 550;
+}
+.select-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.select-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-option-hint {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.select-check {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.select-group-label {
+  padding: 6px 9px 3px;
+  color: var(--faint);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.select-create {
+  color: var(--accent);
+  font-weight: 550;
+}
+.select-empty {
+  padding: 10px 9px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.select-search {
+  padding: 2px 2px 5px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 3px;
+}
+.select-search input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+.select-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}

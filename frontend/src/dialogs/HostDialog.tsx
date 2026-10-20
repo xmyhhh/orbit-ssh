@@ -13,6 +13,7 @@ import { backend, errorText, isDesktop } from "../bridge";
 import { Modal } from "./Modal";
 import { HostTunnelingFields } from "./HostTunnelingFields";
 import { defaultX11, validateTunnelSettings } from "../tunneling";
+import { Select } from "../ui/Select";
 
 const colors = [
   { id: "mint", label: "薄荷绿" },
@@ -20,6 +21,15 @@ const colors = [
   { id: "amber", label: "琥珀黄" },
   { id: "violet", label: "淡紫色" },
 ];
+
+// A key pair ships as "<name>" and "<name>.pub"; only the first one can be
+// parsed as a private key, so a public key is rejected before it is saved.
+const publicKeyWarning =
+  "这是公钥文件（.pub），私钥登录需要选择不带 .pub 后缀的私钥文件。";
+
+function isPublicKeyPath(path: string) {
+  return /\.pub$/i.test(path.trim());
+}
 
 export function HostDialog({
   host,
@@ -55,11 +65,20 @@ export function HostDialog({
   const [saving, setSaving] = useState(false);
   const [credentialNotice, setCredentialNotice] = useState("");
   const [tab, setTab] = useState<"connection" | "tunneling">("connection");
+  const keyPathWarning =
+    form.authType === "key" && isPublicKeyPath(form.keyPath)
+      ? publicKeyWarning
+      : "";
   const field = <K extends keyof Host>(key: K, value: Host[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (form.authType === "key" && isPublicKeyPath(form.keyPath)) {
+      setTab("connection");
+      setError("请先修正上面标红的字段。");
+      return;
+    }
     if (
       !form.name.trim() ||
       !form.username.trim() ||
@@ -208,19 +227,21 @@ export function HostDialog({
                 onChange={(e) => field("username", e.target.value)}
               />
             </label>
-            <label className="field">
-              所属分组
-              <input
-                list="host-groups"
+            <div className="field">
+              <span>所属分组</span>
+              <Select
+                ariaLabel="所属分组"
+                size="lg"
+                creatable
+                createLabel="新建分组"
                 value={form.group}
-                onChange={(e) => field("group", e.target.value)}
+                onChange={(value) => field("group", value)}
+                options={groups.map((group) => ({
+                  value: group,
+                  label: group,
+                }))}
               />
-              <datalist id="host-groups">
-                {groups.map((g) => (
-                  <option key={g}>{g}</option>
-                ))}
-              </datalist>
-            </label>
+            </div>
           </div>
           <fieldset className="auth-options">
             <legend>认证方式</legend>
@@ -259,7 +280,7 @@ export function HostDialog({
                 <input
                   required
                   value={form.keyPath}
-                  placeholder="选择 PEM 或 OpenSSH 私钥"
+                  placeholder="选择私钥文件，例如 id_ed25519"
                   onChange={(e) => field("keyPath", e.target.value)}
                 />
                 <button
@@ -271,7 +292,9 @@ export function HostDialog({
                     void backend()
                       .SelectKeyFile()
                       .then((p) => {
-                        if (p) field("keyPath", p);
+                        if (!p) return;
+                        field("keyPath", p);
+                        if (isPublicKeyPath(p)) setError(publicKeyWarning);
                       })
                       .catch((e) => setError(errorText(e)));
                   }}
@@ -279,6 +302,15 @@ export function HostDialog({
                   <FolderOpen size={18} />
                 </button>
               </div>
+              {keyPathWarning ? (
+                <p className="form-error" role="alert">
+                  {keyPathWarning}
+                </p>
+              ) : (
+                <span className="field-hint">
+                  填写私钥文件路径，不要选同名 .pub 公钥文件。
+                </span>
+              )}
               {isDesktop() && (
                 <button
                   className="text-button"
@@ -303,25 +335,27 @@ export function HostDialog({
               )}
             </label>
           )}
-          <label className="field">
-            跳板机（ProxyJump，可选）
-            <select
+          <div className="field">
+            <span>跳板机（ProxyJump，可选）</span>
+            <Select
+              ariaLabel="跳板机（ProxyJump，可选）"
+              size="lg"
               value={form.jumpHostId ?? ""}
-              onChange={(e) => field("jumpHostId", e.target.value)}
-            >
-              <option value="">直连目标主机</option>
-              {hosts
-                .filter((item) => item.id !== form.id)
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}（{item.username}@{item.address}）
-                  </option>
-                ))}
-            </select>
+              onChange={(value) => field("jumpHostId", value)}
+              options={[
+                { value: "", label: "直连目标主机" },
+                ...hosts
+                  .filter((item) => item.id !== form.id)
+                  .map((item) => ({
+                    value: item.id,
+                    label: `${item.name}（${item.username}@${item.address}）`,
+                  })),
+              ]}
+            />
             <span className="field-hint">
               通过另一台已保存主机转发连接；跳板机需已信任其服务器指纹。
             </span>
-          </label>
+          </div>
           <div className="color-field">
             <span>主机颜色</span>
             <div>

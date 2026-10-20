@@ -116,6 +116,8 @@ export default function App() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [workflowFocusID, setWorkflowFocusID] = useState("");
+  const [historyFocusID, setHistoryFocusID] = useState("");
   const [helpOpen, setHelpOpen] = useState(false);
   const [sshConfigOpen, setSSHConfigOpen] = useState(false);
   const [mcpCommand, setMCPCommand] = useState<MCPCommandRequest | null>(null);
@@ -1001,6 +1003,7 @@ export default function App() {
                     <WorkflowPage
                       sessions={sessions}
                       activeSessionId={activeSession?.id ?? ""}
+                      initialWorkflowID={workflowFocusID}
                       onRunCommand={runWorkflowCommand}
                       onViewTerminal={setActive}
                       onExecuteWorkflow={setWorkflowHostPicker}
@@ -1027,6 +1030,7 @@ export default function App() {
                         recordingEnabled={
                           workspace.preferences.terminalHistoryEnabled
                         }
+                        focusID={historyFocusID}
                         onOpenSettings={() => setPreferencesOpen(true)}
                         onTogglePin={(record) =>
                           setHistoryPinned(record, !record.pinned)
@@ -1625,7 +1629,16 @@ export default function App() {
       {paletteOpen && (
         <CommandPalette
           hosts={workspace.hosts}
-          onSelect={chooseHost}
+          history={terminalHistory}
+          onSelectHost={chooseHost}
+          onSelectWorkflow={(workflow) => {
+            setWorkflowFocusID(workflow.id);
+            navigate("workflows");
+          }}
+          onSelectHistory={(record) => {
+            setHistoryFocusID(record.id);
+            navigate("history");
+          }}
           onNew={newHost}
           onClose={() => setPaletteOpen(false)}
         />

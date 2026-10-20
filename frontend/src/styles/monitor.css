@@ -57,15 +57,9 @@
   align-items: center;
   gap: 6px;
 }
-.monitor-controls select,
-.process-tools select {
-  height: 30px;
-  padding: 0 7px;
-  font-size: 11px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--surface);
+.monitor-select {
+  width: auto;
+  min-width: 78px;
 }
 .monitor-tabs {
   display: flex;
@@ -287,16 +281,9 @@
   margin-top: 12px;
   flex-wrap: wrap;
 }
-.process-actions select {
+.process-actions-select {
   min-width: 0;
   flex: 1;
-  height: 30px;
-  font-size: 11px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 0 8px;
 }
 .monitor-process-link {
   display: flex;

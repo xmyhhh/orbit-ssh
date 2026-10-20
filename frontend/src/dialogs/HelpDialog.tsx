@@ -5,7 +5,7 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     <Modal title="快捷键" onClose={onClose}>
       <div className="help-shortcuts">
         <div>
-          <span>快速切换</span>
+          <span>快速搜索</span>
           <kbd>Ctrl / ⌘ K</kbd>
         </div>
         <div>

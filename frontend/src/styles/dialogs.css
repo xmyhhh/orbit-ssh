@@ -494,26 +494,10 @@
   padding: 0 14px 14px;
   border-top: 1px solid var(--line);
 }
-.host-tunneling .field select {
-  width: 100%;
-  min-width: 0;
-  height: 39px;
-  padding: 7px 9px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-.host-tunneling .field select:focus {
-  outline: 2px solid var(--accent-soft);
-  border-color: var(--accent);
-}
 .host-tunneling .tunnel-endpoint {
   grid-template-columns: minmax(0, 1fr) 100px;
   gap: 10px;
-}
-.forward-rule-fields .field:last-of-type {
+}.forward-rule-fields .field:last-of-type {
   margin-bottom: 6px;
 }
 .x11-settings {
@@ -581,7 +565,7 @@
 }
 .preferences-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 3px;
   margin: 0 0 16px;
   padding: 3px;
@@ -722,20 +706,27 @@
 .font-control {
   display: flex;
   align-items: center;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
 }
 .font-control > span {
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .font-control button {
-  font-size: 17px;
-  width: 30px;
-  height: 30px;
+  font-size: 15px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--muted);
 }
 .font-control button:hover:not(:disabled) {
-  background: var(--surface-soft);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .switch {
   width: 33px;
@@ -781,7 +772,7 @@
   gap: 9px;
   flex-shrink: 0;
 }
-.mcp-install-actions select {
+.mcp-install-actions .select-trigger {
   min-height: 31px;
   max-width: 190px;
 }
@@ -839,44 +830,97 @@
 }
 .palette-results {
   margin-top: 12px;
-  max-height: 350px;
+  max-height: 420px;
   overflow: auto;
 }
-.palette-results > button {
+.palette-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.palette-section:last-child {
+  margin-bottom: 0;
+}
+.palette-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px 4px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+}
+.palette-section-title span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.palette-section-actions {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.palette-item {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 11px 7px;
+  padding: 8px 7px;
   gap: 13px;
   border-radius: 5px;
   text-align: left;
 }
-.palette-results > button:hover {
+.palette-item:hover {
   background: var(--surface-soft);
 }
-.palette-results > button > span:nth-child(2) {
+.palette-item-copy {
   flex: 1;
+  min-width: 0;
 }
-.palette-results > button > span:nth-child(2) > strong {
+.palette-item-copy strong {
   display: block;
+  overflow: hidden;
+  color: var(--text);
   font-size: 12px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.palette-results > button > span:nth-child(2) > code {
+.palette-item-copy code {
   display: block;
+  overflow: hidden;
+  color: var(--muted);
   font-size: 10px;
-  color: var(--muted);
   margin-top: 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.palette-results > button > strong {
-  font-size: 12px;
-  font-weight: 500;
-  flex: 1;
-}
-.palette-results > button > svg:first-child {
+.palette-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-soft);
   color: var(--muted);
-  margin: 0 7px;
 }
-.palette-results kbd {
+.palette-item > svg {
+  flex-shrink: 0;
+  color: var(--faint);
+}
+.palette-item > kbd {
+  flex-shrink: 0;
   color: var(--faint);
   font-size: 10px;
 }

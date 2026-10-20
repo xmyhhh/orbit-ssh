@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
-import { History, Pencil, Search, Star, Trash2 } from "lucide-react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { History, Pencil, Search, Star, Trash2, X } from "lucide-react";
 import {
   displayTerminalOutput,
-  fuzzyMatch,
+  matchRanges,
+  matchesSearch,
   terminalHistorySubtitle,
   terminalHistoryTitle,
   type TerminalHistoryRecord,
@@ -11,6 +13,7 @@ import {
 interface Props {
   records: TerminalHistoryRecord[];
   recordingEnabled: boolean;
+  focusID?: string;
   onOpenSettings: () => void;
   onTogglePin: (record: TerminalHistoryRecord) => void;
   onRename: (record: TerminalHistoryRecord) => void;
@@ -25,7 +28,7 @@ const dateTime = (time: number) =>
 
 function preview(output: string) {
   return (
-    displayTerminalOutput(output)
+    output
       .split("\n")
       .map((line) => line.trimEnd())
       .filter((line) => line.trim())
@@ -34,9 +37,29 @@ function preview(output: string) {
   );
 }
 
+// Renders the text with every matched term highlighted.
+function Highlighted({ text, query }: { text: string; query: string }) {
+  const ranges = useMemo(() => matchRanges(text, query), [text, query]);
+  if (!ranges.length) return <>{text}</>;
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  ranges.forEach((range, index) => {
+    if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+    parts.push(
+      <mark className="history-match" key={index}>
+        {text.slice(range.start, range.end)}
+      </mark>,
+    );
+    cursor = Math.max(cursor, range.end);
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
+
 export default function TerminalHistoryPage({
   records,
   recordingEnabled,
+  focusID = "",
   onOpenSettings,
   onTogglePin,
   onRename,
@@ -45,19 +68,54 @@ export default function TerminalHistoryPage({
   const [collection, setCollection] = useState<"recent" | "pinned">("recent");
   const [query, setQuery] = useState("");
   const [selectedID, setSelectedID] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(query);
+  const searching = deferredQuery.trim().length > 0;
+
+  // Stripping ANSI and building the haystack is expensive on large outputs, so
+  // it happens once per record instead of on every keystroke.
+  const prepared = useMemo(() => {
+    const map = new Map<
+      string,
+      { display: string; haystack: string; title: string; subtitle: string }
+    >();
+    for (const record of records) {
+      const display = displayTerminalOutput(record.output);
+      const title = terminalHistoryTitle(record);
+      const subtitle = terminalHistorySubtitle(record);
+      map.set(record.id, {
+        display,
+        title,
+        subtitle,
+        haystack: `${title} ${subtitle} ${display}`.toLocaleLowerCase(),
+      });
+    }
+    return map;
+  }, [records]);
+
   const visibleRecords = useMemo(() => {
-    const items = records
-      .filter((record) => record.pinned === (collection === "pinned"))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-    const search = query.trim();
-    if (!search) return items;
-    return items.filter((record) =>
-      fuzzyMatch(
-        search,
-        `${record.title} ${record.name ?? ""} ${record.subtitle} ${record.terminalNumber} ${displayTerminalOutput(record.output)}`,
-      ),
-    );
-  }, [collection, query, records]);
+    // A search spans both collections so a record is never hidden behind a tab.
+    const items = searching
+      ? records.filter((record) =>
+          matchesSearch(prepared.get(record.id)?.haystack ?? "", deferredQuery),
+        )
+      : records.filter((record) => record.pinned === (collection === "pinned"));
+    return [...items].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [collection, deferredQuery, prepared, records, searching]);
+
+  // Keep a usable selection while filtering; otherwise the detail pane blanks.
+  useEffect(() => {
+    if (!searching) return;
+    if (selectedID && visibleRecords.some((item) => item.id === selectedID))
+      return;
+    setSelectedID(visibleRecords[0]?.id ?? null);
+  }, [searching, selectedID, visibleRecords]);
+
+  useEffect(() => {
+    if (!focusID) return;
+    setSelectedID(focusID);
+    setQuery("");
+  }, [focusID]);
+
   const selectedRecord = visibleRecords.find(
     (record) => record.id === selectedID,
   );
@@ -100,72 +158,115 @@ export default function TerminalHistoryPage({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+          {query && (
+            <button
+              className="history-search-clear"
+              type="button"
+              aria-label="清除搜索"
+              title="清除搜索"
+              onClick={() => setQuery("")}
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          )}
         </label>
         <span className="history-result-count" role="status">
-          {visibleRecords.length} 条记录
+          {searching
+            ? `${visibleRecords.length} / ${records.length} 条匹配`
+            : `${visibleRecords.length} 条记录`}
         </span>
       </div>
+      {searching && (
+        <p className="history-search-note">
+          搜索范围包含「最近」和「精选」的全部记录，按关键词匹配标题、地址与终端输出。
+        </p>
+      )}
       <div className="history-content">
         <div className="history-list" role="list" aria-label="历史记录列表">
-          {visibleRecords.map((record) => (
-            <article
-              className={`history-row ${selectedID === record.id ? "selected" : ""}`}
-              key={record.id}
-            >
-              <button
-                className="history-record"
-                role="listitem"
-                aria-pressed={selectedID === record.id}
-                onClick={() => setSelectedID(record.id)}
+          {visibleRecords.map((record) => {
+            const info = prepared.get(record.id);
+            return (
+              <article
+                className={`history-row ${selectedID === record.id ? "selected" : ""}`}
+                key={record.id}
               >
-                <span className="history-record-heading">
-                  <strong>{terminalHistoryTitle(record)}</strong>
-                  <time>{dateTime(record.updatedAt)}</time>
-                </span>
-                <span className="history-record-subtitle">
-                  {terminalHistorySubtitle(record)}
-                </span>
-                <pre>{preview(record.output)}</pre>
-                {record.truncated && (
-                  <small>较早输出已省略，仅保留最近内容</small>
-                )}
-              </button>
-              <div className="history-row-actions">
                 <button
-                  className={`icon-button ${record.pinned ? "selected" : ""}`}
-                  aria-label={record.pinned ? "取消精选" : "加入精选"}
-                  title={record.pinned ? "取消精选" : "加入精选"}
-                  aria-pressed={record.pinned}
-                  onClick={() => onTogglePin(record)}
+                  className="history-record"
+                  role="listitem"
+                  aria-pressed={selectedID === record.id}
+                  onClick={() => setSelectedID(record.id)}
                 >
-                  <Star
-                    size={15}
-                    fill={record.pinned ? "currentColor" : "none"}
-                    aria-hidden="true"
-                  />
+                  <span className="history-record-heading">
+                    <strong>
+                      <Highlighted
+                        text={info?.title ?? terminalHistoryTitle(record)}
+                        query={deferredQuery}
+                      />
+                    </strong>
+                    {searching && (
+                      <span
+                        className={`history-record-tag ${
+                          record.pinned ? "pinned" : ""
+                        }`}
+                      >
+                        {record.pinned ? "精选" : "最近"}
+                      </span>
+                    )}
+                    <time>{dateTime(record.updatedAt)}</time>
+                  </span>
+                  <span className="history-record-subtitle">
+                    <Highlighted
+                      text={info?.subtitle ?? terminalHistorySubtitle(record)}
+                      query={deferredQuery}
+                    />
+                  </span>
+                  <pre>
+                    <Highlighted
+                      text={preview(info?.display ?? "")}
+                      query={deferredQuery}
+                    />
+                  </pre>
+                  {record.truncated && (
+                    <small>较早输出已省略，仅保留最近内容</small>
+                  )}
                 </button>
-                <button
-                  className="icon-button"
-                  aria-label={`重命名 ${terminalHistoryTitle(record)}`}
-                  title="重命名"
-                  onClick={() => onRename(record)}
-                >
-                  <Pencil size={15} aria-hidden="true" />
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label={`删除 ${terminalHistoryTitle(record)} 历史`}
-                  title="删除历史"
-                  onClick={() => {
-                    onDelete(record);
-                    if (selectedID === record.id) setSelectedID(null);
-                  }}
-                >
-                  <Trash2 size={15} aria-hidden="true" />
-                </button>
-              </div>
-            </article>
-          ))}
+                <div className="history-row-actions">
+                  <button
+                    className={`icon-button ${record.pinned ? "selected" : ""}`}
+                    aria-label={record.pinned ? "取消精选" : "加入精选"}
+                    title={record.pinned ? "取消精选" : "加入精选"}
+                    aria-pressed={record.pinned}
+                    onClick={() => onTogglePin(record)}
+                  >
+                    <Star
+                      size={15}
+                      fill={record.pinned ? "currentColor" : "none"}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label={`重命名 ${terminalHistoryTitle(record)}`}
+                    title="重命名"
+                    onClick={() => onRename(record)}
+                  >
+                    <Pencil size={15} aria-hidden="true" />
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label={`删除 ${terminalHistoryTitle(record)} 历史`}
+                    title="删除历史"
+                    onClick={() => {
+                      onDelete(record);
+                      if (selectedID === record.id) setSelectedID(null);
+                    }}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
           {!visibleRecords.length && (
             <div className="history-empty">
               <History size={25} aria-hidden="true" />
@@ -178,7 +279,7 @@ export default function TerminalHistoryPage({
               </strong>
               <p>
                 {query
-                  ? "试试更短的关键词，或清除搜索。"
+                  ? "搜索会同时查找「最近」和「精选」。换个关键词，或清除搜索。"
                   : collection === "pinned"
                     ? "在终端工具栏点击星标，将记录加入精选。"
                     : recordingEnabled
@@ -202,8 +303,24 @@ export default function TerminalHistoryPage({
           <section className="history-detail" aria-label="历史输出详情">
             <header>
               <div>
-                <h2>{terminalHistoryTitle(selectedRecord)}</h2>
-                <p>{terminalHistorySubtitle(selectedRecord)}</p>
+                <h2>
+                  <Highlighted
+                    text={
+                      prepared.get(selectedRecord.id)?.title ??
+                      terminalHistoryTitle(selectedRecord)
+                    }
+                    query={deferredQuery}
+                  />
+                </h2>
+                <p>
+                  <Highlighted
+                    text={
+                      prepared.get(selectedRecord.id)?.subtitle ??
+                      terminalHistorySubtitle(selectedRecord)
+                    }
+                    query={deferredQuery}
+                  />
+                </p>
                 <time>最近记录于 {dateTime(selectedRecord.updatedAt)}</time>
               </div>
               <div>
@@ -247,7 +364,9 @@ export default function TerminalHistoryPage({
               </p>
             )}
             <pre className="history-transcript">
-              {displayTerminalOutput(selectedRecord.output) || "没有可显示的输出"}
+              {prepared.get(selectedRecord.id)?.display ||
+                displayTerminalOutput(selectedRecord.output) ||
+                "没有可显示的输出"}
             </pre>
           </section>
         ) : (

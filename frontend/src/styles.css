@@ -1,5 +1,6 @@
 /* Preserve cascade order; feature overrides follow these in main.tsx. */
 @import "./styles/foundation.css";
+@import "./styles/select.css";
 @import "./styles/shell.css";
 @import "./styles/hosts.css";
 @import "./styles/terminal.css";

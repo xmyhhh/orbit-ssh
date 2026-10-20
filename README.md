@@ -4,30 +4,50 @@
 
 Orbit SSH 是一款面向 Windows 和 Android 的个人 SSH 工具，适合日常连接 Linux 服务器、维护文件、配置 SSH 隧道，以及在 Windows 上使用本地 Shell 和 WSL。无需注册账号，主机配置和登录凭据保存在当前设备。
 
-**v2.0：[Windows x64 · 安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-setup.exe) · [便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-portable.zip) · [Android ARM64 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
+**v3.0（Windows x64）：[安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/OrbitSSH-v3.0-windows-x64-setup.exe) · [便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/OrbitSSH-v3.0-windows-x64-portable.zip)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v3.0) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
-![Orbit SSH v2.0 首页：主机卡片、分组、收藏和搜索](docs/images/v2-home.png)
+**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.0 只发布 Windows 桌面版。
+
+![Orbit SSH v3.0 首页：主机卡片、分组、收藏和搜索](docs/images/v3-home.png)
 
 <details>
-<summary>查看更多 v2.0 界面：分屏终端、SSH 隧道、AI 集成与 Android</summary>
+<summary>查看更多 v3.0 界面：快速搜索、工作流编辑、SSH 隧道与偏好设置</summary>
+
+### 快速搜索
+
+`Ctrl / ⌘ K` 一次搜索主机、工作流和终端历史，结果按类型分组。
+
+![Orbit SSH v3.0 快速搜索：主机、工作流与终端历史分组结果](docs/images/v3-search.png)
+
+### 工作流可直接编辑
+
+工作流库页面用于查看和编辑，命令可复制、修改、删除，也能手动添加步骤。
+
+![Orbit SSH v3.0 工作流库：内置工作流列表与步骤编辑](docs/images/v3-workflow.png)
+
+### 新建主机
+
+认证方式、跳板机和分组使用统一的下拉控件，私钥选错会立即提示。
+
+![Orbit SSH v3.0 新建主机：统一的认证方式、所属分组与跳板机下拉](docs/images/v3-host-dialog.png)
+
+### SSH 隧道与 X11
+
+在主机设置中管理本地、远程和动态 SOCKS5 转发，并配置远程图形程序的 X11 转发。
+
+![Orbit SSH v3.0 SSH 隧道：三种端口转发规则与 X11 配置](docs/images/v3-tunneling.png)
+
+### 偏好设置
+
+终端字号、行距、保活间隔和历史上限使用同一套控件。
+
+![Orbit SSH v3.0 偏好设置：终端显示与历史选项](docs/images/v3-preferences.png)
 
 ### 分屏终端与工作区
 
 拖动标签即可组合分屏，每组最多 4 个窗格；不同分屏标签分别保留布局和会话。
 
 ![Orbit SSH v2.0 深色终端：开发服务与日志并排显示，独立终端和分屏组合共存](docs/images/v2-terminal.png)
-
-### SSH 隧道与 X11
-
-在主机设置中管理本地、远程和动态 SOCKS5 转发，并配置远程图形程序的 X11 转发。
-
-![Orbit SSH v2.0 SSH 隧道：三种端口转发规则与 X11 配置](docs/images/v2-tunneling.png)
-
-### 连接 AI 工具
-
-在 Windows 偏好设置中启用 MCP，一键接入六种客户端，分别控制连接创建与终端输入权限。
-
-![Orbit SSH v2.0 MCP 集成：客户端接入、服务状态与独立权限](docs/images/v2-mcp.png)
 
 ### Android 终端
 
@@ -37,17 +57,17 @@ Orbit SSH 是一款面向 Windows 和 Android 的个人 SSH 工具，适合日�
 
 </details>
 
-*截图基于 v2.0 界面，使用示例主机和模拟输出；Android 图为手机尺寸的界面预览。*
+*截图基于 v3.0 界面，使用示例主机和模拟输出；Android 图为 v2.0 手机尺寸的界面预览。*
 
 ## 下载与运行
 
 | 平台 | 下载 | 运行要求 |
 | --- | --- | --- |
-| Windows x64 · 安装版 | [OrbitSSH-v2.0-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
-| Windows x64 · 便携版 | [OrbitSSH-v2.0-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
+| Windows x64 · 安装版 | [OrbitSSH-v3.0-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/OrbitSSH-v3.0-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
+| Windows x64 · 便携版 | [OrbitSSH-v3.0-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/OrbitSSH-v3.0-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
 | Android ARM64 | [OrbitSSH-v2.0-android-arm64.apk](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk) | Android 9+；将 APK 传到手机，按系统提示允许安装。 |
 
-所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/SHA256SUMS.txt) 核对下载文件。
+所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.0/SHA256SUMS.txt) 核对下载文件。
 
 Windows 安装版会把程序安装到当前用户目录（默认 `%LOCALAPPDATA%\Programs\Orbit SSH`），卸载入口在 Windows 设置或开始菜单中；主机配置、凭据和终端历史保存在 `%APPDATA%\OrbitSSH`，覆盖安装和卸载都不会删除。安装版会检测并安装 Microsoft Edge WebView2 Runtime；便携版需要系统已有 WebView2，Windows 11 通常已自带。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。WSL 是可选功能，使用时需另外安装 WSL 和 Linux 发行版。
 
@@ -58,13 +78,16 @@ Android 安装、文件导入导出、软键盘和本地构建见 [Android 说�
 | 功能 | 使用方式 |
 | --- | --- |
 | 管理服务器 | 按分组整理主机，收藏常用服务器，搜索名称或地址，查看最近连接；卡片和列表视图随时切换并记住选择。 |
+| 快速搜索 | `Ctrl / ⌘ K` 一次搜索主机、工作流和终端历史，结果按类型分组；选中工作流或历史可直接跳转。 |
 | 连接 SSH | 使用密码、SSH Agent 或 PEM / OpenSSH 私钥登录，可记住密码和私钥口令；支持多级跳板机（最多 5 级），首次连接核对服务器指纹。 |
+| 避免选错私钥 | 误选 `.pub` 公钥文件时立即提示并阻止保存，界面和后端都会校验。 |
 | 导入 SSH 配置 | 读取 `~/.ssh/config` 中的主机、端口、用户、私钥和 ProxyJump，选择要导入的条目并自动关联跳板机。 |
 | 备份主机配置 | 将主机导出为不含密码和密钥的 JSON，或从导出的文件合并导入，按主机 ID 或名称更新而不重复创建。 |
 | 生成密钥 | 在新建主机时生成 Ed25519 密钥对，私钥保存在应用数据目录的 `keys/` 中，同名文件不会被覆盖。 |
 | 分屏与多终端 | 同一主机可开多个终端，拖动标签组合分屏，每组最多 4 个窗格；切换标签保留各组布局和会话。双击标签或点击终端工具栏的铅笔可重命名会话。 |
 | 使用终端 | 搜索输出、复制粘贴、调整字号，右键打开常用操作；多行粘贴前会确认。 |
 | 查看终端历史 | 在当前设备保存输出、检索历史、重命名和加入精选，可在偏好设置中调整保存数量或关闭记录。 |
+| 使用工作流 | 内置 6 条常用流程；工作流库页面可直接改命令、删步骤和加步骤，执行时逐条确认。 |
 | 配置 SSH 隧道 | 为主机保存本地、远程及动态 SOCKS5 TCP 转发规则，连接时启动，最后一个终端关闭时释放。 |
 | 转发 X11 | 通过 SSH 在本机 X Server 中显示远程 Linux 图形程序，支持 Xauthority cookie 认证。 |
 | 传输文件 | 双栏浏览本地与远程目录，上传、下载文件或整个文件夹，查看进度、速度和失败原因。 |
@@ -84,6 +107,16 @@ Android 安装、文件导入导出、软键盘和本地构建见 [Android 说�
 「解除分屏」恢复独立标签，窗格上的「收起」把该终端移回独立标签，均保留连接。关闭分屏标签会结束组内全部终端。手机上用标签左侧的拖动柄调整分屏；点击全屏按钮后，可通过顶部下拉框切换终端。操作细节见[终端工作区说明](docs/TERMINAL-WORKSPACES.md)。
 
 「终端历史」保存当前设备上的终端输出，支持搜索、重命名、精选和删除。偏好设置可关闭自动记录或调整保留数量；活动会话的输出搜索不受历史记录开关影响。会话名称会同时显示在终端标签、分屏标题、工作流目标、终端历史和 MCP 的 `list_sessions` 结果中。
+
+搜索会同时覆盖「最近」和「精选」两部分，命中的标题、地址和输出内容都会高亮，结果行标注来源；大体积输出下索引只计算一次，打字不会卡顿。
+
+## 工作流
+
+「工作流」把一组终端操作保存成可重复执行的流程。工作流库页面用于**查看和编辑**：选中任意一步即可复制命令、直接修改标题和命令、删除这一步，或在列表底部手动添加新步骤；修改会立即保存到工作流定义。右上角「选择主机执行」会挑一台主机进入执行流程。
+
+终端右侧的「工作流」面板是**执行**界面：下拉框选择要跑的工作流，逐条发送命令、标记完成或跳过。高风险命令（重启、停止服务、删除等）会先显示完整命令要求确认；命令发送后不会自动判定成功，需要查看终端输出再手动记录。
+
+内置 6 条工作流：检查并更新 Nginx 配置、磁盘空间清理与日志轮转、服务健康巡检、Docker 容器维护、TLS 证书与跳转检查、系统更新与重启。可以基于它们改出自己的版本，也可以直接删除，删除后不会再次出现。命令中用 `{{参数名}}` 引用参数，运行前可按需调整参数值。
 
 ## 连接 AI 工具（MCP）
 
@@ -105,10 +138,10 @@ Android 安装、文件导入导出、软键盘和本地构建见 [Android 说�
 也可在命令行完成同样的接入：
 
 ```powershell
-.\OrbitSSH-v2.0-windows-x64.exe install --target=codex --location=global --yes
-.\OrbitSSH-v2.0-windows-x64.exe install --target=opencode --location=global --yes
+.\OrbitSSH-v3.0-windows-x64.exe install --target=codex --location=global --yes
+.\OrbitSSH-v3.0-windows-x64.exe install --target=opencode --location=global --yes
 # 同时接入多个客户端，也可使用 --target=all 接入上述全部客户端
-.\OrbitSSH-v2.0-windows-x64.exe install --target=codex,claude,cursor,opencode --yes
+.\OrbitSSH-v3.0-windows-x64.exe install --target=codex,claude,cursor,opencode --yes
 ```
 
 `--yes` 跳过交互确认，省略时会列出目标文件并询问是否继续；默认 `--target=codex --location=global`。`--location=local` 写入上表中的当前项目配置，可能需要客户端的项目信任或 MCP 授权。多客户端接入时会继续处理其他客户端，任一失败则返回非零退出码。命令仅注册连接信息，运行 MCP 服务仍需在 Orbit SSH 中启用并保持应用运行。
@@ -236,7 +269,7 @@ Windows 版启动后会在系统托盘显示 Orbit SSH 图标，图标可能收�
 
 | 快捷键 | 操作 |
 | --- | --- |
-| `Ctrl + K` | 搜索或快速切换主机 |
+| `Ctrl + K` | 快速搜索主机、工作流和终端历史 |
 | `Ctrl + T` | 新建主机连接 |
 | `Ctrl + Shift + T` | 为当前主机、本地 Shell 或 WSL 发行版新建终端 |
 | `Ctrl + Shift + F` | 搜索终端输出 |
@@ -285,9 +318,9 @@ Windows 更新时退出旧版后运行新版即可沿用本机配置，删除 EX
 
 监控目前面向 Linux 服务器，需要 `/proc`、`df` 和 procps 提供的 `ps` 命令。CPU 使用率会在第二次采样后显示；进程 CPU 是 `ps` 报告的生命周期平均值，多核时可能超过 100%。监控不需要在服务器安装 Orbit SSH 专用程序，窗口隐藏时会暂停采样。
 
-### v2.0 支持哪些系统和架构？
+### v3.0 支持哪些系统和架构？
 
-本次 Release 提供 Windows x64 EXE 和 Android 9+ ARM64 APK。暂未提供 Windows ARM64、Android x86、macOS 或 Linux 安装包；其他桌面平台需要在相应系统自行构建和验证，参见[开发与构建说明](docs/DEVELOPMENT.md)。
+本次 Release 提供 Windows x64 安装版和便携版。暂未提供 Windows ARM64、macOS 或 Linux 安装包；其他桌面平台需要在相应系统自行构建和验证，参见[开发与构建说明](docs/DEVELOPMENT.md)。Android 版仍为 [v2.0](https://github.com/xmyhhh/orbit-ssh/releases/tag/v2.0) 的 ARM64 APK。
 
 ## 反馈问题
 

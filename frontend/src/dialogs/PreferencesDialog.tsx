@@ -26,6 +26,7 @@ import {
 import { Modal } from "./Modal";
 import { isAndroid } from "../android";
 import { appVersion } from "../appInfo";
+import { Select } from "../ui/Select";
 
 const preferenceSections = [
   { id: "appearance", label: "外观" },
@@ -298,19 +299,21 @@ export function PreferencesDialog({
               <div>
                 <strong>终端行距</strong>
               </div>
-              <select
-                aria-label="终端行距"
+              <Select
+                ariaLabel="终端行距"
                 className="terminal-density-select"
+                size="md"
                 disabled={busy}
-                value={preferences.lineHeight}
-                onChange={(e) =>
-                  void change({ lineHeight: Number(e.target.value) })
+                value={String(preferences.lineHeight)}
+                onChange={(value) =>
+                  void change({ lineHeight: Number(value) })
                 }
-              >
-                <option value={1.2}>紧凑</option>
-                <option value={1.35}>标准</option>
-                <option value={1.5}>宽松</option>
-              </select>
+                options={[
+                  { value: "1.2", label: "紧凑" },
+                  { value: "1.35", label: "标准" },
+                  { value: "1.5", label: "宽松" },
+                ]}
+              />
             </div>
             <div className="setting-row">
               <div>
@@ -319,21 +322,23 @@ export function PreferencesDialog({
                   定期发送 keepalive 探测；0 表示关闭。网络中断时更快发现掉线。
                 </p>
               </div>
-              <select
-                aria-label="连接保活间隔"
+              <Select
+                ariaLabel="连接保活间隔"
                 className="terminal-density-select"
+                size="md"
                 disabled={busy}
-                value={preferences.keepAliveSeconds}
-                onChange={(e) =>
-                  void change({ keepAliveSeconds: Number(e.target.value) })
+                value={String(preferences.keepAliveSeconds)}
+                onChange={(value) =>
+                  void change({ keepAliveSeconds: Number(value) })
                 }
-              >
-                <option value={0}>关闭</option>
-                <option value={15}>15 秒</option>
-                <option value={30}>30 秒</option>
-                <option value={60}>60 秒</option>
-                <option value={120}>120 秒</option>
-              </select>
+                options={[
+                  { value: "0", label: "关闭" },
+                  { value: "15", label: "15 秒" },
+                  { value: "30", label: "30 秒" },
+                  { value: "60", label: "60 秒" },
+                  { value: "120", label: "120 秒" },
+                ]}
+              />
             </div>
             <div className="setting-row">
               <div>
@@ -566,23 +571,22 @@ export function PreferencesDialog({
                     </p>
                   </div>
                   <div className="mcp-install-actions">
-                    <select
-                      aria-label="MCP 客户端"
+                    <Select
+                      ariaLabel="MCP 客户端"
+                      size="sm"
                       disabled={busy}
                       value={mcpClient}
-                      onChange={(event) => {
-                        setMcpClient(event.target.value as MCPClient);
+                      onChange={(value) => {
+                        setMcpClient(value as MCPClient);
                         setMcpInstall(null);
                         setMcpCopied("");
                         setError("");
                       }}
-                    >
-                      {mcpClients.map((client) => (
-                        <option key={client.target} value={client.target}>
-                          {client.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={mcpClients.map((client) => ({
+                        value: client.target,
+                        label: client.name,
+                      }))}
+                    />
                     <button
                       className="text-button mcp-install-button"
                       type="button"

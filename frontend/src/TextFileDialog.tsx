@@ -16,6 +16,7 @@ import {
   type EditorLanguage,
 } from "./editorLanguages";
 import type { RemoteTextFile, Session } from "./types";
+import { Select } from "./ui/Select";
 import "./editor.css";
 
 export default function TextFileDialog({
@@ -205,25 +206,28 @@ export default function TextFileDialog({
         {document?.path || path}
       </div>
       <div className="text-editor-toolbar">
-        <label>
-          语法
-          <select
-            aria-label="语法高亮"
+        <div className="text-editor-toolbar-field">
+          <span>语法</span>
+          <Select
+            ariaLabel="语法高亮"
+            size="md"
+            className="text-editor-language-select"
             value={language}
-            onChange={(e) =>
-              setLanguage(e.target.value as EditorLanguage | "auto")
+            onChange={(value) =>
+              setLanguage(value as EditorLanguage | "auto")
             }
-          >
-            <option value="auto">
-              自动 · {editorLanguages.find(([id]) => id === detected)?.[1]}
-            </option>
-            {editorLanguages.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={[
+              {
+                value: "auto",
+                label: `自动 · ${editorLanguages.find(([id]) => id === detected)?.[1]}`,
+              },
+              ...editorLanguages.map(([id, label]) => ({
+                value: id,
+                label,
+              })),
+            ]}
+          />
+        </div>
         <button
           className={`icon-button ${wrap ? "active" : ""}`}
           aria-label="自动换行"

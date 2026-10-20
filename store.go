@@ -190,8 +190,14 @@ func validateHost(h Host) error {
 	if h.AuthType != "password" && h.AuthType != "key" && h.AuthType != "agent" {
 		return errors.New("不支持的认证方式")
 	}
-	if h.AuthType == "key" && h.KeyPath == "" {
-		return errors.New("请选择私钥文件")
+	if h.AuthType == "key" {
+		if h.KeyPath == "" {
+			return errors.New("请选择私钥文件")
+		}
+		// The public half of a key pair cannot be parsed as a private key.
+		if strings.EqualFold(filepath.Ext(h.KeyPath), ".pub") {
+			return errors.New("这是公钥文件（.pub），私钥登录需要选择不带 .pub 后缀的私钥文件")
+		}
 	}
 	if h.JumpHostID != "" {
 		if h.JumpHostID == h.ID {

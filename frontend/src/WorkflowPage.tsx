@@ -5,6 +5,7 @@ import {
   Check,
   CircleAlert,
   CircleCheck,
+  Copy,
   Download,
   FileInput,
   FileOutput,
@@ -23,7 +24,9 @@ import type { Session } from "./types";
 import {
   commandLooksDestructive,
   exportWorkflow,
+  isBuiltInWorkflow,
   loadWorkflows,
+  markBuiltInDeleted,
   newWorkflow,
   parseWorkflowFile,
   renderWorkflowCommand,
@@ -35,6 +38,8 @@ import {
   type WorkflowStep,
 } from "./workflows";
 import { isLocalSession, sessionDetailLabel } from "./sessions";
+import { Select } from "./ui/Select";
+import { writeClipboard } from "./bridge";
 
 type StepStatus = "pending" | "sent" | "completed" | "failed" | "skipped";
 
@@ -126,16 +131,27 @@ export default function WorkflowPage({
     Record<string, string>
   >({});
   const [editingCommandID, setEditingCommandID] = useState<string | null>(null);
+  const [editingStepID, setEditingStepID] = useState<string | null>(null);
+  const [stepTitleDraft, setStepTitleDraft] = useState("");
+  const [stepCommandDraft, setStepCommandDraft] = useState("");
   const [confirmStepID, setConfirmStepID] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [importing, setImporting] = useState(false);
-  const [workflowPickerOpen, setWorkflowPickerOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(
     () => subscribeWorkflowsUpdated(() => setWorkflows(loadWorkflows())),
     [],
   );
+
+  // The quick search can ask the library page to focus one workflow.
+  useEffect(() => {
+    if (panel || !initialWorkflowID) return;
+    if (!workflows.some((workflow) => workflow.id === initialWorkflowID))
+      return;
+    setSelectedID(initialWorkflowID);
+    setDraft(null);
+  }, [initialWorkflowID, panel, workflows]);
 
   const availableSessions = useMemo(
     () =>
@@ -176,6 +192,7 @@ export default function WorkflowPage({
     setRuntimeCommands({});
     setStepStatuses({});
     setEditingCommandID(null);
+    setEditingStepID(null);
     setConfirmStepID(null);
   }, [selectedID]);
 
@@ -261,6 +278,7 @@ export default function WorkflowPage({
   function removeSelected() {
     if (!selected) return;
     if (!window.confirm(`删除工作流“${selected.title}”？`)) return;
+    markBuiltInDeleted(selected.id);
     const next = workflows.filter((workflow) => workflow.id !== selected.id);
     if (!persist(next)) return;
     setSelectedID(next[0]?.id ?? "");
@@ -424,6 +442,112 @@ export default function WorkflowPage({
     }));
   }
 
+  // The library page edits the saved workflow directly instead of preparing a
+  // run, so every change here is persisted right away.
+  function updateSelected(update: (workflow: Workflow) => Workflow) {
+    if (!selected) return false;
+    return persist(
+      workflows.map((workflow) =>
+        workflow.id === selected.id ? update(workflow) : workflow,
+      ),
+    );
+  }
+
+  function beginStepEdit(step: WorkflowStep) {
+    setEditingStepID(step.id);
+    setStepTitleDraft(step.title);
+    setStepCommandDraft(step.command);
+    setNotice("");
+  }
+
+  function cancelStepEdit() {
+    setEditingStepID(null);
+    setStepTitleDraft("");
+    setStepCommandDraft("");
+  }
+
+  function saveStepEdit() {
+    if (!editingStepID) return;
+    const title = stepTitleDraft.trim();
+    if (!title) {
+      setNotice("步骤标题不能为空。");
+      return;
+    }
+    const stepID = editingStepID;
+    const saved = updateSelected((workflow) =>
+      updateStep(workflow, stepID, (step) => ({
+        ...step,
+        title,
+        command: stepCommandDraft,
+      })),
+    );
+    if (!saved) return;
+    setRuntimeCommands((current) => {
+      if (!(stepID in current)) return current;
+      const next = { ...current };
+      delete next[stepID];
+      return next;
+    });
+    cancelStepEdit();
+    setNotice("步骤已更新。");
+  }
+
+  function addWorkflowStep() {
+    if (!selected) return;
+    const previous = selected.steps[selected.steps.length - 1];
+    const step: WorkflowStep = {
+      id: crypto.randomUUID(),
+      title: `步骤 ${selected.steps.length + 1}`,
+      description: "",
+      command: "",
+      terminalId: selected.terminals[0]?.id ?? "main",
+      optional: false,
+      dependsOn: previous ? [previous.id] : [],
+    };
+    if (
+      !updateSelected((workflow) => ({
+        ...workflow,
+        steps: [...workflow.steps, step],
+      }))
+    )
+      return;
+    setSelectedStepID(step.id);
+    beginStepEdit(step);
+    setNotice("已添加步骤，填写标题和命令后保存。");
+  }
+
+  function deleteWorkflowStep(stepID: string) {
+    if (!selected) return;
+    if (selected.steps.length <= 1) {
+      setNotice("工作流至少需要保留一个步骤。");
+      return;
+    }
+    const step = selected.steps.find((item) => item.id === stepID);
+    if (!step) return;
+    if (
+      !window.confirm(
+        `删除步骤“${step.title || "未命名"}”？此修改会直接保存到工作流。`,
+      )
+    )
+      return;
+    const remaining = selected.steps.filter((item) => item.id !== stepID);
+    const saved = updateSelected((workflow) => ({
+      ...workflow,
+      steps: workflow.steps
+        .filter((item) => item.id !== stepID)
+        .map((item) => ({
+          ...item,
+          dependsOn: item.dependsOn.filter(
+            (dependency) => dependency !== stepID,
+          ),
+        })),
+    }));
+    if (!saved) return;
+    if (selectedStepID === stepID) setSelectedStepID(remaining[0]?.id ?? "");
+    cancelStepEdit();
+    setNotice("步骤已删除。");
+  }
+
   function resolveCommand(step: WorkflowStep) {
     const template = runtimeCommands[step.id] ?? step.command;
     return renderWorkflowCommand(
@@ -437,7 +561,6 @@ export default function WorkflowPage({
     setSelectedID(workflow.id);
     setDraft(null);
     setNotice("");
-    setWorkflowPickerOpen(false);
   }
 
   function dependenciesNotComplete(step: WorkflowStep) {
@@ -494,6 +617,184 @@ export default function WorkflowPage({
     ? sessionBindings[selectedStep.terminalId]
     : "";
 
+  async function copyStepCommand() {
+    if (!selectedStep) return;
+    const text = currentCommand.value || selectedStep.command;
+    if (!text.trim()) {
+      setNotice("此步骤没有命令可复制。");
+      return;
+    }
+    try {
+      await writeClipboard(text);
+      setNotice("命令已复制到剪贴板。");
+    } catch {
+      setNotice("复制失败，请手动选择命令文本。");
+    }
+  }
+
+  // The runner panel drives the execution; the library page only browses and
+  // edits the saved definition, so each side gets its own action bar.
+  function renderStepActions(step: WorkflowStep, workflow: Workflow) {
+    if (panel) {
+      return (
+        <>
+          <div className="workflow-step-actions">
+            {step.command ? (
+              <button
+                className={`button ${requiresConfirmation && confirmStepID === step.id ? "danger" : "primary"} compact`}
+                disabled={Boolean(currentCommand.error)}
+                onClick={() => {
+                  if (!requiresConfirmation) {
+                    if (currentCommand.value)
+                      void executeStep(step, currentCommand.value);
+                    return;
+                  }
+                  if (confirmStepID !== step.id) {
+                    setConfirmStepID(step.id);
+                    return;
+                  }
+                  if (currentCommand.value)
+                    void executeStep(step, currentCommand.value);
+                }}
+              >
+                <Play size={14} />
+                {requiresConfirmation
+                  ? confirmStepID === step.id
+                    ? "确认发送命令"
+                    : "检查命令后确认"
+                  : currentStatus === "pending" || currentStatus === "skipped"
+                    ? "执行此步"
+                    : "重跑此步"}
+              </button>
+            ) : (
+              <button
+                className="button primary compact"
+                onClick={() =>
+                  setStepStatuses((current) => ({
+                    ...current,
+                    [step.id]: "completed",
+                  }))
+                }
+              >
+                <Check size={14} />
+                标记完成
+              </button>
+            )}
+            {step.command && (
+              <button
+                className="button secondary compact"
+                onClick={() =>
+                  setStepStatuses((current) => ({
+                    ...current,
+                    [step.id]: "completed",
+                  }))
+                }
+              >
+                <Check size={14} />
+                标记完成
+              </button>
+            )}
+            <button
+              className="button secondary compact"
+              onClick={() => {
+                setStepStatuses((current) => ({
+                  ...current,
+                  [step.id]: "skipped",
+                }));
+                setConfirmStepID(null);
+              }}
+            >
+              <SkipForward size={14} />
+              跳过
+            </button>
+            <button
+              className="icon-button"
+              title="标记失败"
+              aria-label="标记失败"
+              onClick={() =>
+                setStepStatuses((current) => ({
+                  ...current,
+                  [step.id]: "failed",
+                }))
+              }
+            >
+              <CircleAlert size={15} />
+            </button>
+            {selectedTarget && (
+              <button
+                className="icon-button"
+                title="查看终端"
+                aria-label="查看所选终端"
+                onClick={() => onViewTerminal(selectedTarget)}
+              >
+                <TerminalSquare size={16} />
+              </button>
+            )}
+            {currentStatus !== "pending" && (
+              <button
+                className="icon-button"
+                title="重置此步骤状态"
+                aria-label="重置此步骤状态"
+                onClick={() =>
+                  setStepStatuses((current) => ({
+                    ...current,
+                    [step.id]: "pending",
+                  }))
+                }
+              >
+                <RotateCcw size={15} />
+              </button>
+            )}
+          </div>
+          <p className="workflow-step-footnote">
+            命令发送后不会自动判定成功；查看终端输出，再手动记录结果。
+          </p>
+        </>
+      );
+    }
+    return (
+      <>
+        <div className="workflow-step-actions">
+          <button
+            className="button secondary compact"
+            onClick={() => void copyStepCommand()}
+            disabled={!step.command.trim()}
+          >
+            <Copy size={14} />
+            复制命令
+          </button>
+          <button
+            className="button secondary compact"
+            onClick={() =>
+              editingStepID === step.id
+                ? cancelStepEdit()
+                : beginStepEdit(step)
+            }
+          >
+            <Pencil size={14} />
+            {editingStepID === step.id ? "取消编辑" : "编辑步骤"}
+          </button>
+          <button
+            className="button danger compact"
+            onClick={() => deleteWorkflowStep(step.id)}
+            disabled={workflow.steps.length <= 1}
+            title={
+              workflow.steps.length <= 1
+                ? "工作流至少需要保留一个步骤"
+                : "删除此步"
+            }
+          >
+            <Trash2 size={14} />
+            删除此步
+          </button>
+        </div>
+        <p className="workflow-step-footnote">
+          这里编辑的是工作流定义，修改会立即保存；实际执行请用右上角「选择主机执行」。
+        </p>
+      </>
+    );
+  }
+
   return (
     <section
       className={`workflows-page ${panel ? "workflow-runner-panel" : ""}`}
@@ -504,17 +805,24 @@ export default function WorkflowPage({
         <header className="workflow-panel-heading">
           <div>
             <strong>工作流</strong>
-            {selected && <small title={selected.title}>{selected.title}</small>}
+            <Select
+              ariaLabel="选择工作流"
+              size="sm"
+              className="workflow-panel-select"
+              value={selected?.id ?? ""}
+              placeholder="选择工作流"
+              onChange={(id) => {
+                const workflow = workflows.find((item) => item.id === id);
+                if (workflow) loadWorkflow(workflow);
+              }}
+              options={workflows.map((workflow) => ({
+                value: workflow.id,
+                label: workflow.title,
+                hint: `${workflow.steps.length} 步`,
+              }))}
+            />
           </div>
           <div>
-            <button
-              className="button secondary compact"
-              disabled={!workflows.length}
-              onClick={() => setWorkflowPickerOpen((open) => !open)}
-            >
-              <FileInput size={14} />
-              {selected ? "更换工作流" : "加载工作流"}
-            </button>
             <button
               className="icon-button"
               title="关闭工作流面板"
@@ -570,46 +878,17 @@ export default function WorkflowPage({
         </div>
       )}
 
-      {panel && !selected && !workflowPickerOpen && (
+      {panel && !selected && (
         <div className="workflow-panel-empty">
           <WorkflowIcon size={21} />
           <strong>
-            {workflows.length ? "尚未加载工作流" : "没有已保存的工作流"}
+            {workflows.length ? "尚未选择工作流" : "没有已保存的工作流"}
           </strong>
           <span>
             {workflows.length
-              ? "选择一个流程后，可在当前 SSH 主机上逐步执行。"
+              ? "从上方下拉框选一个流程，即可在当前 SSH 主机上逐步执行。"
               : "先在工作流库中导入或创建一个工作流。"}
           </span>
-          {workflows.length > 0 && (
-            <button
-              className="button primary compact"
-              onClick={() => setWorkflowPickerOpen(true)}
-            >
-              <FileInput size={14} />
-              加载工作流
-            </button>
-          )}
-        </div>
-      )}
-
-      {panel && workflowPickerOpen && (
-        <div className="workflow-panel-picker" role="listbox" aria-label="选择工作流">
-          {workflows.map((workflow) => (
-            <button
-              key={workflow.id}
-              className="workflow-panel-picker-item"
-              role="option"
-              aria-selected={workflow.id === selectedID}
-              onClick={() => loadWorkflow(workflow)}
-            >
-              <span>
-                <strong>{workflow.title}</strong>
-                <small>{workflow.steps.length} 个步骤</small>
-              </span>
-              <FileOutput size={15} />
-            </button>
-          ))}
         </div>
       )}
 
@@ -632,7 +911,10 @@ export default function WorkflowPage({
                 </span>
                 <span className="workflow-library-copy">
                   <strong>{workflow.title}</strong>
-                  <small>{workflow.steps.length} 个步骤</small>
+                  <small>
+                    {workflow.steps.length} 个步骤
+                    {isBuiltInWorkflow(workflow.id) && " · 内置"}
+                  </small>
                 </span>
               </button>
               <button
@@ -928,26 +1210,26 @@ export default function WorkflowPage({
                             }
                           />
                         </label>
-                        <label>
-                          终端目标
-                          <select
+                        <div className="workflow-editor-field">
+                          <span>终端目标</span>
+                          <Select
+                            ariaLabel="终端目标"
+                            size="md"
                             value={step.terminalId}
-                            onChange={(event) =>
+                            onChange={(value) =>
                               updateDraft((workflow) =>
                                 updateStep(workflow, step.id, (item) => ({
                                   ...item,
-                                  terminalId: event.currentTarget.value,
+                                  terminalId: value,
                                 })),
                               )
                             }
-                          >
-                            {draft.terminals.map((terminal) => (
-                              <option key={terminal.id} value={terminal.id}>
-                                {terminal.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                            options={draft.terminals.map((terminal) => ({
+                              value: terminal.id,
+                              label: terminal.label,
+                            }))}
+                          />
+                        </div>
                       </div>
                       <label className="workflow-editor-label">
                         说明
@@ -1083,37 +1365,42 @@ export default function WorkflowPage({
                   </div>
                   <div className="workflow-target-grid">
                     {selected.terminals.map((terminal) => (
-                      <label key={terminal.id}>
+                      <div className="workflow-target-field" key={terminal.id}>
                         <span>{terminal.label}</span>
-                        <select
+                        <Select
+                          ariaLabel={terminal.label}
+                          size="md"
                           value={sessionBindings[terminal.id] ?? ""}
-                          onChange={(event) =>
+                          onChange={(value) =>
                             (() => {
                               setConfirmStepID(null);
                               setSessionBindings((current) => ({
                                 ...current,
-                                [terminal.id]: event.currentTarget.value,
+                                [terminal.id]: value,
                               }));
                             })()
                           }
-                        >
-                          <option value="">选择已连接的 SSH 终端</option>
-                          {availableSessions.map((session) => (
-                            <option key={session.id} value={session.id}>
-                              {terminalLabel(session)}
-                            </option>
-                          ))}
-                          {sessionBindings[terminal.id] &&
+                          options={[
+                            { value: "", label: "选择已连接的 SSH 终端" },
+                            ...availableSessions.map((session) => ({
+                              value: session.id,
+                              label: terminalLabel(session),
+                            })),
+                            ...(sessionBindings[terminal.id] &&
                             !availableSessions.some(
                               (session) =>
                                 session.id === sessionBindings[terminal.id],
-                            ) && (
-                              <option value={sessionBindings[terminal.id]}>
-                                终端已断开
-                              </option>
-                            )}
-                        </select>
-                      </label>
+                            )
+                              ? [
+                                  {
+                                    value: sessionBindings[terminal.id],
+                                    label: "终端已断开",
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
+                      </div>
                     ))}
                   </div>
                   {!availableSessions.length && (
@@ -1135,6 +1422,7 @@ export default function WorkflowPage({
                           onClick={() => {
                             setSelectedStepID(step.id);
                             setConfirmStepID(null);
+                            if (editingStepID !== step.id) cancelStepEdit();
                           }}
                         >
                           <span className="workflow-step-index">
@@ -1142,12 +1430,27 @@ export default function WorkflowPage({
                           </span>
                           <span className="workflow-step-list-copy">
                             <strong>{step.title || `步骤 ${index + 1}`}</strong>
-                            <small>{statusText[status]}</small>
+                            <small>
+                              {panel
+                                ? statusText[status]
+                                : (selected.terminals.find(
+                                    (item) => item.id === step.terminalId,
+                                  )?.label ?? "未指定终端")}
+                            </small>
                           </span>
-                          {statusIcon(status)}
+                          {panel && statusIcon(status)}
                         </button>
                       );
                     })}
+                    {!panel && (
+                      <button
+                        className="workflow-step-add"
+                        onClick={addWorkflowStep}
+                      >
+                        <Plus size={14} />
+                        添加步骤
+                      </button>
+                    )}
                   </nav>
 
                   {selectedStep ? (
@@ -1167,15 +1470,17 @@ export default function WorkflowPage({
                           <h3>{selectedStep.title}</h3>
                           <p>{selectedStep.description || "没有步骤说明"}</p>
                         </div>
-                        <span
-                          className={`workflow-status status-${currentStatus}`}
-                        >
-                          {statusIcon(currentStatus)}
-                          {statusText[currentStatus]}
-                        </span>
+                        {panel && (
+                          <span
+                            className={`workflow-status status-${currentStatus}`}
+                          >
+                            {statusIcon(currentStatus)}
+                            {statusText[currentStatus]}
+                          </span>
+                        )}
                       </header>
 
-                      {unmetDependencies.length > 0 && (
+                      {panel && unmetDependencies.length > 0 && (
                         <div className="workflow-warning">
                           <CircleAlert size={16} />
                           <span>
@@ -1188,35 +1493,94 @@ export default function WorkflowPage({
                         </div>
                       )}
 
-                      {selectedStep.command ? (
+                      {selectedStep.command || !panel ? (
                         <div className="workflow-command-block">
                           <div className="workflow-command-heading">
                             <span>
-                              发送到{" "}
+                              {panel ? "发送到" : "终端目标"}{" "}
                               {
                                 selected.terminals.find(
                                   (item) => item.id === selectedStep.terminalId,
                                 )?.label
                               }
                             </span>
-                            <button
-                              className="text-button"
-                              onClick={() => {
-                                setEditingCommandID((current) =>
-                                  current === selectedStep.id
-                                    ? null
-                                    : selectedStep.id,
-                                );
-                                setConfirmStepID(null);
-                              }}
-                            >
-                              <Pencil size={13} />
-                              {editingCommandID === selectedStep.id
-                                ? "完成调整"
-                                : "调整本次命令"}
-                            </button>
+                            <div className="workflow-command-heading-actions">
+                              <button
+                                className="text-button"
+                                onClick={() => void copyStepCommand()}
+                                disabled={!selectedStep.command.trim()}
+                              >
+                                <Copy size={13} />
+                                复制
+                              </button>
+                              {panel && (
+                                <button
+                                  className="text-button"
+                                  onClick={() => {
+                                    setEditingCommandID((current) =>
+                                      current === selectedStep.id
+                                        ? null
+                                        : selectedStep.id,
+                                    );
+                                    setConfirmStepID(null);
+                                  }}
+                                >
+                                  <Pencil size={13} />
+                                  {editingCommandID === selectedStep.id
+                                    ? "完成调整"
+                                    : "调整本次命令"}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {editingCommandID === selectedStep.id ? (
+                          {!panel && editingStepID === selectedStep.id ? (
+                            <div className="workflow-step-edit">
+                              <label className="workflow-step-edit-field">
+                                <span>标题</span>
+                                <input
+                                  value={stepTitleDraft}
+                                  maxLength={160}
+                                  onChange={(event) =>
+                                    setStepTitleDraft(event.currentTarget.value)
+                                  }
+                                />
+                              </label>
+                              <label className="workflow-step-edit-field">
+                                <span>命令模板</span>
+                                <textarea
+                                  className="workflow-command-editor"
+                                  rows={4}
+                                  spellCheck={false}
+                                  value={stepCommandDraft}
+                                  placeholder="留空表示由你手动完成这一步"
+                                  onChange={(event) =>
+                                    setStepCommandDraft(
+                                      event.currentTarget.value,
+                                    )
+                                  }
+                                />
+                              </label>
+                              <p className="workflow-field-hint">
+                                命令中的 <code>{"{{参数名}}"}</code>{" "}
+                                会在执行前替换为参数值。保存后会直接写入工作流。
+                              </p>
+                              <div className="workflow-step-edit-actions">
+                                <button
+                                  className="button secondary compact"
+                                  onClick={cancelStepEdit}
+                                >
+                                  取消
+                                </button>
+                                <button
+                                  className="button primary compact"
+                                  onClick={saveStepEdit}
+                                >
+                                  <Check size={14} />
+                                  保存步骤
+                                </button>
+                              </div>
+                            </div>
+                          ) : panel && editingCommandID === selectedStep.id ? (
                             <textarea
                               className="workflow-command-editor"
                               rows={4}
@@ -1240,7 +1604,8 @@ export default function WorkflowPage({
                             <pre className="workflow-command-preview">
                               {currentCommand.value ||
                                 currentCommand.error ||
-                                selectedStep.command}
+                                selectedStep.command ||
+                                "此步骤没有命令，由你手动完成。"}
                             </pre>
                           )}
                           {currentCommand.error && (
@@ -1265,124 +1630,7 @@ export default function WorkflowPage({
                         </div>
                       )}
 
-                      <div className="workflow-step-actions">
-                        {selectedStep.command ? (
-                          <button
-                            className={`button ${requiresConfirmation && confirmStepID === selectedStep.id ? "danger" : "primary"} compact`}
-                            disabled={Boolean(currentCommand.error)}
-                            onClick={() => {
-                              if (!requiresConfirmation) {
-                                if (currentCommand.value)
-                                  void executeStep(
-                                    selectedStep,
-                                    currentCommand.value,
-                                  );
-                                return;
-                              }
-                              if (confirmStepID !== selectedStep.id) {
-                                setConfirmStepID(selectedStep.id);
-                                return;
-                              }
-                              if (currentCommand.value)
-                                void executeStep(
-                                  selectedStep,
-                                  currentCommand.value,
-                                );
-                            }}
-                          >
-                            <Play size={14} />
-                            {requiresConfirmation
-                              ? confirmStepID === selectedStep.id
-                                ? "确认发送命令"
-                                : "检查命令后确认"
-                              : currentStatus === "pending" ||
-                                  currentStatus === "skipped"
-                                ? "执行此步"
-                                : "重跑此步"}
-                          </button>
-                        ) : (
-                          <button
-                            className="button primary compact"
-                            onClick={() =>
-                              setStepStatuses((current) => ({
-                                ...current,
-                                [selectedStep.id]: "completed",
-                              }))
-                            }
-                          >
-                            <Check size={14} />
-                            标记完成
-                          </button>
-                        )}
-                        {selectedStep.command && (
-                          <button
-                            className="button secondary compact"
-                            onClick={() =>
-                              setStepStatuses((current) => ({
-                                ...current,
-                                [selectedStep.id]: "completed",
-                              }))
-                            }
-                          >
-                            <Check size={14} />
-                            标记完成
-                          </button>
-                        )}
-                        <button
-                          className="button secondary compact"
-                          onClick={() => {
-                            setStepStatuses((current) => ({
-                              ...current,
-                              [selectedStep.id]: "skipped",
-                            }));
-                            setConfirmStepID(null);
-                          }}
-                        >
-                          <SkipForward size={14} />
-                          跳过
-                        </button>
-                        <button
-                          className="icon-button"
-                          title="标记失败"
-                          aria-label="标记失败"
-                          onClick={() =>
-                            setStepStatuses((current) => ({
-                              ...current,
-                              [selectedStep.id]: "failed",
-                            }))
-                          }
-                        >
-                          <CircleAlert size={15} />
-                        </button>
-                        {selectedTarget && (
-                          <button
-                            className="icon-button"
-                            title="查看终端"
-                            aria-label="查看所选终端"
-                            onClick={() => onViewTerminal(selectedTarget)}
-                          >
-                            <TerminalSquare size={16} />
-                          </button>
-                        )}
-                        {currentStatus !== "pending" && (
-                          <button
-                            className="icon-button"
-                            title="重置此步骤状态"
-                            aria-label="重置此步骤状态"
-                            onClick={() =>
-                              setStepStatuses((current) => ({
-                                ...current,
-                                [selectedStep.id]: "pending",
-                              }))
-                            }
-                          >
-                            <RotateCcw size={15} />
-                          </button>
-                        )}
-                      </div>
-                      <p className="workflow-step-footnote">
-                        命令发送后不会自动判定成功；查看终端输出，再手动记录结果。
-                      </p>
+                      {renderStepActions(selectedStep, selected)}
                     </section>
                   ) : (
                     <div className="workflow-step-detail workflow-empty-step">

@@ -19,6 +19,7 @@ import TransferQueue from "./files/TransferQueue";
 import { child, finished } from "./files/fileUtils";
 import type { Side } from "./files/fileUtils";
 import { useDirectory } from "./files/useDirectory";
+import { Select } from "./ui/Select";
 
 const TextFileDialog = lazy(() => import("./TextFileDialog"));
 
@@ -172,17 +173,20 @@ export default function FilesPane({
             下载{remote.selected.length > 0 && ` (${remote.selected.length})`}
           </button>
         </div>
-        <label>
-          同名文件
-          <select
-            aria-label="同名文件处理方式"
+        <div className="transfer-field">
+          <span>同名文件</span>
+          <Select
+            ariaLabel="同名文件处理方式"
+            size="sm"
+            className="transfer-select"
             value={conflict}
-            onChange={(e) => setConflict(e.target.value as "skip" | "replace")}
-          >
-            <option value="skip">跳过</option>
-            <option value="replace">替换</option>
-          </select>
-        </label>
+            onChange={(value) => setConflict(value as "skip" | "replace")}
+            options={[
+              { value: "skip", label: "跳过" },
+              { value: "replace", label: "替换" },
+            ]}
+          />
+        </div>
       </div>
       {session.status !== "connected" && (
         <div role="status" className="file-connection-message">

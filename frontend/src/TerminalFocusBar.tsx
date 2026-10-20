@@ -4,6 +4,8 @@ import type { Session } from "./types";
 import type { TerminalLayoutController } from "./hooks/useTerminalLayout";
 import { terminalTabLabel } from "./SessionTabs";
 import { sessionDetailLabel } from "./sessions";
+import { Select } from "./ui/Select";
+import type { SelectGroup } from "./ui/Select";
 
 export default function TerminalFocusBar({
   sessions,
@@ -37,31 +39,30 @@ export default function TerminalFocusBar({
           <Menu size={17} />
         </button>
       )}
-      <select
-        aria-label="切换终端"
+      <Select
+        ariaLabel="切换终端"
+        size="md"
+        className="terminal-focus-select"
         value={active}
-        onChange={(event) => layout.activateSession(event.target.value)}
-      >
-        {layout.tabs.map((tab) => {
-          const items = tab.sessionIds
-            .map((id) => sessions.find((session) => session.id === id))
-            .filter((session): session is Session => Boolean(session));
-          if (!items.length) return null;
-          return (
-            <optgroup
-              key={tab.id}
-              label={`${items[0].host.name} · ${terminalTabLabel(items)}`}
-            >
-              {items.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {sessionDetailLabel(session)}
-                  {items.length > 1 ? " · 分屏" : ""}
-                </option>
-              ))}
-            </optgroup>
-          );
-        })}
-      </select>
+        onChange={(value) => layout.activateSession(value)}
+        groups={layout.tabs
+          .map((tab) => {
+            const items = tab.sessionIds
+              .map((id) => sessions.find((session) => session.id === id))
+              .filter((session): session is Session => Boolean(session));
+            if (!items.length) return null;
+            return {
+              label: `${items[0].host.name} · ${terminalTabLabel(items)}`,
+              options: items.map((session) => ({
+                value: session.id,
+                label: `${sessionDetailLabel(session)}${
+                  items.length > 1 ? " · 分屏" : ""
+                }`,
+              })),
+            };
+          })
+          .filter((group): group is SelectGroup => Boolean(group))}
+      />
       {children}
       <button
         className="icon-button"

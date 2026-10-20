@@ -10,6 +10,7 @@ import {
 import type { PortForward, X11Config } from "../types";
 import { backend, errorText, isDesktop } from "../bridge";
 import { forwardSummary, forwardTypeNames } from "../tunneling";
+import { Select } from "../ui/Select";
 
 export function HostTunnelingFields({
   rules,
@@ -124,23 +125,24 @@ export function HostTunnelingFields({
                 className="forward-rule-fields"
                 hidden={expanded !== rule.id}
               >
-                <label className="field">
-                  转发类型
-                  <select
+                <div className="field">
+                  <span>转发类型</span>
+                  <Select
+                    ariaLabel="转发类型"
+                    size="lg"
                     value={rule.type}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       change(rule.id, {
-                        type: e.target.value as PortForward["type"],
+                        type: value as PortForward["type"],
                       })
                     }
-                  >
-                    <option value="local">本地转发 — 在本机访问远程服务</option>
-                    <option value="remote">
-                      远程转发 — 在服务器访问本机服务
-                    </option>
-                    <option value="dynamic">动态转发 — 本机 SOCKS5 代理</option>
-                  </select>
-                </label>
+                    options={[
+                      { value: "local", label: "本地转发 — 在本机访问远程服务" },
+                      { value: "remote", label: "远程转发 — 在服务器访问本机服务" },
+                      { value: "dynamic", label: "动态转发 — 本机 SOCKS5 代理" },
+                    ]}
+                  />
+                </div>
                 <div className="form-row tunnel-endpoint">
                   <label className="field">
                     {rule.type === "remote" ? "服务器监听地址" : "本机监听地址"}

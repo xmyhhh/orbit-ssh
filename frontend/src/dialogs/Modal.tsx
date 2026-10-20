@@ -30,6 +30,8 @@ export function Modal({
     );
     function key(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        // Let an open dropdown dismiss itself before the dialog closes.
+        if (document.body.dataset.selectOpen) return;
         // Let CodeMirror dismiss its search panel or completion popup first.
         if (
           (event.target as Element).closest?.(".cm-editor") &&

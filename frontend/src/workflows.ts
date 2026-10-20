@@ -36,6 +36,7 @@ export interface Workflow {
 }
 
 const storageKey = "orbit-ssh-workflows-v1";
+const deletedBuiltInsKey = "orbit-ssh-workflows-deleted-v1";
 const workflowsUpdatedEvent = "orbitssh:workflows-updated";
 const nginxWorkflowID = "orbitssh-nginx-maintenance-v1";
 const workflowFileMaxBytes = 5 * 1024 * 1024;
@@ -122,6 +123,344 @@ export const nginxWorkflow: Workflow = {
   ],
   updatedAt: Date.now(),
 };
+
+export const diskCleanupWorkflow: Workflow = {
+  format: workflowFormat,
+  schemaVersion: workflowSchemaVersion,
+  id: "orbitssh-disk-cleanup-v1",
+  title: "磁盘空间清理与日志轮转",
+  description:
+    "先排查占空间的目录，再清理过期日志、轮转压缩，最后复查磁盘水位。清理动作不可撤销，执行前请确认路径。",
+  parameters: [
+    {
+      name: "mount_point",
+      label: "要检查的挂载点",
+      defaultValue: "/",
+      required: true,
+    },
+    {
+      name: "keep_days",
+      label: "日志保留天数",
+      defaultValue: "7",
+      required: true,
+    },
+  ],
+  terminals: [{ id: "main", label: "目标服务器" }],
+  steps: [
+    {
+      id: "disk-usage",
+      title: "查看磁盘水位",
+      description: "先确认分区剩余空间，避免在满盘状态下做清理。",
+      command: "df -h {{mount_point}}",
+      terminalId: "main",
+      optional: true,
+      dependsOn: [],
+    },
+    {
+      id: "disk-large-dirs",
+      title: "定位占空间的目录",
+      description: "列出挂载点下最占空间的目录，判断该清理什么。",
+      command:
+        "sudo du -xh --max-depth=1 {{mount_point}} 2>/dev/null | sort -rh | head -20",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["disk-usage"],
+    },
+    {
+      id: "disk-old-logs",
+      title: "删除过期日志文件",
+      description: "删除超过保留天数的 .log 文件；不可撤销，执行前请确认。",
+      command:
+        "sudo find /var/log -type f -name '*.log' -mtime +{{keep_days}} -print -delete",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["disk-large-dirs"],
+    },
+    {
+      id: "disk-rotate",
+      title: "轮转并压缩日志",
+      description: "强制执行 logrotate，释放已归档日志占用的空间。",
+      command: "sudo logrotate -f /etc/logrotate.conf",
+      terminalId: "main",
+      optional: true,
+      dependsOn: ["disk-old-logs"],
+    },
+    {
+      id: "disk-recheck",
+      title: "复查磁盘水位",
+      description: "对比清理前后的剩余空间，确认效果。",
+      command: "df -h {{mount_point}}",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["disk-rotate"],
+    },
+  ],
+  updatedAt: Date.now(),
+};
+
+export const serviceHealthWorkflow: Workflow = {
+  format: workflowFormat,
+  schemaVersion: workflowSchemaVersion,
+  id: "orbitssh-service-health-v1",
+  title: "服务健康巡检",
+  description:
+    "只读巡检：确认服务是否在运行、最近有没有错误日志、监听了哪些端口、谁在吃资源。全程不修改系统。",
+  parameters: [
+    {
+      name: "service_name",
+      label: "服务名称",
+      defaultValue: "nginx",
+      required: true,
+    },
+  ],
+  terminals: [{ id: "main", label: "目标服务器" }],
+  steps: [
+    {
+      id: "health-status",
+      title: "确认服务状态",
+      description: "查看服务是否处于 active 状态以及运行时长。",
+      command: "systemctl status {{service_name}} --no-pager",
+      terminalId: "main",
+      optional: true,
+      dependsOn: [],
+    },
+    {
+      id: "health-errors",
+      title: "翻查最近一小时错误",
+      description: "只筛选 error 及以上级别；输出可能包含内部路径。",
+      command:
+        "sudo journalctl -u {{service_name}} --since '-1 hour' --no-pager -p err",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["health-status"],
+    },
+    {
+      id: "health-ports",
+      title: "查看监听端口",
+      description: "确认服务实际监听的地址和端口。",
+      command: "sudo ss -tlnp | grep {{service_name}}",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["health-status"],
+    },
+    {
+      id: "health-resources",
+      title: "查看资源占用排名",
+      description: "找出 CPU 占用最高的进程，判断是否需要扩容。",
+      command: "ps -eo pid,pcpu,pmem,comm --sort=-pcpu | head -10",
+      terminalId: "main",
+      optional: true,
+      dependsOn: ["health-status"],
+    },
+  ],
+  updatedAt: Date.now(),
+};
+
+export const dockerMaintenanceWorkflow: Workflow = {
+  format: workflowFormat,
+  schemaVersion: workflowSchemaVersion,
+  id: "orbitssh-docker-maintenance-v1",
+  title: "Docker 容器维护",
+  description:
+    "清理悬空镜像和已停止的容器，再重启指定容器并确认状态。清理会真正删除对象，执行前请确认。",
+  parameters: [
+    {
+      name: "container_name",
+      label: "要维护的容器名",
+      defaultValue: "app",
+      required: true,
+    },
+  ],
+  terminals: [{ id: "main", label: "目标服务器" }],
+  steps: [
+    {
+      id: "docker-list",
+      title: "列出全部容器",
+      description: "先看清楚有哪些容器以及它们的状态。",
+      command: "docker ps -a --no-trunc",
+      terminalId: "main",
+      optional: true,
+      dependsOn: [],
+    },
+    {
+      id: "docker-logs",
+      title: "查看容器最近日志",
+      description: "读取最后 100 行，判断是否有异常。",
+      command: "docker logs --tail 100 {{container_name}} 2>&1",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["docker-list"],
+    },
+    {
+      id: "docker-prune-images",
+      title: "清理悬空镜像",
+      description: "删除没有标签的悬空镜像，会释放磁盘空间。",
+      command: "docker image prune -f",
+      terminalId: "main",
+      optional: true,
+      dependsOn: ["docker-list"],
+    },
+    {
+      id: "docker-prune-containers",
+      title: "清理已停止的容器",
+      description: "删除所有已退出的容器；其日志会一并丢失。",
+      command: "docker container prune -f",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["docker-prune-images"],
+    },
+    {
+      id: "docker-restart",
+      title: "重启目标容器",
+      description: "重启指定容器，短暂中断该服务。",
+      command: "docker restart {{container_name}}",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["docker-prune-containers"],
+    },
+    {
+      id: "docker-verify",
+      title: "确认容器已恢复",
+      description: "检查重启后的容器状态。",
+      command: "docker ps --filter name={{container_name}}",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["docker-restart"],
+    },
+  ],
+  updatedAt: Date.now(),
+};
+
+export const tlsCertificateWorkflow: Workflow = {
+  format: workflowFormat,
+  schemaVersion: workflowSchemaVersion,
+  id: "orbitssh-tls-certificate-v1",
+  title: "TLS 证书与跳转检查",
+  description:
+    "只读检查线上证书的有效期、签发者和 HTTP 到 HTTPS 的跳转情况，用来判断证书是否快到期。",
+  parameters: [
+    {
+      name: "domain",
+      label: "域名",
+      defaultValue: "example.com",
+      required: true,
+    },
+  ],
+  terminals: [{ id: "main", label: "目标服务器" }],
+  steps: [
+    {
+      id: "tls-dates",
+      title: "查看证书有效期",
+      description: "输出 notBefore 与 notAfter，据此判断是否需要续期。",
+      command:
+        "echo | openssl s_client -servername {{domain}} -connect {{domain}}:443 2>/dev/null | openssl x509 -noout -dates",
+      terminalId: "main",
+      optional: false,
+      dependsOn: [],
+    },
+    {
+      id: "tls-issuer",
+      title: "查看签发者与证书主体",
+      description: "确认证书签发机构以及域名是否匹配。",
+      command:
+        "echo | openssl s_client -servername {{domain}} -connect {{domain}}:443 2>/dev/null | openssl x509 -noout -issuer -subject",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["tls-dates"],
+    },
+    {
+      id: "tls-redirect",
+      title: "检查 HTTP 跳转",
+      description: "确认 80 端口会 301/302 到 HTTPS。",
+      command:
+        "curl -sI -o /dev/null -w '%{http_code} %{redirect_url}\\n' http://{{domain}}/",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["tls-issuer"],
+    },
+    {
+      id: "tls-https",
+      title: "确认 HTTPS 可访问",
+      description: "返回状态码，200 表示链路正常。",
+      command: "curl -sI -o /dev/null -w '%{http_code}\\n' https://{{domain}}/",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["tls-redirect"],
+    },
+  ],
+  updatedAt: Date.now(),
+};
+
+export const systemUpdateWorkflow: Workflow = {
+  format: workflowFormat,
+  schemaVersion: workflowSchemaVersion,
+  id: "orbitssh-system-update-v1",
+  title: "系统更新与重启",
+  description:
+    "拉取更新包并升级系统，升级完成后按需重启。最后一步会断开连接，需要重新连回。",
+  parameters: [
+    {
+      name: "reboot_command",
+      label: "重启命令",
+      defaultValue: "sudo reboot",
+      required: true,
+    },
+  ],
+  terminals: [{ id: "main", label: "目标服务器" }],
+  steps: [
+    {
+      id: "update-check",
+      title: "查看可用更新",
+      description: "刷新软件源并列出可升级的软件包。",
+      command:
+        "sudo apt-get update -y && apt-get list --upgradable 2>/dev/null | tail -20",
+      terminalId: "main",
+      optional: true,
+      dependsOn: [],
+    },
+    {
+      id: "update-apply",
+      title: "安装更新",
+      description: "升级全部软件包，过程中会重启部分服务。",
+      command: "sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["update-check"],
+    },
+    {
+      id: "update-reboot",
+      title: "重启服务器",
+      description: "重启会立刻断开当前连接，请确认没有其他任务在跑。",
+      command: "{{reboot_command}}",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["update-apply"],
+    },
+    {
+      id: "update-verify",
+      title: "重启后确认",
+      description: "重新连上后执行，确认内核版本和运行时间。",
+      command: "uname -r && uptime",
+      terminalId: "main",
+      optional: false,
+      dependsOn: ["update-reboot"],
+    },
+  ],
+  updatedAt: Date.now(),
+};
+
+export const builtInWorkflows: Workflow[] = [
+  nginxWorkflow,
+  diskCleanupWorkflow,
+  serviceHealthWorkflow,
+  dockerMaintenanceWorkflow,
+  tlsCertificateWorkflow,
+  systemUpdateWorkflow,
+];
+
+export function isBuiltInWorkflow(id: string) {
+  return builtInWorkflows.some((workflow) => workflow.id === id);
+}
 
 export function newWorkflow(): Workflow {
   const now = Date.now();
@@ -288,15 +627,49 @@ export function validateWorkflow(value: unknown): Workflow {
   };
 }
 
+function deletedBuiltIns(): string[] {
+  try {
+    const stored: unknown = JSON.parse(
+      localStorage.getItem(deletedBuiltInsKey) ?? "[]",
+    );
+    return Array.isArray(stored)
+      ? stored.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markBuiltInDeleted(id: string) {
+  if (!isBuiltInWorkflow(id)) return;
+  const deleted = deletedBuiltIns();
+  if (deleted.includes(id)) return;
+  try {
+    localStorage.setItem(deletedBuiltInsKey, JSON.stringify([...deleted, id]));
+  } catch {
+    /* Storage may be unavailable; the workflow is still removed for this session. */
+  }
+}
+
 export function loadWorkflows(): Workflow[] {
+  const deleted = deletedBuiltIns();
   try {
     const stored = localStorage.getItem(storageKey);
-    if (stored === null) return [nginxWorkflow];
+    if (stored === null) {
+      return builtInWorkflows.filter((item) => !deleted.includes(item.id));
+    }
     const decoded: unknown = JSON.parse(stored);
     if (!Array.isArray(decoded)) return [];
-    return decoded.map(validateWorkflow);
+    const saved = decoded.map(validateWorkflow);
+    // Built-in samples stay available unless the user deleted them on purpose.
+    const missing = builtInWorkflows.filter(
+      (item) =>
+        !deleted.includes(item.id) &&
+        !saved.some((workflow) => workflow.id === item.id),
+    );
+    return [...saved, ...missing];
   } catch {
-    return [nginxWorkflow];
+    return builtInWorkflows.filter((item) => !deleted.includes(item.id));
   }
 }
 

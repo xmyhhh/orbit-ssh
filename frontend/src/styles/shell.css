@@ -68,8 +68,8 @@
   border-color: var(--danger);
 }
 .button.compact {
-  height: 31px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 12px;
   font-size: 12px;
 }
 .button kbd {

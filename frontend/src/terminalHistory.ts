@@ -194,14 +194,54 @@ export function displayTerminalOutput(output: string) {
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
 }
 
-export function fuzzyMatch(query: string, text: string) {
-  const needle = [...query.trim().toLocaleLowerCase()];
-  if (!needle.length) return true;
-  const haystack = text.toLocaleLowerCase();
-  if (haystack.includes(needle.join(""))) return true;
-  let index = 0;
-  for (const character of haystack) {
-    if (character === needle[index] && ++index === needle.length) return true;
+export interface MatchRange {
+  start: number;
+  end: number;
+}
+
+// A query is split on whitespace and every term has to match. Terms that are
+// not written as a single substring fall back to an in-order match, but only
+// inside a tight window so a long transcript cannot produce false hits.
+function findTerm(haystack: string, term: string): MatchRange | null {
+  const direct = haystack.indexOf(term);
+  if (direct >= 0) return { start: direct, end: direct + term.length };
+  const limit = term.length * 3 + 6;
+  let start = haystack.indexOf(term[0]);
+  while (start >= 0) {
+    let index = 1;
+    let end = start;
+    for (let i = start + 1; i < haystack.length && index < term.length; i++) {
+      if (haystack[i] !== term[index]) continue;
+      index++;
+      end = i;
+      if (end - start + 1 > limit) break;
+    }
+    if (index === term.length && end - start + 1 <= limit)
+      return { start, end: end + 1 };
+    start = haystack.indexOf(term[0], start + 1);
   }
-  return false;
+  return null;
+}
+
+export function searchTerms(query: string) {
+  return query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+}
+
+export function matchRanges(text: string, query: string): MatchRange[] {
+  const terms = searchTerms(query);
+  if (!terms.length) return [];
+  const lower = text.toLocaleLowerCase();
+  const ranges: MatchRange[] = [];
+  for (const term of terms) {
+    const range = findTerm(lower, term);
+    if (range) ranges.push(range);
+  }
+  return ranges.sort((a, b) => a.start - b.start);
+}
+
+export function matchesSearch(text: string, query: string) {
+  const terms = searchTerms(query);
+  if (!terms.length) return true;
+  const lower = text.toLocaleLowerCase();
+  return terms.every((term) => findTerm(lower, term) !== null);
 }
