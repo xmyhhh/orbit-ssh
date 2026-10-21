@@ -214,12 +214,14 @@ function New-InstallerPackage([string]$exePath) {
     Push-Location (Split-Path -Parent $nsiPath)
     try {
         $env:NSISDIR = $nsisDir
+        # Send the compiler output to the host so it does not end up in the
+        # return value of this function.
         Invoke-Checked $makensis @(
             '/V2',
             "/DAPP_VERSION=$Version",
             "/DVI_VERSION=$viVersion",
             (Split-Path -Leaf $nsiPath)
-        )
+        ) | Out-Host
     } finally {
         $env:NSISDIR = $previousNsisDir
         Pop-Location
