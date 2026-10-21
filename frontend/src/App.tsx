@@ -1089,6 +1089,7 @@ export default function App() {
                             .then((path) => path && notify(`已导出到 ${path}`))
                             .catch((error) => notify(errorText(error)));
                         }}
+                        onNotify={notify}
                         onImport={() => {
                           if (!isDesktop()) {
                             notify("请在桌面版中导入主机配置");

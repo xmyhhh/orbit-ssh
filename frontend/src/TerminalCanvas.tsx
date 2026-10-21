@@ -289,6 +289,7 @@ export default function TerminalCanvas({
                   else handles.current.delete(s.id);
                 }}
                 session={s}
+                selected={active === s.id}
                 active={
                   active === s.id &&
                   !suspended &&

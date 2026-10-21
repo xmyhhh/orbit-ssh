@@ -345,7 +345,7 @@
   border: 1px solid var(--line-strong);
   background: var(--surface);
   box-shadow: var(--shadow);
-  width: 125px;
+  width: 140px;
   padding: 4px;
   z-index: 10;
   border-radius: 7px;
@@ -363,6 +363,53 @@
   background: var(--surface-soft);
 }
 .card-menu .delete {
+  color: var(--danger);
+}
+/* Rendered in a portal so the host grid cannot clip the menu. */
+.host-context-menu {
+  position: fixed;
+  z-index: 40;
+  width: 172px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+}
+.host-context-name {
+  padding: 5px 8px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--muted);
+}
+.host-context-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: left;
+}
+.host-context-menu > button:hover,
+.host-context-menu > button:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.host-context-menu > button.danger {
+  color: var(--danger);
+}
+.host-context-menu > button.danger:hover,
+.host-context-menu > button.danger:focus-visible {
+  background: var(--danger-bg);
   color: var(--danger);
 }
 .host-card-address {

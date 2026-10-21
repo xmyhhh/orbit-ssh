@@ -25,6 +25,7 @@ export default function HostsPage({
   onImportSSHConfig,
   onExport,
   onImport,
+  onNotify,
 }: {
   hosts: Host[];
   sessions: Session[];
@@ -45,6 +46,7 @@ export default function HostsPage({
   onImportSSHConfig: () => void;
   onExport: () => void;
   onImport: () => void;
+  onNotify?: (message: string) => void;
 }) {
   let filtered = hosts.filter(
     (h) =>
@@ -173,6 +175,7 @@ export default function HostsPage({
                 onEdit={() => onEdit(h)}
                 onDelete={() => onDelete(h)}
                 onFavorite={() => onFavorite(h)}
+                onNotify={onNotify}
               />
             ))}
           </div>

@@ -28,6 +28,7 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props {
   session: Session;
+  selected: boolean;
   active: boolean;
   dark: boolean;
   fontSize: number;
@@ -109,6 +110,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
   function TerminalPane(
     {
       session,
+      selected,
       active,
       dark,
       fontSize,
@@ -164,6 +166,18 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       onZoom,
       onSearch,
     };
+    function disposeWebglAddon(addon: WebglAddon) {
+      try {
+        addon.dispose();
+      } catch {
+        // A lost WebGL context can make addon teardown throw.
+      }
+    }
+    function releaseWebglRenderer() {
+      const addon = webglRenderer.current;
+      webglRenderer.current = null;
+      if (addon) disposeWebglAddon(addon);
+    }
     function attachWebglRenderer(term: Terminal) {
       if (
         webglRenderer.current ||
@@ -174,19 +188,16 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       let addon: WebglAddon | undefined;
       try {
         addon = new WebglAddon();
-        term.loadAddon(addon);
         webglRenderer.current = addon;
+        term.loadAddon(addon);
         const renderer = addon;
         renderer.onContextLoss(() => {
-          if (webglRenderer.current === renderer) {
-            webglRenderer.current = null;
-            renderer.dispose();
-          }
+          if (webglRenderer.current === renderer) releaseWebglRenderer();
         });
       } catch {
         if (addon) {
-          if (webglRenderer.current === addon) webglRenderer.current = null;
-          addon.dispose();
+          if (webglRenderer.current === addon) releaseWebglRenderer();
+          else disposeWebglAddon(addon);
         }
       }
     }
@@ -601,8 +612,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         input.dispose();
         offData();
         offClosed();
-        webglRenderer.current?.dispose();
-        webglRenderer.current = null;
+        releaseWebglRenderer();
         term.dispose();
         terminal.current = null;
       };
@@ -617,16 +627,13 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           const term = terminal.current;
           if (term?.element) attachWebglRenderer(term);
         });
-      } else {
-        webglRenderer.current?.dispose();
-        webglRenderer.current = null;
-      }
+      } else if (!selected) releaseWebglRenderer();
       return () => {
         if (rendererFrame !== undefined) cancelAnimationFrame(rendererFrame);
       };
-      // Renderer ownership follows the focused session and its terminal.
+      // Renderer ownership follows session selection, not modal suspension.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active, session.id]);
+    }, [active, selected, session.id]);
 
     useEffect(() => {
       if (historyEnabled) return;

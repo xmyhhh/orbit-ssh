@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  Copy,
   Ellipsis,
   Pencil,
   Server,
   Star,
   Trash2,
 } from "lucide-react";
+import { errorText, writeClipboard } from "./bridge";
+import HostContextMenu from "./HostContextMenu";
 import type { Host } from "./types";
 
 export default function HostCard({
@@ -16,6 +19,7 @@ export default function HostCard({
   onEdit,
   onDelete,
   onFavorite,
+  onNotify,
 }: {
   host: Host;
   online: boolean;
@@ -23,8 +27,13 @@ export default function HostCard({
   onEdit: () => void;
   onDelete: () => void;
   onFavorite: () => void;
+  onNotify?: (message: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function outside(e: MouseEvent) {
@@ -40,10 +49,20 @@ export default function HostCard({
       document.removeEventListener("keydown", escape);
     };
   }, []);
+  function copy(text: string, message: string) {
+    void writeClipboard(text)
+      .then(() => onNotify?.(message))
+      .catch((error) => onNotify?.(`复制失败：${errorText(error)}`));
+  }
   return (
     <article
       className="host-card"
       title={online ? "双击新建终端" : "双击连接"}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuOpen(false);
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
       onDoubleClick={(e) => {
         if (
           e.target instanceof Element &&
@@ -94,6 +113,27 @@ export default function HostCard({
                 编辑主机
               </button>
               <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  copy(host.address, `已复制 ${host.name} 的 IP 地址`);
+                }}
+              >
+                <Copy size={14} />
+                复制 IP 地址
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  copy(
+                    `${host.username}@${host.address}`,
+                    `已复制 ${host.name} 的 用户@IP`,
+                  );
+                }}
+              >
+                <Copy size={14} />
+                复制 用户@IP
+              </button>
+              <button
                 className="delete"
                 onClick={() => {
                   setMenuOpen(false);
@@ -124,6 +164,20 @@ export default function HostCard({
           <ArrowUpRight size={14} />
         </button>
       </div>
+      {contextMenu && (
+        <HostContextMenu
+          host={host}
+          online={online}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onConnect={onConnect}
+          onEdit={onEdit}
+          onFavorite={onFavorite}
+          onCopy={copy}
+          onDelete={onDelete}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </article>
   );
 }
