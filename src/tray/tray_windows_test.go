@@ -3,6 +3,8 @@
 package tray
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
@@ -11,6 +13,13 @@ import (
 )
 
 func TestWindowsSystemTray(t *testing.T) {
+	// The application hands the icon over before the tray is installed, so the
+	// test has to provide the same artwork.
+	icon, err := os.ReadFile(filepath.Join("..", "..", "build", "windows", "icon.ico"))
+	if err != nil {
+		t.Fatalf("read tray icon: %v", err)
+	}
+	SetAsset(icon)
 	className, _ := windows.UTF16PtrFromString("Shell_TrayWnd")
 	if hwnd, _, _ := trayUser32.NewProc("FindWindowW").Call(uintptr(unsafe.Pointer(className)), 0); hwnd == 0 {
 		t.Skip("Windows notification area is not available in this session")
