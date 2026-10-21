@@ -5,5 +5,5 @@ package tray
 var asset []byte
 
 // SetAsset provides the artwork for the tray entry. Windows expects an icon
-// file, Linux a PNG and macOS draws its own menu bar icon.
+// file, Linux a PNG and macOS a monochrome menu bar glyph.
 func SetAsset(data []byte) { asset = data }

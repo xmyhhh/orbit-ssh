@@ -122,7 +122,7 @@ macOS 版的平台差异：
 
 - 系统托盘使用菜单栏图标实现，WSL 只提供 Windows 版本，界面会隐藏对应入口。
 - 本地 Shell 在 macOS 上通过伪终端（PTY）运行，使用 `github.com/creack/pty` 启动登录 Shell 及 zsh、bash、sh、fish、tcsh、csh、ksh，Windows 上继续使用 ConPTY。实现分别位于 `src/local/local_darwin.go` 和 `src/local/local_windows.go`，`src/local/pty_unix.go` 存放 macOS 与 Linux 共用的伪终端实现，`src/local/local_linux.go` 提供 Linux 的 Shell 列表，`src/local/local_other.go` 为其余平台保留占位实现。
-- 后台常驻在 macOS 上通过菜单栏图标实现，位于 `src/tray/tray_darwin.go`、`src/tray/tray_darwin.m` 和 `src/tray/tray_darwin_callbacks.go`。菜单栏图标使用 SF Symbols（macOS 11 起），低版本回退为自绘的模板图标；菜单栏操作必须回到主线程，所以 Objective-C 侧统一用 `dispatch_async(dispatch_get_main_queue(), ...)`。`.m` 文件必须带 `//go:build darwin && !android && !androidtest`，否则 `go test -tags androidtest` 会因为缺少 cgo 而无法编译。
+- 后台常驻在 macOS 上通过菜单栏图标实现，位于 `src/tray/tray_darwin.go`、`src/tray/tray_darwin.m` 和 `src/tray/tray_darwin_callbacks.go`。菜单栏图标使用内嵌的 `build/darwin/menubar.png`（应用 logo 的单色剪影，由 `scripts/generate-mac-tray-icon.py` 从 `build/appicon.png` 提取），以 template image 方式自动适配浅色与深色菜单栏；资源缺失或 macOS 不支持时才回退为 SF Symbols（macOS 11 起）和自绘的模板图标。菜单栏操作必须回到主线程，所以 Objective-C 侧统一用 `dispatch_async(dispatch_get_main_queue(), ...)`。`.m` 文件必须带 `//go:build darwin && !android && !androidtest`，否则 `go test -tags androidtest` 会因为缺少 cgo 而无法编译。
 - 主机配置、凭据和终端历史保存在 `~/Library/Application Support/OrbitSSH`，密码与私钥口令存入 macOS 钥匙串，私钥保留在原始文件位置。
 - SSH Agent 读取 `SSH_AUTH_SOCK`；macOS 默认不常驻运行 `ssh-agent`，使用前先执行 `eval "$(ssh-agent -s)"` 并用 `ssh-add` 加载密钥。
 - X11 转发需要 XQuartz，认证 cookie 从 `~/.Xauthority` 或 `XAUTHORITY` 指向的文件读取。

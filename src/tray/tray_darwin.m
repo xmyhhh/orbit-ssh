@@ -57,6 +57,21 @@ static NSImage *OrbitTrayFallbackImage(void) {
     return image;
 }
 
+static NSImage *OrbitTrayImageFromPNG(NSData *data) {
+    if (data == nil || data.length == 0) {
+        return nil;
+    }
+    NSImage *image = [[NSImage alloc] initWithData:data];
+    if (image == nil) {
+        return nil;
+    }
+    image.template = YES;
+    [image setSize:NSMakeSize(18, 18)];
+    return image;
+}
+
+// The system symbol and the hand drawn glyph are fallbacks for a missing or
+// unreadable artwork payload only, so the menu bar keeps showing the logo.
 static NSImage *OrbitTrayImage(NSString *label) {
     if (@available(macOS 11.0, *)) {
         NSImage *image = [NSImage imageWithSystemSymbolName:@"terminal" accessibilityDescription:label];
@@ -72,20 +87,30 @@ static NSImage *OrbitTrayImage(NSString *label) {
     return OrbitTrayFallbackImage();
 }
 
-void OrbitTrayCreate(const char *title) {
+void OrbitTrayCreate(const char *title, const unsigned char *imageData, int imageLength) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (sStatusItem != nil) {
             OrbitTrayAction(OrbitTrayActionReady, 1);
             return;
         }
         NSString *label = [NSString stringWithUTF8String:title];
+        // dataWithBytes copies before the block runs, so the Go owned buffer
+        // may be freed right after this call returns.
+        NSData *imageDataCopy = nil;
+        if (imageData != NULL && imageLength > 0) {
+            imageDataCopy = [NSData dataWithBytes:imageData length:(NSUInteger)imageLength];
+        }
 
         sStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
         if (sStatusItem == nil) {
             OrbitTrayAction(OrbitTrayActionReady, 0);
             return;
         }
-        sStatusItem.button.image = OrbitTrayImage(label);
+        NSImage *image = OrbitTrayImageFromPNG(imageDataCopy);
+        if (image == nil) {
+            image = OrbitTrayImage(label);
+        }
+        sStatusItem.button.image = image;
         sStatusItem.button.toolTip = label;
 
         sShowTarget = [[OrbitTrayTarget alloc] init];

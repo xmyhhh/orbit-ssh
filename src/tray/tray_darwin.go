@@ -35,7 +35,13 @@ func Start(callbacks Callbacks) (func(), error) {
 
 	title := C.CString("Orbit SSH")
 	defer C.free(unsafe.Pointer(title))
-	C.OrbitTrayCreate(title)
+	var image *C.uchar
+	imageLen := C.int(len(asset))
+	if len(asset) > 0 {
+		image = (*C.uchar)(C.CBytes(asset))
+		defer C.free(unsafe.Pointer(image))
+	}
+	C.OrbitTrayCreate(title, image, imageLen)
 
 	// The item is installed on the main thread, so wait for the result before
 	// reporting the tray as ready.
