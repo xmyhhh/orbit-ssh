@@ -9,6 +9,7 @@ import {
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { WebglAddon } from "@xterm/addon-webgl";
 import {
   backend,
   errorText,
@@ -124,6 +125,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
   ) {
     const container = useRef<HTMLDivElement>(null);
     const terminal = useRef<Terminal | null>(null);
+    const webglRenderer = useRef<WebglAddon | null>(null);
     const ready = useRef(false);
     const fit = useRef<FitAddon | null>(null);
     const search = useRef<SearchAddon | null>(null);
@@ -162,6 +164,33 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       onZoom,
       onSearch,
     };
+    function attachWebglRenderer(term: Terminal) {
+      if (
+        webglRenderer.current ||
+        typeof WebGL2RenderingContext === "undefined"
+      )
+        return;
+
+      let addon: WebglAddon | undefined;
+      try {
+        addon = new WebglAddon();
+        term.loadAddon(addon);
+        webglRenderer.current = addon;
+        const renderer = addon;
+        renderer.onContextLoss(() => {
+          if (webglRenderer.current === renderer) {
+            webglRenderer.current = null;
+            renderer.dispose();
+          }
+        });
+      } catch {
+        if (addon) {
+          if (webglRenderer.current === addon) webglRenderer.current = null;
+          addon.dispose();
+        }
+      }
+    }
+
     const closeMenu = useCallback((restoreFocus = false) => {
       setMenu(null);
       if (restoreFocus && latest.current.active) terminal.current?.focus();
@@ -438,6 +467,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       const openFrame = requestAnimationFrame(() => {
         if (!disposed && container.current) {
           term.open(container.current);
+          if (latest.current.active) attachWebglRenderer(term);
           if (isAndroid()) disposeAndroidTouch = installAndroidTerminalTouch(container.current, term, {
             sessionID: session.id,
             active: () => latest.current.active,
@@ -571,12 +601,32 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         input.dispose();
         offData();
         offClosed();
+        webglRenderer.current?.dispose();
+        webglRenderer.current = null;
         term.dispose();
         terminal.current = null;
       };
       // A terminal and its stream subscriptions live for the entire session.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id]);
+
+    useEffect(() => {
+      let rendererFrame: number | undefined;
+      if (active) {
+        rendererFrame = requestAnimationFrame(() => {
+          const term = terminal.current;
+          if (term?.element) attachWebglRenderer(term);
+        });
+      } else {
+        webglRenderer.current?.dispose();
+        webglRenderer.current = null;
+      }
+      return () => {
+        if (rendererFrame !== undefined) cancelAnimationFrame(rendererFrame);
+      };
+      // Renderer ownership follows the focused session and its terminal.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [active, session.id]);
 
     useEffect(() => {
       if (historyEnabled) return;
