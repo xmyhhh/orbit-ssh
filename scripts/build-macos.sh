@@ -130,9 +130,9 @@ fi
 
 if [ "$sign_identity" != 'none' ]; then
     # Sign the bundle so the Keychain and the notification centre see one
-    # stable code identity across rebuilds.
-    run codesign --force --deep --options runtime --sign "$sign_identity" "$app_path"
-    run codesign --verify --deep --strict --verbose=2 "$app_path"
+    # stable code identity across rebuilds. The same script signs the CI
+    # artifacts, so a local build and a release build are signed alike.
+    run "$repo_path/scripts/sign-macos.sh" "$app_path" --identity "$sign_identity"
 fi
 
 binary_path="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -print -quit)"

@@ -116,6 +116,19 @@ v3.2 的 GitHub Actions 发布会生成 Windows、macOS 和 Linux 桌面包及 `
 
 脚本依次生成缺失的 Wails 前端绑定、运行前端测试与构建、桌面及 Android 桥接 Go 测试、Go 静态检查，最后调用 Wails 编译并签名。可用 `--platform` 指定构建目标（`darwin/arm64`、`darwin/amd64`、`darwin/universal`），用 `--sign-identity` 指定签名身份（默认 `-` 为临时签名，传入 `none` 可跳过签名），用 `--output-name` 修改 App 内可执行文件名，用 `--skip-frontend` 复用已有的 `frontend/dist` 和 `frontend/wailsjs`，用 `--wails-path` 指定 Wails CLI。`--package` 会把 App、`LICENSE.txt` 和 `README.txt` 一起压缩到 `output/release`，并输出 SHA-256 校验值。
 
+签名由 `scripts/sign-macos.sh` 完成，CI 与本地共用同一个脚本：
+
+```bash
+# 临时签名（ad-hoc）
+./scripts/sign-macos.sh "build/bin/Orbit SSH.app"
+
+# 用开发者证书签名并公证
+./scripts/sign-macos.sh "build/bin/Orbit SSH.app" \
+  --identity "Developer ID Application: Your Name (TEAMID)" --notarize
+```
+
+Wails 不会给 App 签名，Go 链接器只在可执行文件上留下一个 ad-hoc 签名，Bundle 本身没有签名也没有 `_CodeSignature` 目录。macOS 会把这样的 Bundle 判定为损坏，浏览器下载后再打开就会提示「已损坏，无法打开」。因此签名步骤不能省略；`--notarize` 还需要在环境中提供 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 和 `APPLE_TEAM_ID`。
+
 App 的 Bundle 标识符由 `build/darwin/Info.plist` 固定为 `io.orbitssh.macos`，与 Android 的 `io.orbitssh.android` 保持一致；未提供该文件时 Wails 会生成默认模板，标识符会退化为 `com.wails.<项目名>`。
 
 macOS 版的平台差异：
@@ -160,6 +173,18 @@ wails build -platform linux/amd64
 
 - 产物命名为 `OrbitSSH-v<版本>-<平台>-<架构>.<ext>`，与既有发布保持一致。
 - 每个平台的构建在独立 job 中进行，Linux 依赖 `ubuntu-24.04` 的 WebKitGTK 4.1。
+- macOS 的产物在打包前由 `scripts/sign-macos.sh` 签名。仓库需要配置下列 Secrets，缺省时退回到临时签名：
+
+  | Secret | 说明 |
+  | --- | --- |
+  | `MACOS_CERTIFICATE_P12` | 开发者证书 `.p12` 的 base64 内容。 |
+  | `MACOS_CERTIFICATE_PASSWORD` | `.p12` 的密码。 |
+  | `MACOS_SIGN_IDENTITY` | 签名身份，例如 `Developer ID Application: Your Name (TEAMID)`。 |
+  | `APPLE_ID` | 公证用的 Apple ID，可选。 |
+  | `APPLE_APP_SPECIFIC_PASSWORD` | Apple ID 的专用密码，可选。 |
+  | `APPLE_TEAM_ID` | 开发者团队 ID，可选。 |
+
+  前三项齐全时用开发者证书签名并带时间戳；三项公证凭据也齐全时额外提交公证并把票据 stapler 进 Bundle，下载后无需任何放行操作。只有前三项时签名有效但未公证，首次打开需要用户右键确认；一项都没有时用临时签名，同样不会出现「已损坏」的提示。
 - Windows 的便携版和安装版由 `scripts/package-windows.ps1` 生成，和本地发布用的是同一套脚本，因此两个压缩包都带有许可证、说明和 WebView2 引导程序；脚本会自行下载并校验 NSIS。
 - 汇总 job 检出仓库以读取 `docs/releases/<标签>.md` 作为发布说明，缺失时使用占位文本；同一个 job 生成 `SHA256SUMS.txt`。
 - 工作流会校验标签与 `wails.json`、`frontend/package.json` 的版本号一致，不一致直接失败，避免出现文件名与程序版本对不上的发布。

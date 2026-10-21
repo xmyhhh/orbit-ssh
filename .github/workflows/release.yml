@@ -116,6 +116,53 @@ jobs:
       - name: Build the application
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.args }} ${{ matrix.tags }}
 
+      - name: Sign the macOS bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # Wails does not sign the bundle, so an unsigned download opens with
+          # "Orbit SSH is damaged and can't be opened" on a Mac that carries
+          # the quarantine attribute. Signing the bundle fixes that; a
+          # Developer ID signature plus a stapled ticket removes the
+          # Gatekeeper prompt as well.
+          app='build/bin/Orbit SSH.app'
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          identity='-'
+          notarize=0
+          if [ -n "${MACOS_CERTIFICATE_P12:-}" ] && [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
+            echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+            security create-keychain -p "$RUNNER_TEMP" "$keychain"
+            security unlock-keychain -p "$RUNNER_TEMP" "$keychain"
+            security import "$RUNNER_TEMP/signing.p12" -k "$keychain" \
+              -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" "$keychain"
+            rm -f "$RUNNER_TEMP/signing.p12"
+            identity="$MACOS_SIGN_IDENTITY"
+            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+              notarize=1
+            else
+              echo '::warning::No notarization credentials found; the app is signed but not notarized.'
+            fi
+          else
+            echo '::warning::No Developer ID certificate configured; signing ad-hoc. macOS still asks the user to confirm the app on the first launch.'
+          fi
+          args=(--identity "$identity")
+          if [ "$identity" != '-' ]; then
+            args+=(--keychain "$keychain")
+          fi
+          if [ "$notarize" -eq 1 ]; then
+            args+=(--notarize)
+          fi
+          ./scripts/sign-macos.sh "$app" "${args[@]}"
+
       - name: Package macOS
         if: runner.os == 'macOS'
         shell: bash
