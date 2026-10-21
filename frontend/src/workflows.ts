@@ -1,5 +1,14 @@
 export const workflowFormat = "orbitssh.workflow";
-export const workflowSchemaVersion = 1;
+export const workflowSchemaVersion = 2;
+export const legacyWorkflowSchemaVersion = 1;
+
+/**
+ * A workflow is either a manual ("flat": sibling entries that can be run in
+ * any order) or a procedure ("sequence": numbered steps with prerequisites).
+ */
+export type WorkflowMode = "flat" | "sequence";
+
+export type StepStatus = "pending" | "sent" | "completed" | "failed" | "skipped";
 
 export interface WorkflowParameter {
   name: string;
@@ -29,6 +38,7 @@ export interface Workflow {
   id: string;
   title: string;
   description: string;
+  mode: WorkflowMode;
   parameters: WorkflowParameter[];
   terminals: WorkflowTerminal[];
   steps: WorkflowStep[];
@@ -45,6 +55,7 @@ export const nginxWorkflow: Workflow = {
   format: workflowFormat,
   schemaVersion: workflowSchemaVersion,
   id: nginxWorkflowID,
+  mode: "sequence",
   title: "检查并更新 Nginx 配置",
   description:
     "查看当前配置、编辑指定文件、验证语法并重启服务。编辑配置后再继续；每条命令都需要单独发送。",
@@ -128,6 +139,7 @@ export const diskCleanupWorkflow: Workflow = {
   format: workflowFormat,
   schemaVersion: workflowSchemaVersion,
   id: "orbitssh-disk-cleanup-v1",
+  mode: "sequence",
   title: "磁盘空间清理与日志轮转",
   description:
     "先排查占空间的目录，再清理过期日志、轮转压缩，最后复查磁盘水位。清理动作不可撤销，执行前请确认路径。",
@@ -202,6 +214,7 @@ export const serviceHealthWorkflow: Workflow = {
   format: workflowFormat,
   schemaVersion: workflowSchemaVersion,
   id: "orbitssh-service-health-v1",
+  mode: "sequence",
   title: "服务健康巡检",
   description:
     "只读巡检：确认服务是否在运行、最近有没有错误日志、监听了哪些端口、谁在吃资源。全程不修改系统。",
@@ -260,6 +273,7 @@ export const dockerMaintenanceWorkflow: Workflow = {
   format: workflowFormat,
   schemaVersion: workflowSchemaVersion,
   id: "orbitssh-docker-maintenance-v1",
+  mode: "sequence",
   title: "Docker 容器维护",
   description:
     "清理悬空镜像和已停止的容器，再重启指定容器并确认状态。清理会真正删除对象，执行前请确认。",
@@ -335,6 +349,7 @@ export const tlsCertificateWorkflow: Workflow = {
   format: workflowFormat,
   schemaVersion: workflowSchemaVersion,
   id: "orbitssh-tls-certificate-v1",
+  mode: "sequence",
   title: "TLS 证书与跳转检查",
   description:
     "只读检查线上证书的有效期、签发者和 HTTP 到 HTTPS 的跳转情况，用来判断证书是否快到期。",
@@ -395,6 +410,7 @@ export const systemUpdateWorkflow: Workflow = {
   format: workflowFormat,
   schemaVersion: workflowSchemaVersion,
   id: "orbitssh-system-update-v1",
+  mode: "sequence",
   title: "系统更新与重启",
   description:
     "拉取更新包并升级系统，升级完成后按需重启。最后一步会断开连接，需要重新连回。",
@@ -449,6 +465,80 @@ export const systemUpdateWorkflow: Workflow = {
   updatedAt: Date.now(),
 };
 
+export const connectionStatsWorkflow: Workflow = {
+  format: workflowFormat,
+  schemaVersion: workflowSchemaVersion,
+  id: "orbitssh-connection-stats-v1",
+  mode: "flat",
+  title: "端口连接统计",
+  description:
+    "只读统计某个本地监听端口的 TCP 连接。各条目彼此独立，按需要挑一条执行即可，顺序不限：查看连接明细、按状态分类、统计 Top 对端 IP、统计全部状态连接数，或持续刷新已建立连接数。所有命令只读取连接状态，不会修改系统。",
+  parameters: [
+    {
+      name: "port",
+      label: "要统计的本地端口",
+      defaultValue: "4080",
+      required: true,
+    },
+  ],
+  terminals: [{ id: "main", label: "目标服务器" }],
+  steps: [
+    {
+      id: "conn-detail",
+      title: "查看当前连接明细",
+      description:
+        "列出该端口上已建立的连接及对端地址；普通用户看不到进程名，需要 root 权限。",
+      command: "ss -tnp state established '( sport = :{{port}} )'",
+      terminalId: "main",
+      optional: true,
+      dependsOn: [],
+    },
+    {
+      id: "conn-by-state",
+      title: "按状态分类统计",
+      description:
+        "按 TCP 状态统计连接数量；命令会跳过输出的第一行，所以首个连接不计入。",
+      command:
+        "ss -Htan '( sport = :{{port}} )' | awk 'NR>1{c[$1]++} END{for(k in c) print k, c[k]}'",
+      terminalId: "main",
+      optional: false,
+      dependsOn: [],
+    },
+    {
+      id: "conn-top-peers",
+      title: "Top 对端 IP",
+      description: "按已建立连接数排序，列出前 20 个对端 IP 及其连接数。",
+      command:
+        "ss -Htn state established '( sport = :{{port}} )' | awk '{print $4}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -20",
+      terminalId: "main",
+      optional: false,
+      dependsOn: [],
+    },
+    {
+      id: "conn-all-states",
+      title: "全部状态连接数",
+      description:
+        "统计该端口上所有状态的连接数量，包含 TIME-WAIT 和 CLOSE-WAIT。",
+      command: "ss -Htan '( sport = :{{port}} )' | wc -l",
+      terminalId: "main",
+      optional: false,
+      dependsOn: [],
+    },
+    {
+      id: "conn-watch",
+      title: "实时刷新已建立连接数",
+      description:
+        "每秒刷新一次已建立连接数。该命令会一直占用终端，需要按 Ctrl+C 才能继续。",
+      command:
+        "watch -n 1 'ss -Htn state established \"( sport = :{{port}} )\" | wc -l'",
+      terminalId: "main",
+      optional: true,
+      dependsOn: [],
+    },
+  ],
+  updatedAt: Date.now(),
+};
+
 export const builtInWorkflows: Workflow[] = [
   nginxWorkflow,
   diskCleanupWorkflow,
@@ -456,10 +546,21 @@ export const builtInWorkflows: Workflow[] = [
   dockerMaintenanceWorkflow,
   tlsCertificateWorkflow,
   systemUpdateWorkflow,
+  connectionStatsWorkflow,
 ];
 
 export function isBuiltInWorkflow(id: string) {
   return builtInWorkflows.some((workflow) => workflow.id === id);
+}
+
+export function workflowModeLabel(mode: WorkflowMode) {
+  return mode === "flat" ? "并列手册" : "按步骤流程";
+}
+
+export function workflowModeHint(mode: WorkflowMode) {
+  return mode === "flat"
+    ? "条目彼此独立，执行时按需要挑一条，顺序不限。"
+    : "步骤按编号推进，可以用前置步骤表达先后关系。";
 }
 
 export function newWorkflow(): Workflow {
@@ -470,6 +571,7 @@ export function newWorkflow(): Workflow {
     id: crypto.randomUUID(),
     title: "新建工作流",
     description: "",
+    mode: "sequence",
     parameters: [],
     terminals: [{ id: "main", label: "默认终端" }],
     steps: [
@@ -487,6 +589,32 @@ export function newWorkflow(): Workflow {
   };
 }
 
+/**
+ * Switching modes keeps the steps but rewrites the prerequisites: a manual
+ * has none, a procedure falls back to a simple linear order.
+ */
+export function setWorkflowMode(
+  workflow: Workflow,
+  mode: WorkflowMode,
+): Workflow {
+  if (mode === workflow.mode) return workflow;
+  if (mode === "flat")
+    return {
+      ...workflow,
+      mode,
+      steps: workflow.steps.map((step) => ({ ...step, dependsOn: [] })),
+    };
+  return {
+    ...workflow,
+    mode,
+    steps: workflow.steps.map((step, index) => ({
+      ...step,
+      dependsOn:
+        index === 0 ? [] : [workflow.steps[index - 1].id].filter(Boolean),
+    })),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -494,7 +622,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function validateWorkflow(value: unknown): Workflow {
   if (!isRecord(value) || value.format !== workflowFormat)
     throw new Error("文件不是 Orbit SSH 工作流");
-  if (value.schemaVersion !== workflowSchemaVersion)
+  if (
+    value.schemaVersion !== workflowSchemaVersion &&
+    value.schemaVersion !== legacyWorkflowSchemaVersion
+  )
     throw new Error("工作流版本暂不受支持");
   if (
     typeof value.id !== "string" ||
@@ -559,6 +690,7 @@ export function validateWorkflow(value: unknown): Workflow {
   )
     throw new Error("工作流参数名称重复");
 
+  const mode: WorkflowMode = value.mode === "flat" ? "flat" : "sequence";
   const steps = value.steps.map((item) => {
     if (
       !isRecord(item) ||
@@ -584,7 +716,8 @@ export function validateWorkflow(value: unknown): Workflow {
       command: item.command,
       terminalId: item.terminalId,
       optional: item.optional,
-      dependsOn: item.dependsOn as string[],
+      // A manual keeps every entry independent, so prerequisites are dropped.
+      dependsOn: mode === "flat" ? [] : (item.dependsOn as string[]),
     };
   });
   const stepIDs = new Set(steps.map((step) => step.id));
@@ -617,6 +750,7 @@ export function validateWorkflow(value: unknown): Workflow {
     id: value.id,
     title: value.title,
     description: value.description,
+    mode,
     parameters,
     terminals,
     steps,

@@ -828,6 +828,131 @@
   min-height: 0;
 }
 
+.workflow-mode-badge {
+  margin-left: 7px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+.workflow-panel-mode {
+  color: var(--faint);
+  font-size: 9px;
+}
+.workflow-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.workflow-manual-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--faint);
+  font-size: 10px;
+}
+.workflow-manual-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.workflow-manual-entry-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.workflow-manual-entry-status {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin-top: 1px;
+  color: var(--muted);
+}
+.workflow-manual-entry-copy {
+  flex: 1;
+  min-width: 0;
+}
+.workflow-manual-entry-copy h4 {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.workflow-manual-entry-copy p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+.workflow-manual-entry-terminal {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--faint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflow-manual-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.workflow-manual-entry-status-text {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 9px;
+}
+.workflow-manual-entry.status-completed {
+  border-color: var(--green-line);
+}
+.workflow-manual-entry.status-completed .workflow-manual-entry-status {
+  color: var(--mint-fg);
+}
+.workflow-manual-entry.status-failed {
+  border-color: #efd1d2;
+}
+.workflow-manual-entry.status-failed .workflow-manual-entry-status {
+  color: var(--danger);
+}
+.workflow-manual-entry.status-skipped .workflow-manual-entry-status {
+  color: var(--faint);
+}
+.workflow-manual-entry.status-sent .workflow-manual-entry-status {
+  color: var(--blue-fg);
+}
+.workflow-manual-library .workflow-manual-entry {
+  background: var(--surface-soft);
+}
+.workflow-manual-library .workflow-step-add {
+  margin-top: 2px;
+}
+.workflow-panel-layout .workflow-manual-entry .workflow-command-preview {
+  max-height: 150px;
+  padding: 8px;
+  font-size: 10px;
+}
+.workflow-panel-layout .workflow-manual-entry-actions .button {
+  padding: 0 7px;
+  font-size: 9px;
+}
+
 .workflow-host-picker-modal .workflow-host-options {
   display: flex;
   flex-direction: column;

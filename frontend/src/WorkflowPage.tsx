@@ -31,17 +31,21 @@ import {
   parseWorkflowFile,
   renderWorkflowCommand,
   saveWorkflows,
+  setWorkflowMode,
   subscribeWorkflowsUpdated,
   validateWorkflow,
+  workflowModeHint,
+  workflowModeLabel,
   workflowSecretWarnings,
+  type StepStatus,
   type Workflow,
+  type WorkflowMode,
   type WorkflowStep,
 } from "./workflows";
+import WorkflowManual from "./WorkflowManual";
 import { isLocalSession, sessionDetailLabel } from "./sessions";
 import { Select } from "./ui/Select";
 import { writeClipboard } from "./bridge";
-
-type StepStatus = "pending" | "sent" | "completed" | "failed" | "skipped";
 
 interface Props {
   sessions: Session[];
@@ -404,12 +408,15 @@ export default function WorkflowPage({
     const previous = draft.steps[draft.steps.length - 1];
     const step: WorkflowStep = {
       id: crypto.randomUUID(),
-      title: `步骤 ${draft.steps.length + 1}`,
+      title: `${
+        draft.mode === "flat" ? "条目" : "步骤"
+      } ${draft.steps.length + 1}`,
       description: "",
       command: "",
       terminalId: draft.terminals[0].id,
       optional: false,
-      dependsOn: previous ? [previous.id] : [],
+      dependsOn:
+        draft.mode === "flat" || !previous ? [] : [previous.id],
     };
     updateDraft((workflow) => ({
       ...workflow,
@@ -497,12 +504,15 @@ export default function WorkflowPage({
     const previous = selected.steps[selected.steps.length - 1];
     const step: WorkflowStep = {
       id: crypto.randomUUID(),
-      title: `步骤 ${selected.steps.length + 1}`,
+      title: `${
+        selected.mode === "flat" ? "条目" : "步骤"
+      } ${selected.steps.length + 1}`,
       description: "",
       command: "",
       terminalId: selected.terminals[0]?.id ?? "main",
       optional: false,
-      dependsOn: previous ? [previous.id] : [],
+      dependsOn:
+        selected.mode === "flat" || !previous ? [] : [previous.id],
     };
     if (
       !updateSelected((workflow) => ({
@@ -518,15 +528,16 @@ export default function WorkflowPage({
 
   function deleteWorkflowStep(stepID: string) {
     if (!selected) return;
+    const noun = selected.mode === "flat" ? "条目" : "步骤";
     if (selected.steps.length <= 1) {
-      setNotice("工作流至少需要保留一个步骤。");
+      setNotice(`工作流至少需要保留一个${noun}。`);
       return;
     }
     const step = selected.steps.find((item) => item.id === stepID);
     if (!step) return;
     if (
       !window.confirm(
-        `删除步骤“${step.title || "未命名"}”？此修改会直接保存到工作流。`,
+        `删除${noun}“${step.title || "未命名"}”？此修改会直接保存到工作流。`,
       )
     )
       return;
@@ -617,9 +628,23 @@ export default function WorkflowPage({
     ? sessionBindings[selectedStep.terminalId]
     : "";
 
-  async function copyStepCommand() {
-    if (!selectedStep) return;
-    const text = currentCommand.value || selectedStep.command;
+  function resolveStepCommand(step: WorkflowStep) {
+    const template = runtimeCommands[step.id] ?? step.command;
+    try {
+      return renderWorkflowCommand(
+        template,
+        runtimeValues,
+        selected?.parameters ?? [],
+      );
+    } catch {
+      return template;
+    }
+  }
+
+  async function copyStepCommand(step?: WorkflowStep) {
+    const target = step ?? selectedStep;
+    if (!target) return;
+    const text = resolveStepCommand(target) || target.command;
     if (!text.trim()) {
       setNotice("此步骤没有命令可复制。");
       return;
@@ -821,6 +846,11 @@ export default function WorkflowPage({
                 hint: `${workflow.steps.length} 步`,
               }))}
             />
+            {selected?.mode === "flat" && (
+              <small className="workflow-panel-mode">
+                并列手册：条目顺序不限，按需挑一条执行
+              </small>
+            )}
           </div>
           <div>
             <button
@@ -912,7 +942,8 @@ export default function WorkflowPage({
                 <span className="workflow-library-copy">
                   <strong>{workflow.title}</strong>
                   <small>
-                    {workflow.steps.length} 个步骤
+                    {workflow.steps.length} 个
+                    {workflow.mode === "flat" ? "条目" : "步骤"}
                     {isBuiltInWorkflow(workflow.id) && " · 内置"}
                   </small>
                 </span>
@@ -936,7 +967,12 @@ export default function WorkflowPage({
           <div className="workflow-detail">
             <header className="workflow-detail-heading">
               <div>
-                <h2>{selected.title}</h2>
+                <h2>
+                  {selected.title}
+                  <span className="workflow-mode-badge">
+                    {workflowModeLabel(selected.mode)}
+                  </span>
+                </h2>
                 <p>{selected.description || "尚未添加说明"}</p>
               </div>
               <div className="workflow-detail-actions">
@@ -988,12 +1024,13 @@ export default function WorkflowPage({
                     <input
                       value={draft.title}
                       maxLength={160}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const title = event.currentTarget.value;
                         updateDraft((workflow) => ({
                           ...workflow,
-                          title: event.currentTarget.value,
-                        }))
-                      }
+                          title,
+                        }));
+                      }}
                     />
                   </label>
                   <label>
@@ -1001,15 +1038,46 @@ export default function WorkflowPage({
                     <textarea
                       rows={2}
                       value={draft.description}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const description = event.currentTarget.value;
                         updateDraft((workflow) => ({
                           ...workflow,
-                          description: event.currentTarget.value,
-                        }))
-                      }
+                          description,
+                        }));
+                      }}
                     />
                   </label>
                 </div>
+
+                <section className="workflow-editor-section">
+                  <div className="workflow-section-title">
+                    <div>
+                      <h3>执行方式</h3>
+                      <p>{workflowModeHint(draft.mode)}</p>
+                    </div>
+                    <div className="workflow-editor-field">
+                      <Select
+                        ariaLabel="执行方式"
+                        size="md"
+                        value={draft.mode}
+                        onChange={(value) =>
+                          updateDraft((workflow) =>
+                            setWorkflowMode(workflow, value as WorkflowMode),
+                          )
+                        }
+                        options={[
+                          { value: "flat", label: "并列手册" },
+                          { value: "sequence", label: "按步骤流程" },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                  <p className="workflow-field-hint">
+                    {draft.mode === "flat"
+                      ? "所有条目同级，执行面板会一次列出全部条目，按需挑一条执行，顺序不限。"
+                      : "步骤按编号推进，可以为每一步设置前置步骤；前置未完成只会提示，不会阻止执行。"}
+                  </p>
+                </section>
 
                 <section className="workflow-editor-section">
                   <div className="workflow-section-title">
@@ -1025,16 +1093,17 @@ export default function WorkflowPage({
                       <input
                         aria-label="终端目标名称"
                         value={terminal.label}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const label = event.currentTarget.value;
                           updateDraft((workflow) => ({
                             ...workflow,
                             terminals: workflow.terminals.map((item) =>
                               item.id === terminal.id
-                                ? { ...item, label: event.currentTarget.value }
+                                ? { ...item, label }
                                 : item,
                             ),
-                          }))
-                        }
+                          }));
+                        }}
                       />
                       <button
                         className="icon-button"
@@ -1077,57 +1146,51 @@ export default function WorkflowPage({
                         显示名称
                         <input
                           value={parameter.label}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const label = event.currentTarget.value;
                             updateDraft((workflow) => ({
                               ...workflow,
                               parameters: workflow.parameters.map((item) =>
                                 item.name === parameter.name
-                                  ? {
-                                      ...item,
-                                      label: event.currentTarget.value,
-                                    }
+                                  ? { ...item, label }
                                   : item,
                               ),
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </label>
                       <label>
                         默认值
                         <input
                           value={parameter.defaultValue}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const defaultValue = event.currentTarget.value;
                             updateDraft((workflow) => ({
                               ...workflow,
                               parameters: workflow.parameters.map((item) =>
                                 item.name === parameter.name
-                                  ? {
-                                      ...item,
-                                      defaultValue: event.currentTarget.value,
-                                    }
+                                  ? { ...item, defaultValue }
                                   : item,
                               ),
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </label>
                       <label className="workflow-checkbox">
                         <input
                           type="checkbox"
                           checked={parameter.required}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const required = event.currentTarget.checked;
                             updateDraft((workflow) => ({
                               ...workflow,
                               parameters: workflow.parameters.map((item) =>
                                 item.name === parameter.name
-                                  ? {
-                                      ...item,
-                                      required: event.currentTarget.checked,
-                                    }
+                                  ? { ...item, required }
                                   : item,
                               ),
-                            }))
-                          }
+                            }));
+                          }}
                         />
                         必填
                       </label>
@@ -1164,7 +1227,9 @@ export default function WorkflowPage({
                   {draft.steps.map((step, index) => (
                     <article className="workflow-step-editor" key={step.id}>
                       <div className="workflow-step-editor-heading">
-                        <strong>步骤 {index + 1}</strong>
+                        <strong>
+                          {draft.mode === "flat" ? "条目" : "步骤"} {index + 1}
+                        </strong>
                         <div>
                           <button
                             className="icon-button"
@@ -1200,14 +1265,15 @@ export default function WorkflowPage({
                           标题
                           <input
                             value={step.title}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              const title = event.currentTarget.value;
                               updateDraft((workflow) =>
                                 updateStep(workflow, step.id, (item) => ({
                                   ...item,
-                                  title: event.currentTarget.value,
+                                  title,
                                 })),
-                              )
-                            }
+                              );
+                            }}
                           />
                         </label>
                         <div className="workflow-editor-field">
@@ -1236,14 +1302,15 @@ export default function WorkflowPage({
                         <textarea
                           rows={2}
                           value={step.description}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const description = event.currentTarget.value;
                             updateDraft((workflow) =>
                               updateStep(workflow, step.id, (item) => ({
                                 ...item,
-                                description: event.currentTarget.value,
+                                description,
                               })),
-                            )
-                          }
+                            );
+                          }}
                         />
                       </label>
                       <label className="workflow-editor-label">
@@ -1252,14 +1319,15 @@ export default function WorkflowPage({
                           rows={3}
                           spellCheck={false}
                           value={step.command}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const command = event.currentTarget.value;
                             updateDraft((workflow) =>
                               updateStep(workflow, step.id, (item) => ({
                                 ...item,
-                                command: event.currentTarget.value,
+                                command,
                               })),
-                            )
-                          }
+                            );
+                          }}
                           placeholder="留空可创建人工确认步骤"
                         />
                       </label>
@@ -1267,50 +1335,54 @@ export default function WorkflowPage({
                         <input
                           type="checkbox"
                           checked={step.optional}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const optional = event.currentTarget.checked;
                             updateDraft((workflow) =>
                               updateStep(workflow, step.id, (item) => ({
                                 ...item,
-                                optional: event.currentTarget.checked,
+                                optional,
                               })),
-                            )
-                          }
+                            );
+                          }}
                         />
                         可跳过
                       </label>
-                      <details className="workflow-prerequisites">
-                        <summary>前置步骤</summary>
-                        <div>
-                          {draft.steps
-                            .filter((candidate) => candidate.id !== step.id)
-                            .map((candidate) => (
-                              <label
-                                className="workflow-checkbox"
-                                key={candidate.id}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={step.dependsOn.includes(
-                                    candidate.id,
-                                  )}
-                                  onChange={(event) =>
-                                    updateDraft((workflow) =>
-                                      updateStep(workflow, step.id, (item) => ({
-                                        ...item,
-                                        dependsOn: event.currentTarget.checked
-                                          ? [...item.dependsOn, candidate.id]
-                                          : item.dependsOn.filter(
-                                              (id) => id !== candidate.id,
-                                            ),
-                                      })),
-                                    )
-                                  }
-                                />
-                                {candidate.title}
-                              </label>
-                            ))}
-                        </div>
-                      </details>
+                      {draft.mode === "sequence" && (
+                        <details className="workflow-prerequisites">
+                          <summary>前置步骤</summary>
+                          <div>
+                            {draft.steps
+                              .filter((candidate) => candidate.id !== step.id)
+                              .map((candidate) => (
+                                <label
+                                  className="workflow-checkbox"
+                                  key={candidate.id}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={step.dependsOn.includes(
+                                      candidate.id,
+                                    )}
+                                    onChange={(event) => {
+                                      const checked = event.currentTarget.checked;
+                                      updateDraft((workflow) =>
+                                        updateStep(workflow, step.id, (item) => ({
+                                          ...item,
+                                          dependsOn: checked
+                                            ? [...item.dependsOn, candidate.id]
+                                            : item.dependsOn.filter(
+                                                (id) => id !== candidate.id,
+                                              ),
+                                        })),
+                                      );
+                                    }}
+                                  />
+                                  {candidate.title}
+                                </label>
+                              ))}
+                          </div>
+                        </details>
+                      )}
                     </article>
                   ))}
                 </section>
@@ -1350,15 +1422,14 @@ export default function WorkflowPage({
                         <input
                           value={runtimeValues[parameter.name] ?? ""}
                           aria-required={parameter.required}
-                          onChange={(event) =>
-                            (() => {
-                              setConfirmStepID(null);
-                              setRuntimeValues((current) => ({
-                                ...current,
-                                [parameter.name]: event.currentTarget.value,
-                              }));
-                            })()
-                          }
+                          onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            setConfirmStepID(null);
+                            setRuntimeValues((current) => ({
+                              ...current,
+                              [parameter.name]: value,
+                            }));
+                          }}
                         />
                       </label>
                     ))}
@@ -1411,7 +1482,160 @@ export default function WorkflowPage({
                   )}
                 </section>
 
-                <div className="workflow-run-layout">
+                {selected.mode === "flat" ? (
+                  panel ? (
+                    <WorkflowManual
+                      workflow={selected}
+                      runtimeValues={runtimeValues}
+                      runtimeCommands={runtimeCommands}
+                      statuses={stepStatuses}
+                      sessionBindings={sessionBindings}
+                      onExecute={(step, command) =>
+                        void executeStep(step, command)
+                      }
+                      onStatus={(stepID, status) =>
+                        setStepStatuses((current) => ({
+                          ...current,
+                          [stepID]: status,
+                        }))
+                      }
+                      onCommandOverride={(stepID, command) =>
+                        setRuntimeCommands((current) => ({
+                          ...current,
+                          [stepID]: command,
+                        }))
+                      }
+                      onViewTerminal={onViewTerminal}
+                      onNotice={setNotice}
+                    />
+                  ) : (
+                    <section
+                      className="workflow-manual workflow-manual-library"
+                      aria-label="工作流条目"
+                    >
+                      {selected.steps.map((step) => {
+                        const editing = editingStepID === step.id;
+                        const terminal = selected.terminals.find(
+                          (item) => item.id === step.terminalId,
+                        );
+                        return (
+                          <article
+                            className="workflow-manual-entry"
+                            key={step.id}
+                          >
+                            <header className="workflow-manual-entry-heading">
+                              <span className="workflow-manual-entry-status">
+                                <span className="workflow-step-dot" />
+                              </span>
+                              <div className="workflow-manual-entry-copy">
+                                <h4>{step.title || "未命名条目"}</h4>
+                                {step.description && <p>{step.description}</p>}
+                              </div>
+                              <span className="workflow-manual-entry-terminal">
+                                {terminal?.label ?? "未指定终端"}
+                              </span>
+                            </header>
+                            {editing ? (
+                              <div className="workflow-step-edit">
+                                <label className="workflow-step-edit-field">
+                                  <span>标题</span>
+                                  <input
+                                    value={stepTitleDraft}
+                                    maxLength={160}
+                                    onChange={(event) =>
+                                      setStepTitleDraft(
+                                        event.currentTarget.value,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className="workflow-step-edit-field">
+                                  <span>命令模板</span>
+                                  <textarea
+                                    className="workflow-command-editor"
+                                    rows={3}
+                                    spellCheck={false}
+                                    value={stepCommandDraft}
+                                    placeholder="留空表示由你手动完成这一条"
+                                    onChange={(event) =>
+                                      setStepCommandDraft(
+                                        event.currentTarget.value,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <p className="workflow-field-hint">
+                                  命令中的 <code>{"{{参数名}}"}</code>{" "}
+                                  会在执行前替换为参数值。保存后会直接写入工作流。
+                                </p>
+                                <div className="workflow-step-edit-actions">
+                                  <button
+                                    className="button secondary compact"
+                                    onClick={cancelStepEdit}
+                                  >
+                                    取消
+                                  </button>
+                                  <button
+                                    className="button primary compact"
+                                    onClick={saveStepEdit}
+                                  >
+                                    <Check size={14} />
+                                    保存条目
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <pre className="workflow-command-preview">
+                                {step.command ||
+                                  "此条目没有命令，由你手动完成。"}
+                              </pre>
+                            )}
+                            <div className="workflow-manual-entry-actions">
+                              <button
+                                className="button secondary compact"
+                                onClick={() => void copyStepCommand(step)}
+                                disabled={!step.command.trim()}
+                              >
+                                <Copy size={14} />
+                                复制命令
+                              </button>
+                              <button
+                                className="button secondary compact"
+                                onClick={() =>
+                                  editing ? cancelStepEdit() : beginStepEdit(step)
+                                }
+                              >
+                                <Pencil size={14} />
+                                {editing ? "取消编辑" : "编辑条目"}
+                              </button>
+                              <button
+                                className="button danger compact"
+                                onClick={() => deleteWorkflowStep(step.id)}
+                                disabled={selected.steps.length <= 1}
+                                title={
+                                  selected.steps.length <= 1
+                                    ? "工作流至少需要保留一个条目"
+                                    : "删除此条"
+                                }
+                              >
+                                <Trash2 size={14} />
+                                删除此条
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                      <button
+                        className="workflow-step-add"
+                        onClick={addWorkflowStep}
+                      >
+                        <Plus size={14} />
+                        添加条目
+                      </button>
+                    </section>
+                  )
+                ) : (
+                  <div className="workflow-run-layout">
                   <nav className="workflow-step-list" aria-label="工作流步骤">
                     {selected.steps.map((step, index) => {
                       const status = stepStatuses[step.id] ?? "pending";
@@ -1425,11 +1649,20 @@ export default function WorkflowPage({
                             if (editingStepID !== step.id) cancelStepEdit();
                           }}
                         >
-                          <span className="workflow-step-index">
-                            {index + 1}
-                          </span>
+                          {selected.mode === "flat" ? (
+                            <span className="workflow-step-dot" />
+                          ) : (
+                            <span className="workflow-step-index">
+                              {index + 1}
+                            </span>
+                          )}
                           <span className="workflow-step-list-copy">
-                            <strong>{step.title || `步骤 ${index + 1}`}</strong>
+                            <strong>
+                              {step.title ||
+                                (selected.mode === "flat"
+                                  ? `条目 ${index + 1}`
+                                  : `步骤 ${index + 1}`)}
+                            </strong>
                             <small>
                               {panel
                                 ? statusText[status]
@@ -1638,7 +1871,8 @@ export default function WorkflowPage({
                       <span>选择一个步骤查看命令和运行状态</span>
                     </div>
                   )}
-                </div>
+                  </div>
+                )}
               </>
             )}
           </div>

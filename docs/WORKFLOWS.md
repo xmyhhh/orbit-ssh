@@ -29,6 +29,26 @@ guided runbook rather than an unattended shell script.
 - Keep step states and parameter overrides in the current app session; they do
   not become workflow defaults or export with the workflow.
 
+## Workflow shapes
+
+A workflow is either a manual or a procedure. The shape lives in the saved
+definition and can be switched at any time from the editor.
+
+- `flat` (并列手册): every entry is a sibling. The runner lists all entries at
+  once, each with its own run, copy, and status actions, and nothing depends on
+  the order of the list. A manual never stores prerequisites.
+- `sequence` (按步骤流程): numbered steps keep their prerequisites. The runner
+  shows the step list and one selected step, and warns when a prerequisite is
+  not marked complete without blocking the run.
+
+Switching a procedure to a manual drops the prerequisites; switching a manual
+to a procedure links each step to the previous one, which the editor can then
+adjust.
+
+The stored format is version 2 and adds the `mode` field. Version 1 files stay
+importable and migrate to a procedure, which keeps the previous behaviour for
+workflows that were saved before the two shapes existed.
+
 ## Current boundaries
 
 Terminal history currently stores output, not submitted input or a structured
@@ -53,5 +73,6 @@ review the file before sharing it.
    and ask AI to turn its trace into an editable draft.
 2. Add multi-terminal run history and reliable completion checks where the
    shell protocol provides them.
-3. Add optional branches and condition steps after linear workflows have proven
-   useful in day-to-day operation.
+3. Add optional branches and condition steps to procedures. Manuals already
+   cover the free-form case, so branching is only useful where an earlier step
+   decides what runs next.
