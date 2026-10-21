@@ -1527,14 +1527,21 @@ export default function WorkflowPage({
                               <span className="workflow-manual-entry-status">
                                 <span className="workflow-step-dot" />
                               </span>
-                              <div className="workflow-manual-entry-copy">
-                                <h4>{step.title || "未命名条目"}</h4>
-                                {step.description && <p>{step.description}</p>}
-                              </div>
+                              <h4 title={step.title}>
+                                {step.title || "未命名条目"}
+                              </h4>
                               <span className="workflow-manual-entry-terminal">
                                 {terminal?.label ?? "未指定终端"}
                               </span>
                             </header>
+                            {step.description && (
+                              <p
+                                className="workflow-manual-entry-note"
+                                title={step.description}
+                              >
+                                {step.description}
+                              </p>
+                            )}
                             {editing ? (
                               <div className="workflow-step-edit">
                                 <label className="workflow-step-edit-field">

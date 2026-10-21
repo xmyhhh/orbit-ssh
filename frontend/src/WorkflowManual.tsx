@@ -40,16 +40,17 @@ const statusText: Record<StepStatus, string> = {
 };
 
 function statusIcon(status: StepStatus) {
-  if (status === "completed") return <Check size={14} />;
-  if (status === "failed") return <CircleAlert size={14} />;
-  if (status === "skipped") return <SkipForward size={14} />;
-  if (status === "sent") return <TerminalSquare size={14} />;
+  if (status === "completed") return <Check size={13} />;
+  if (status === "failed") return <CircleAlert size={13} />;
+  if (status === "skipped") return <SkipForward size={13} />;
+  if (status === "sent") return <TerminalSquare size={13} />;
   return <span className="workflow-step-dot" />;
 }
 
 /**
  * The manual view: every entry is visible at once and can be run on its own.
- * Nothing here depends on the order of the list.
+ * Nothing here depends on the order of the list. The panel is narrow, so the
+ * command keeps the room and the controls stay on one line.
  */
 export default function WorkflowManual({
   workflow,
@@ -69,6 +70,7 @@ export default function WorkflowManual({
   const done = workflow.steps.filter(
     (step) => (statuses[step.id] ?? "pending") === "completed",
   ).length;
+  const showTerminal = workflow.terminals.length > 1;
 
   function resolve(step: WorkflowStep) {
     const template = runtimeCommands[step.id] ?? step.command;
@@ -138,14 +140,59 @@ export default function WorkflowManual({
               <span className="workflow-manual-entry-status">
                 {statusIcon(status)}
               </span>
-              <div className="workflow-manual-entry-copy">
-                <h4>{step.title || "未命名条目"}</h4>
-                {step.description && <p>{step.description}</p>}
-              </div>
-              <span className="workflow-manual-entry-terminal">
-                {terminal?.label ?? "未指定终端"}
-              </span>
+              <h4 title={step.title}>{step.title || "未命名条目"}</h4>
+              {showTerminal && (
+                <span
+                  className="workflow-manual-entry-terminal"
+                  title={terminal?.label}
+                >
+                  {terminal?.label ?? "未指定终端"}
+                </span>
+              )}
+              {step.command ? (
+                <button
+                  className={`button ${dangerous && confirmID === step.id ? "danger" : "primary"} compact workflow-manual-run`}
+                  disabled={Boolean(command.error)}
+                  onClick={() => {
+                    if (!dangerous) {
+                      onExecute(step, command.value);
+                      return;
+                    }
+                    if (confirmID !== step.id) {
+                      setConfirmID(step.id);
+                      return;
+                    }
+                    onExecute(step, command.value);
+                  }}
+                >
+                  <Play size={12} />
+                  {dangerous
+                    ? confirmID === step.id
+                      ? "确认发送"
+                      : "核对后发送"
+                    : status === "pending" || status === "skipped"
+                      ? "执行"
+                      : "重跑"}
+                </button>
+              ) : (
+                <button
+                  className="button primary compact workflow-manual-run"
+                  onClick={() => onStatus(step.id, "completed")}
+                >
+                  <Check size={12} />
+                  完成
+                </button>
+              )}
             </header>
+
+            {step.description && (
+              <p
+                className="workflow-manual-entry-note"
+                title={step.description}
+              >
+                {step.description}
+              </p>
+            )}
 
             <div className="workflow-command-block">
               {editingID === step.id ? (
@@ -173,57 +220,25 @@ export default function WorkflowManual({
             </div>
 
             <div className="workflow-manual-entry-actions">
-              {step.command ? (
-                <button
-                  className={`button ${dangerous && confirmID === step.id ? "danger" : "primary"} compact`}
-                  disabled={Boolean(command.error)}
-                  onClick={() => {
-                    if (!dangerous) {
-                      onExecute(step, command.value);
-                      return;
-                    }
-                    if (confirmID !== step.id) {
-                      setConfirmID(step.id);
-                      return;
-                    }
-                    onExecute(step, command.value);
-                  }}
-                >
-                  <Play size={14} />
-                  {dangerous
-                    ? confirmID === step.id
-                      ? "确认发送命令"
-                      : "检查命令后确认"
-                    : status === "pending" || status === "skipped"
-                      ? "执行此条"
-                      : "重跑此条"}
-                </button>
-              ) : (
-                <button
-                  className="button primary compact"
-                  onClick={() => onStatus(step.id, "completed")}
-                >
-                  <Check size={14} />
-                  标记完成
-                </button>
-              )}
               <button
-                className="button secondary compact"
-                onClick={() => onStatus(step.id, "completed")}
+                className="icon-button"
+                title="标记完成"
+                aria-label="标记完成"
                 disabled={status === "completed"}
+                onClick={() => onStatus(step.id, "completed")}
               >
                 <Check size={14} />
-                标记完成
               </button>
               <button
-                className="button secondary compact"
+                className="icon-button"
+                title="跳过"
+                aria-label="跳过"
                 onClick={() => {
                   onStatus(step.id, "skipped");
                   setConfirmID("");
                 }}
               >
                 <SkipForward size={14} />
-                跳过
               </button>
               <button
                 className="icon-button"
@@ -232,7 +247,7 @@ export default function WorkflowManual({
                 onClick={() => void copyCommand(step)}
                 disabled={!step.command.trim()}
               >
-                <Copy size={15} />
+                <Copy size={14} />
               </button>
               <button
                 className="icon-button"
@@ -245,7 +260,7 @@ export default function WorkflowManual({
                   );
                 }}
               >
-                <Pencil size={15} />
+                <Pencil size={14} />
               </button>
               <button
                 className="icon-button"
@@ -253,7 +268,7 @@ export default function WorkflowManual({
                 aria-label="标记失败"
                 onClick={() => onStatus(step.id, "failed")}
               >
-                <CircleAlert size={15} />
+                <CircleAlert size={14} />
               </button>
               {sessionID && (
                 <button
@@ -262,7 +277,7 @@ export default function WorkflowManual({
                   aria-label="查看所选终端"
                   onClick={() => onViewTerminal(sessionID)}
                 >
-                  <TerminalSquare size={16} />
+                  <TerminalSquare size={15} />
                 </button>
               )}
               {status !== "pending" && (
@@ -272,7 +287,7 @@ export default function WorkflowManual({
                   aria-label="重置此条状态"
                   onClick={() => onStatus(step.id, "pending")}
                 >
-                  <RotateCcw size={15} />
+                  <RotateCcw size={14} />
                 </button>
               )}
               <span className="workflow-manual-entry-status-text">
