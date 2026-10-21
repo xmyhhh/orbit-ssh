@@ -20,7 +20,8 @@ Usage: scripts/build-macos.sh [options]
                          Defaults to the outputfilename in wails.json.
   --sign-identity <id>   codesign identity. Use "-" for an ad-hoc signature
                          (default: "-"). Pass "none" to skip signing entirely.
-  --package              Also write a distributable zip to output/release.
+  --package              Also write a distributable zip and disk image to
+                         output/release.
   --skip-frontend        Reuse the existing frontend/dist and wailsjs bindings.
   --wails-path <path>    Path to the wails CLI. Defaults to the CLI on PATH,
                          then the pinned version via "go run".
@@ -149,6 +150,7 @@ if [ "$package_zip" -eq 1 ]; then
     release_dir="$repo_path/output/release"
     mkdir -p "$release_dir"
     zip_name="OrbitSSH-v${version}-macos-${arch}.zip"
+    dmg_name="OrbitSSH-v${version}-macos-${arch}.dmg"
     # Copy LICENSE and README next to the app so the archive is self-describing.
     staging="$(mktemp -d)"
     trap 'rm -rf "$staging"' EXIT
@@ -158,4 +160,16 @@ if [ "$package_zip" -eq 1 ]; then
     (cd "$staging" && zip -qry "$release_dir/$zip_name" .)
     shasum -a 256 "$release_dir/$zip_name"
     echo "Packaged $release_dir/$zip_name"
+    # The disk image mirrors the CI artifact: the bundle, a symlink to
+    # /Applications and the same notes, so the user drags the app into place.
+    image="$(mktemp -d)"
+    trap 'rm -rf "$staging" "$image"' EXIT
+    cp -R "$app_path" "$image/"
+    ln -s /Applications "$image/Applications"
+    cp "$repo_path/LICENSE" "$image/LICENSE.txt"
+    cp "$repo_path/build/darwin/README.txt" "$image/README.txt"
+    hdiutil create -volname "Orbit SSH" -srcfolder "$image" -ov -format UDZO \
+        "$release_dir/$dmg_name"
+    shasum -a 256 "$release_dir/$dmg_name"
+    echo "Packaged $release_dir/$dmg_name"
 fi

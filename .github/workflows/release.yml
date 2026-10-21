@@ -170,10 +170,22 @@ jobs:
           set -euo pipefail
           version="${ASSET_VERSION}"
           mkdir -p dist
+          app='build/bin/Orbit SSH.app'
+          # The disk image carries the bundle, a symlink to /Applications and a
+          # short note, so the user drags the app into place.
+          staging="$(mktemp -d)"
+          trap 'rm -rf "$staging"' EXIT
+          ditto "$app" "$staging/Orbit SSH.app"
+          ln -s /Applications "$staging/Applications"
+          cp LICENSE "$staging/LICENSE.txt"
+          cp build/darwin/README.txt "$staging/README.txt"
+          hdiutil create -volname "Orbit SSH" -srcfolder "$staging" -ov -format UDZO \
+            "dist/OrbitSSH-v${version}-${{ matrix.asset }}.dmg"
           # ditto keeps the bundle layout, the symlinks and the permissions.
           ditto -c -k --sequesterRsrc --keepParent \
-            "build/bin/Orbit SSH.app" \
+            "$app" \
             "dist/OrbitSSH-v${version}-${{ matrix.asset }}.zip"
+          ls -l dist
 
       - name: Package Windows
         if: runner.os == 'Windows'

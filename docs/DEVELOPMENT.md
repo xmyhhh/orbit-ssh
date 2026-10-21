@@ -174,7 +174,6 @@ wails build -platform linux/amd64
 - 产物命名为 `OrbitSSH-v<版本>-<平台>-<架构>.<ext>`，与既有发布保持一致。
 - 每个平台的构建在独立 job 中进行，Linux 依赖 `ubuntu-24.04` 的 WebKitGTK 4.1。
 - macOS 的产物在打包前由 `scripts/sign-macos.sh` 签名。仓库需要配置下列 Secrets，缺省时退回到临时签名：
-
   | Secret | 说明 |
   | --- | --- |
   | `MACOS_CERTIFICATE_P12` | 开发者证书 `.p12` 的 base64 内容。 |
@@ -185,6 +184,7 @@ wails build -platform linux/amd64
   | `APPLE_TEAM_ID` | 开发者团队 ID，可选。 |
 
   前三项齐全时用开发者证书签名并带时间戳；三项公证凭据也齐全时额外提交公证并把票据 stapler 进 Bundle，下载后无需任何放行操作。只有前三项时签名有效但未公证，首次打开需要用户右键确认；一项都没有时用临时签名，同样不会出现「已损坏」的提示。
+- macOS 同时产出 dmg 和 zip。dmg 用 `hdiutil create` 打包，内含 `Orbit SSH.app`、指向 `/Applications` 的符号链接、`LICENSE.txt` 和 `build/darwin/README.txt` 里的安装说明；zip 只有 App 本身，用 `ditto` 打包以保留权限和符号链接。`scripts/build-macos.sh --package` 产出同样的两种文件，本地与 CI 的产物一致。
 - Windows 的便携版和安装版由 `scripts/package-windows.ps1` 生成，和本地发布用的是同一套脚本，因此两个压缩包都带有许可证、说明和 WebView2 引导程序；脚本会自行下载并校验 NSIS。
 - 汇总 job 检出仓库以读取 `docs/releases/<标签>.md` 作为发布说明，缺失时使用占位文本；同一个 job 生成 `SHA256SUMS.txt`。
 - 工作流会校验标签与 `wails.json`、`frontend/package.json` 的版本号一致，不一致直接失败，避免出现文件名与程序版本对不上的发布。
