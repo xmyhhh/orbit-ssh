@@ -95,12 +95,7 @@ func (a *App) streamLocalTerminal(id string, s *localSession) {
 		code, err := s.terminal.Wait()
 		s.close()
 		<-readDone
-		a.mu.Lock()
-		if a.localSessions[id] == s {
-			delete(a.localSessions, id)
-		}
-		a.mu.Unlock()
-		a.clearSessionMCPUnrestricted(id)
+		current := a.removeTerminalSession(id, s, nil)
 		a.syncBackgroundState()
 		name := s.name
 		if name == "" {
@@ -112,7 +107,7 @@ func (a *App) streamLocalTerminal(id string, s *localSession) {
 		} else if code != 0 {
 			message = fmt.Sprintf("%s 已退出（%d）", name, code)
 		}
-		if a.emit != nil {
+		if current && a.emit != nil {
 			a.emit("ssh:closed:"+id, message)
 		}
 	}()

@@ -159,7 +159,11 @@ func (a *App) callMCPToolContext(ctx context.Context, name string, arguments map
 				message, err = a.requestMCPCommand(ctx, args.SessionID, args.Text)
 				value = map[string]any{"sent": err == nil, "sessionId": args.SessionID, "message": message}
 			} else {
-				err = a.WriteTerminal(args.SessionID, args.Text)
+				var auth mcpTerminalAuthorization
+				auth, err = a.authorizeMCPInput(ctx, args.SessionID)
+				if err == nil {
+					err = a.writeMCPTerminal(ctx, args.SessionID, args.Text, auth, false)
+				}
 				value = map[string]any{"sent": err == nil, "sessionId": args.SessionID}
 			}
 		}

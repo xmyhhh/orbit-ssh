@@ -100,6 +100,7 @@ func TestMCPCreateConnectAndShareTerminal(t *testing.T) {
 	vault := mockPasswordVault(t)
 	address, fingerprint := testSSHServer(t)
 	a := testApp(t, address)
+	a.store.state.Preferences.MCPEnabled = true
 	a.store.state.Preferences.MCPAllowConnections = true
 	var eventsMu sync.Mutex
 	var publicEvents []string

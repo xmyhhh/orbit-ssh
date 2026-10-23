@@ -182,6 +182,12 @@ func (a *App) SavePreferences(p Preferences) error {
 		a.store.mu.Unlock()
 		return err
 	}
+	if (old.MCPEnabled && !p.MCPEnabled) || (old.MCPAllowTerminalInput && !p.MCPAllowTerminalInput) {
+		// Invalidate under the preference lock so a request cannot queue
+		// between observing the old authorization and this revocation.
+		a.store.mcpInputRevision++
+		a.invalidateMCPCommandsLocked()
+	}
 	a.store.mu.Unlock()
 	if a.desktop {
 		if err := a.configureMCP(p); err != nil {
@@ -276,6 +282,12 @@ func (a *App) SetEditorDirty(id string, dirty bool) {
 
 func (a *App) shutdown(_ context.Context) {
 	a.stopTray()
+	if a.store != nil {
+		a.store.mu.Lock()
+		a.store.mcpInputRevision++
+		a.invalidateMCPCommandsLocked()
+		a.store.mu.Unlock()
+	}
 	a.stopMCP()
 	a.flushTerminalHistory()
 	a.transferMu.Lock()
@@ -293,6 +305,9 @@ func (a *App) shutdown(_ context.Context) {
 	a.localSessions = map[string]*localSession{}
 	a.pending = map[string]context.CancelFunc{}
 	a.mcpConnections = map[string]*mcpConnectionRequest{}
+	a.mcpSessionMu.Lock()
+	a.mcpUnrestricted = map[string]bool{}
+	a.mcpSessionMu.Unlock()
 	a.mu.Unlock()
 	for _, request := range mcpConnections {
 		request.cancel()

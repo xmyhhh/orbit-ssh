@@ -12,10 +12,11 @@ static NSString *const OrbitApprovalCategory = @"ORBIT_APPROVAL";
 static NSString *const OrbitApprovalAllow = @"ORBIT_APPROVAL_ALLOW";
 static NSString *const OrbitApprovalDeny = @"ORBIT_APPROVAL_DENY";
 
+API_AVAILABLE(macos(10.14))
 @interface OrbitNotifyDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
-static OrbitNotifyDelegate *sDelegate;
+static OrbitNotifyDelegate *sDelegate API_AVAILABLE(macos(10.14));
 
 @implementation OrbitNotifyDelegate
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
@@ -25,7 +26,9 @@ static OrbitNotifyDelegate *sDelegate;
     NSString *action = response.actionIdentifier;
     if (requestID != nil) {
         if ([action isEqualToString:OrbitApprovalAllow]) {
-            OrbitNotifyResponse(1, (char *)requestID.UTF8String);
+            // Legacy banners may still carry Allow. Never approve a preview:
+            // open the app so the entire command can be inspected instead.
+            OrbitNotifyResponse(0, (char *)requestID.UTF8String);
         } else if ([action isEqualToString:OrbitApprovalDeny]) {
             OrbitNotifyResponse(2, (char *)requestID.UTF8String);
         } else if ([action isEqualToString:UNNotificationDefaultActionIdentifier]) {
@@ -49,6 +52,7 @@ static OrbitNotifyDelegate *sDelegate;
 }
 @end
 
+static UNUserNotificationCenter *OrbitNotifyCenter(void) API_AVAILABLE(macos(10.14));
 static UNUserNotificationCenter *OrbitNotifyCenter(void) {
     static UNUserNotificationCenter *center;
     static dispatch_once_t once;
@@ -56,20 +60,22 @@ static UNUserNotificationCenter *OrbitNotifyCenter(void) {
         center = [UNUserNotificationCenter currentNotificationCenter];
         sDelegate = [OrbitNotifyDelegate new];
         center.delegate = sDelegate;
-        UNNotificationAction *allow = [UNNotificationAction
-            actionWithIdentifier:OrbitApprovalAllow title:@"允许执行"
-            options:UNNotificationActionOptionAuthenticationRequired];
+        UNNotificationAction *open = [UNNotificationAction
+            actionWithIdentifier:OrbitApprovalAllow title:@"查看命令"
+            options:UNNotificationActionOptionForeground];
         UNNotificationAction *deny = [UNNotificationAction
             actionWithIdentifier:OrbitApprovalDeny title:@"拒绝"
             options:UNNotificationActionOptionNone];
         UNNotificationCategory *category = [UNNotificationCategory
-            categoryWithIdentifier:OrbitApprovalCategory actions:@[allow, deny]
+            categoryWithIdentifier:OrbitApprovalCategory actions:@[open, deny]
             intentIdentifiers:@[] options:UNNotificationCategoryOptionNone];
         [center setNotificationCategories:[NSSet setWithObject:category]];
     });
     return center;
 }
 
+static void OrbitPostApproval(UNUserNotificationCenter *center,
+    NSString *title, NSString *body, NSString *requestID) API_AVAILABLE(macos(10.14));
 static void OrbitPostApproval(UNUserNotificationCenter *center,
     NSString *title, NSString *body, NSString *requestID) {
     // Authorization can stay open for longer than the MCP request. Never post

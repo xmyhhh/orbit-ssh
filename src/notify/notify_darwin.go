@@ -43,22 +43,24 @@ func darwinPostApproval(title, body, requestID string) bool {
 
 // OrbitNotifyResponse is invoked on the main thread by the notification
 // delegate for category actions and the default banner tap. Actions: 0 =
-// activate the app, 1 = approve, 2 = reject.
+// activate the app (including legacy Allow), 2 = reject. A notification
+// preview is never enough to approve the entire terminal payload.
 //
 //export OrbitNotifyResponse
 func OrbitNotifyResponse(action C.int, requestID *C.char) {
-	id := C.GoString(requestID)
+	darwinHandleResponse(int(action), C.GoString(requestID))
+}
+
+func darwinHandleResponse(action int, id string) {
 	notify := pull(id)
 	switch action {
-	case 0:
+	case 0, 1:
 		if notify.Activate != nil {
 			go notify.Activate()
 		}
-	case 1, 2:
+	case 2:
 		if notify.Decide != nil {
-			go func(approved bool) {
-				_ = notify.Decide(approved)
-			}(action == 1)
+			go func() { _ = notify.Decide(false) }()
 		}
 	}
 }

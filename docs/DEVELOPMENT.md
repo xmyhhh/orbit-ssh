@@ -100,6 +100,8 @@ Windows 构建通过后可复用同一份前端资源生成 Android 包：
 
 v3.2 的 GitHub Actions 发布会生成 Windows、macOS 和 Linux 桌面包及 `SHA256SUMS.txt`。Android APK 仍为 v2.0；若本地构建并发布 APK，需使用既有 `android/orbit-local.keystore` 签名，保留该文件以便后续覆盖升级。密钥和二进制产物均不提交到 Git。
 
+发布工作流 `.github/workflows/release.yml` 在各桌面构建节点运行前端测试与生产构建、Go 测试、Android 桥接测试和 Go 静态检查，成功后才打包并发布。Linux 节点使用 `webkit2_41` 构建标签；干净检出时会先生成 Wails 绑定。推送新的 `v*` 标签触发正式发布；`ci-*` 标签仅构建产物，不创建 Release。
+
 ## macOS 构建
 
 在 macOS 上构建需要 Go 1.24 或更新版本、Node.js 22.18 或更新版本，以及 Xcode Command Line Tools。Wails CLI 通过 `go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0` 安装。

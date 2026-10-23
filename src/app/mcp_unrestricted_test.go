@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // recordedTerminal is a fake local terminal that records every write, so the
@@ -38,6 +40,7 @@ func (t *recordedTerminal) joined() string {
 func unrestrictedTestApp(t *testing.T, id string) (*App, *recordedTerminal) {
 	t.Helper()
 	a := testApp(t, "127.0.0.1:22")
+	a.store.state.Preferences.MCPEnabled = true
 	a.store.state.Preferences.MCPAllowTerminalInput = true
 	terminal := &recordedTerminal{}
 	a.localSessions = map[string]*localSession{id: {name: "测试终端", terminal: terminal}}
@@ -222,6 +225,158 @@ func TestSessionMCPUnrestrictedBypassesApproval(t *testing.T) {
 	}
 	if infos := a.mcpSessions(); len(infos) != 1 || infos[0].Unrestricted {
 		t.Fatalf("flag not cleared: %+v", a.mcpSessions())
+	}
+}
+
+func TestMCPUnrestrictedRejectsCancelledContext(t *testing.T) {
+	a, terminal := unrestrictedTestApp(t, "local")
+	if err := a.SetSessionMCPUnrestricted("local", true); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := a.requestMCPCommand(ctx, "local", "never run\n"); err == nil {
+		t.Fatal("unrestricted input accepted a cancelled request")
+	}
+	result := a.callMCPToolContext(ctx, "send_terminal_input", map[string]json.RawMessage{
+		"session_id": json.RawMessage(`"local"`), "text": json.RawMessage(`"partial"`),
+	})
+	if !result.IsError || terminal.joined() != "" {
+		t.Fatal("cancelled plain input reached the terminal")
+	}
+}
+
+func TestMCPWriteRechecksAuthorizationAfterTerminalLock(t *testing.T) {
+	for _, revoke := range []string{"cancel", "input", "enabled", "consent", "session"} {
+		t.Run(revoke, func(t *testing.T) {
+			a, terminal := unrestrictedTestApp(t, "local")
+			if err := a.SetSessionMCPUnrestricted("local", true); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			auth, err := a.authorizeMCPInput(ctx, "local")
+			if err != nil {
+				t.Fatal(err)
+			}
+			auth.local.writeMu.Lock()
+			done := make(chan error, 1)
+			go func() { done <- a.writeMCPTerminal(ctx, "local", "never run\n", auth, true) }()
+			switch revoke {
+			case "cancel":
+				cancel()
+			case "input", "enabled":
+				p := a.store.snapshot().Preferences
+				if revoke == "input" {
+					p.MCPAllowTerminalInput = false
+				} else {
+					p.MCPEnabled = false
+				}
+				if err := a.SavePreferences(p); err != nil {
+					t.Fatal(err)
+				}
+				p.MCPAllowTerminalInput, p.MCPEnabled = true, true
+				if err := a.SavePreferences(p); err != nil {
+					t.Fatal(err)
+				}
+			case "consent":
+				if err := a.SetSessionMCPUnrestricted("local", false); err != nil {
+					t.Fatal(err)
+				}
+			case "session":
+				a.mu.Lock()
+				a.localSessions["local"] = &localSession{terminal: terminal}
+				a.mu.Unlock()
+			}
+			auth.local.writeMu.Unlock()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("write did not recheck authorization")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("write blocked")
+			}
+			if terminal.joined() != "" {
+				t.Fatal("revoked input reached the terminal")
+			}
+		})
+	}
+}
+
+func TestSessionMCPUnrestrictedSetterAndCleanup(t *testing.T) {
+	for _, kind := range []string{"local", "remote"} {
+		t.Run(kind, func(t *testing.T) {
+			a, terminal := unrestrictedTestApp(t, "session")
+			t.Cleanup(func() {
+				a.mu.Lock()
+				delete(a.sessions, "session")
+				a.mu.Unlock()
+			})
+			var oldLocal *localSession
+			var oldRemote *remoteSession
+			if kind == "local" {
+				oldLocal = a.localSessions["session"]
+			} else {
+				delete(a.localSessions, "session")
+				oldRemote = &remoteSession{}
+				a.sessions["session"] = oldRemote
+			}
+			if err := a.SetSessionMCPUnrestricted("session", true); err != nil {
+				t.Fatal(err)
+			}
+			if !a.removeTerminalSession("session", oldLocal, oldRemote) || a.sessionMCPUnrestricted("session") {
+				t.Fatal("current session cleanup did not clear consent")
+			}
+			if err := a.SetSessionMCPUnrestricted("session", true); err == nil || a.sessionMCPUnrestricted("session") {
+				t.Fatal("dead session regained consent")
+			}
+			a.mu.Lock()
+			if kind == "local" {
+				a.localSessions["session"] = &localSession{terminal: terminal}
+			} else {
+				a.sessions["session"] = &remoteSession{}
+			}
+			a.mu.Unlock()
+			if err := a.SetSessionMCPUnrestricted("session", true); err != nil {
+				t.Fatal(err)
+			}
+			if a.removeTerminalSession("session", oldLocal, oldRemote) || !a.sessionMCPUnrestricted("session") {
+				t.Fatal("stale cleanup cleared replacement session consent")
+			}
+		})
+	}
+}
+
+func TestSessionMCPUnrestrictedConcurrentSetterCleanup(t *testing.T) {
+	a, terminal := unrestrictedTestApp(t, "session")
+	for range 200 {
+		s := &localSession{terminal: terminal}
+		a.mu.Lock()
+		a.localSessions["session"] = s
+		a.mu.Unlock()
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _ = a.SetSessionMCPUnrestricted("session", true) }()
+		go func() { defer wg.Done(); a.removeTerminalSession("session", s, nil) }()
+		wg.Wait()
+		if a.sessionMCPUnrestricted("session") {
+			t.Fatal("setter restored consent after session cleanup")
+		}
+	}
+}
+
+func TestSessionMCPUnrestrictedShutdown(t *testing.T) {
+	a, _ := unrestrictedTestApp(t, "local")
+	if err := a.SetSessionMCPUnrestricted("local", true); err != nil {
+		t.Fatal(err)
+	}
+	a.shutdown(context.Background())
+	if a.sessionMCPUnrestricted("local") {
+		t.Fatal("shutdown retained consent for a dead session")
+	}
+	if err := a.SetSessionMCPUnrestricted("local", true); err == nil {
+		t.Fatal("shutdown session regained consent")
 	}
 }
 

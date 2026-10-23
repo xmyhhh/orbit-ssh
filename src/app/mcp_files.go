@@ -24,6 +24,10 @@ type mcpPendingCommand struct {
 	command   string
 	created   time.Time
 	decided   chan bool
+	app       *App
+	ctx       context.Context
+	cancel    context.CancelCauseFunc
+	revision  uint64
 }
 
 var mcpCommandMu sync.Mutex
@@ -157,8 +161,12 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 	if strings.ContainsRune(command, '\x00') {
 		return "", errors.New("命令包含无效字符")
 	}
+	auth, err := a.authorizeMCPInput(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
 	if a.sessionMCPUnrestricted(sessionID) {
-		if err := a.WriteTerminal(sessionID, command); err != nil {
+		if err := a.writeMCPTerminal(ctx, sessionID, command, auth, true); err != nil {
 			return "", err
 		}
 		return mcpCommandSent, nil
@@ -166,17 +174,34 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 	if a.emit == nil {
 		return "", errors.New("请先打开 Orbit SSH 应用界面")
 	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	request := &mcpPendingCommand{
 		id: "cmd-" + rand.Text(), sessionID: sessionID, command: command,
 		created: time.Now(), decided: make(chan bool, 1),
+		app: a, ctx: ctx, cancel: cancel, revision: auth.revision,
+	}
+	// Store -> command is also the order used by revocation and decisions.
+	// Register atomically with the revision check so revocation cannot miss
+	// a request that was authorized before it but queued just afterwards.
+	a.store.mu.Lock()
+	if err := mcpInputPermission(a.store.state.Preferences); err != nil {
+		a.store.mu.Unlock()
+		return "", err
+	}
+	if auth.revision != a.store.mcpInputRevision || ctx.Err() != nil {
+		a.store.mu.Unlock()
+		return "", errors.New("命令请求已取消或授权已撤销")
 	}
 	mcpCommandMu.Lock()
 	if len(mcpPendingCommands) >= 20 {
 		mcpCommandMu.Unlock()
+		a.store.mu.Unlock()
 		return "", errors.New("待确认的命令过多，请稍后重试")
 	}
 	mcpPendingCommands[request.id] = request
 	mcpCommandMu.Unlock()
+	a.store.mu.Unlock()
 	defer func() {
 		mcpCommandMu.Lock()
 		delete(mcpPendingCommands, request.id)
@@ -216,9 +241,12 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 	case <-time.After(time.Until(request.created.Add(mcpApprovalTimeout))):
 		return "", errors.New("等待用户确认超时")
 	case <-ctx.Done():
+		if cause := context.Cause(ctx); cause != nil {
+			return "", fmt.Errorf("命令请求已取消：%w", cause)
+		}
 		return "", errors.New("命令请求已取消")
 	}
-	if err := a.WriteTerminal(sessionID, command); err != nil {
+	if err := a.writeMCPTerminal(ctx, sessionID, command, auth, false); err != nil {
 		return "", err
 	}
 	return mcpCommandSent, nil
@@ -248,11 +276,33 @@ func (a *App) decideMCPFromNotification(id string, approved bool) error {
 
 // DecideMCPCommand is called by the confirmation dialog in the WebView.
 func (a *App) DecideMCPCommand(id string, approved bool) error {
+	// Keep this order consistent with queue registration and SavePreferences.
+	if a.store != nil {
+		a.store.mu.Lock()
+		defer a.store.mu.Unlock()
+	}
 	mcpCommandMu.Lock()
 	defer mcpCommandMu.Unlock()
 	request := mcpPendingCommands[id]
-	if request == nil {
+	if request == nil || (request.app != nil && request.app != a) {
 		return errors.New("命令请求不存在或已处理")
+	}
+	if request.ctx != nil && request.ctx.Err() != nil {
+		delete(mcpPendingCommands, id)
+		return errors.New("命令请求已取消")
+	}
+	if a.store != nil {
+		err := mcpInputPermission(a.store.state.Preferences)
+		if err == nil && request.revision != a.store.mcpInputRevision {
+			err = errors.New("终端输入授权已撤销")
+		}
+		if err != nil {
+			delete(mcpPendingCommands, id)
+			if request.cancel != nil {
+				request.cancel(err)
+			}
+			return err
+		}
 	}
 	if !time.Now().Before(request.created.Add(mcpApprovalTimeout)) {
 		delete(mcpPendingCommands, id)
@@ -263,6 +313,21 @@ func (a *App) DecideMCPCommand(id string, approved bool) error {
 	delete(mcpPendingCommands, id)
 	request.decided <- approved
 	return nil
+}
+
+// invalidateMCPCommandsLocked requires a.store.mu. Queued requests are
+// cancelled immediately; already-decided writes are invalidated by the
+// revision check immediately before writing to the terminal.
+func (a *App) invalidateMCPCommandsLocked() {
+	mcpCommandMu.Lock()
+	defer mcpCommandMu.Unlock()
+	for id, request := range mcpPendingCommands {
+		if request.app != a {
+			continue
+		}
+		delete(mcpPendingCommands, id)
+		request.cancel(errors.New("MCP 终端输入授权已撤销"))
+	}
 }
 
 func (a *App) ListMCPCommands() []map[string]any {

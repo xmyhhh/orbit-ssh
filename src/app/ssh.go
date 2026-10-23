@@ -460,19 +460,14 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 	go func() {
 		waitErr := shell.Wait()
 		readers.Wait()
-		a.mu.Lock()
-		if a.sessions[id] == s {
-			delete(a.sessions, id)
-		}
-		a.mu.Unlock()
-		a.clearSessionMCPUnrestricted(id)
+		current := a.removeTerminalSession(id, nil, s)
 		a.syncBackgroundState()
 		s.close()
 		message := "会话已结束"
 		if waitErr != nil {
 			message = waitErr.Error()
 		}
-		if a.emit != nil {
+		if current && a.emit != nil {
 			a.emit("ssh:closed:"+id, message)
 		}
 	}()

@@ -139,6 +139,136 @@ func TestExpiredMCPDecisionIsRejected(t *testing.T) {
 	}
 }
 
+func TestMCPRevocationInvalidatesPendingApproval(t *testing.T) {
+	for _, permission := range []string{"enabled", "input"} {
+		t.Run(permission, func(t *testing.T) {
+			a, terminal := unrestrictedTestApp(t, "local")
+			requests := make(chan string, 1)
+			a.emit = func(name string, args ...interface{}) {
+				if name == "mcp:command-request" {
+					requests <- args[0].(map[string]any)["id"].(string)
+				}
+			}
+			done := make(chan error, 1)
+			go func() {
+				_, err := a.requestMCPCommand(context.Background(), "local", "never run\n")
+				done <- err
+			}()
+			var id string
+			select {
+			case id = <-requests:
+			case <-time.After(2 * time.Second):
+				t.Fatal("approval was not queued")
+			}
+			p := a.store.snapshot().Preferences
+			if permission == "enabled" {
+				p.MCPEnabled = false
+			} else {
+				p.MCPAllowTerminalInput = false
+			}
+			if err := a.SavePreferences(p); err != nil {
+				t.Fatal(err)
+			}
+			// Re-enabling must not resurrect an earlier approval.
+			p.MCPEnabled, p.MCPAllowTerminalInput = true, true
+			if err := a.SavePreferences(p); err != nil {
+				t.Fatal(err)
+			}
+			if len(a.ListMCPCommands()) != 0 {
+				t.Fatal("revoked approval remains pending")
+			}
+			if err := a.DecideMCPCommand(id, true); err == nil {
+				t.Fatal("revoked approval accepted")
+			}
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("revoked command succeeded")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("revocation did not wake pending approval")
+			}
+			if terminal.joined() != "" {
+				t.Fatal("revoked input reached the shell")
+			}
+		})
+	}
+}
+
+func TestMCPDecisionRejectsCancelledAndRevokedRequests(t *testing.T) {
+	for _, revoke := range []bool{false, true} {
+		t.Run(map[bool]string{false: "cancelled", true: "revoked"}[revoke], func(t *testing.T) {
+			a, terminal := unrestrictedTestApp(t, "local")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			a.emit = func(name string, args ...interface{}) {
+				if name != "mcp:command-request" {
+					return
+				}
+				id := args[0].(map[string]any)["id"].(string)
+				if revoke {
+					// Also guard a live permission change independently of the
+					// SavePreferences invalidation hook.
+					a.store.mu.Lock()
+					a.store.state.Preferences.MCPAllowTerminalInput = false
+					a.store.mu.Unlock()
+				} else {
+					cancel()
+				}
+				// The waiter is still in emit: cancellation has not had a
+				// chance to remove its request from the pending map.
+				if err := a.DecideMCPCommand(id, true); err == nil {
+					t.Error("invalidated decision was accepted")
+				}
+			}
+			if _, err := a.requestMCPCommand(ctx, "local", "never run\n"); err == nil {
+				t.Fatal("invalidated command succeeded")
+			}
+			if terminal.joined() != "" {
+				t.Fatal("invalidated input reached the shell")
+			}
+		})
+	}
+}
+
+func TestMCPApprovalReadyAlongsideCancellationOrRevocation(t *testing.T) {
+	for _, revoke := range []bool{false, true} {
+		t.Run(map[bool]string{false: "cancelled", true: "revoked"}[revoke], func(t *testing.T) {
+			a, terminal := unrestrictedTestApp(t, "local")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			a.emit = func(name string, args ...interface{}) {
+				if name != "mcp:command-request" {
+					return
+				}
+				id := args[0].(map[string]any)["id"].(string)
+				if err := a.DecideMCPCommand(id, true); err != nil {
+					t.Fatal(err)
+				}
+				if revoke {
+					p := a.store.snapshot().Preferences
+					p.MCPAllowTerminalInput = false
+					if err := a.SavePreferences(p); err != nil {
+						t.Fatal(err)
+					}
+					p.MCPAllowTerminalInput = true
+					if err := a.SavePreferences(p); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					cancel()
+				}
+			}
+			if _, err := a.requestMCPCommand(ctx, "local", "never run\n"); err == nil {
+				t.Fatal("approval won over cancellation/revocation")
+			}
+			if terminal.joined() != "" {
+				t.Fatal("invalidated input reached the shell")
+			}
+		})
+	}
+}
+
 func TestApprovalPreview(t *testing.T) {
 	body := approvalBody("终端 A", "  "+strings.Repeat("文", 200)+"\n")
 	if !utf8.ValidString(body) || !strings.HasPrefix(body, "终端 A 请求：") ||

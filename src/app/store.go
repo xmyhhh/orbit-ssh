@@ -69,9 +69,10 @@ type State struct {
 }
 
 type Store struct {
-	mu    sync.Mutex
-	path  string
-	state State
+	mu               sync.Mutex
+	path             string
+	state            State
+	mcpInputRevision uint64 // invalidates input authorized before a revocation
 }
 
 func defaultState() State {

@@ -5,8 +5,9 @@ package notify
 
 import "sync"
 
-// Handlers receive actions for one pending approval. Activate opens the app;
-// Decide answers the request using the same gate as the in-app dialog.
+// Handlers receive actions for one pending approval. Activate opens the app
+// for full command review; notification actions may only reject via Decide(false).
+// Never authorize a full command from its possibly truncated OS preview.
 type Handlers struct {
 	Activate func()
 	Decide   func(approved bool) error
