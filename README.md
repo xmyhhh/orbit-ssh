@@ -4,9 +4,9 @@
 
 Orbit SSH 是一款面向 Windows、macOS、Linux 和 Android 的个人 SSH 工具，适合日常连接 Linux 服务器、维护文件、配置 SSH 隧道，以及在本机运行本地 Shell（Windows 上还可用 WSL）。无需注册账号，主机配置和登录凭据保存在当前设备。
 
-**v3.3.2（Windows x64 / macOS / Linux x64）：[Windows 安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-windows-x64-setup.exe) · [Windows 便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-windows-x64-portable.zip) · [macOS](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-macos-arm64.dmg) · [Linux](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-linux-x64.tar.gz)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v3.3.2) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
+**v3.3.3（Windows x64 / macOS / Linux x64）：[Windows 安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-windows-x64-setup.exe) · [Windows 便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-windows-x64-portable.zip) · [macOS](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-macos-arm64.dmg) · [Linux](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-linux-x64.tar.gz)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v3.3.3) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
-**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.3.2 只发布桌面版；Android 的后台会话能力会在下个版本单独发布。
+**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.3.3 只发布桌面版；Android 的后台会话能力会在下个版本单独发布。
 
 ![Orbit SSH v3.0 首页：主机卡片、分组、收藏和搜索](docs/images/v3-home.png)
 
@@ -63,14 +63,14 @@ Orbit SSH 是一款面向 Windows、macOS、Linux 和 Android 的个人 SSH 工�
 
 | 平台 | 下载 | 运行要求 |
 | --- | --- | --- |
-| Windows x64 · 安装版 | [OrbitSSH-v3.3.2-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
-| Windows x64 · 便携版 | [OrbitSSH-v3.3.2-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
-| macOS · Apple Silicon | [OrbitSSH-v3.3.2-macos-arm64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-macos-arm64.dmg) | 双击 dmg，把 `Orbit SSH.app` 拖进「应用程序」。 |
-| macOS · Intel | [OrbitSSH-v3.3.2-macos-x64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-macos-x64.dmg) | 同上；未做公证的应用首次打开需要右键选择「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Orbit SSH.app"`。 |
-| Linux x64 | [OrbitSSH-v3.3.2-linux-x64.tar.gz](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/OrbitSSH-v3.3.2-linux-x64.tar.gz) | 解压后运行 `OrbitSSH`；需要 GTK 3、WebKitGTK 和 Secret Service。 |
+| Windows x64 · 安装版 | [OrbitSSH-v3.3.3-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
+| Windows x64 · 便携版 | [OrbitSSH-v3.3.3-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
+| macOS · Apple Silicon | [OrbitSSH-v3.3.3-macos-arm64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-macos-arm64.dmg) | 双击 dmg，把 `Orbit SSH.app` 拖进「应用程序」。 |
+| macOS · Intel | [OrbitSSH-v3.3.3-macos-x64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-macos-x64.dmg) | 同上；未做公证的应用首次打开需要右键选择「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Orbit SSH.app"`。 |
+| Linux x64 | [OrbitSSH-v3.3.3-linux-x64.tar.gz](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/OrbitSSH-v3.3.3-linux-x64.tar.gz) | 解压后运行 `OrbitSSH`；需要 GTK 3、WebKitGTK 和 Secret Service。 |
 | Android ARM64 | [OrbitSSH-v2.0-android-arm64.apk](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk) | Android 9+；将 APK 传到手机，按系统提示允许安装。 |
 
-所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.2/SHA256SUMS.txt) 核对下载文件。
+所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.3/SHA256SUMS.txt) 核对下载文件。
 
 Windows 安装版会把程序安装到当前用户目录（默认 `%LOCALAPPDATA%\Programs\Orbit SSH`），卸载入口在 Windows 设置或开始菜单中；主机配置、凭据和终端历史保存在 `%APPDATA%\OrbitSSH`，覆盖安装和卸载都不会删除。安装版会检测并安装 Microsoft Edge WebView2 Runtime；便携版需要系统已有 WebView2，Windows 11 通常已自带。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。WSL 是可选功能，使用时需另外安装 WSL 和 Linux 发行版。
 

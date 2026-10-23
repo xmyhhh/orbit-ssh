@@ -39,10 +39,7 @@ func Start(id string, cols, rows int) (Terminal, error) {
 		if shell.ID != id {
 			continue
 		}
-		args := []string{"-NoLogo"}
-		if id == "cmd" {
-			args = []string{"/D"}
-		}
+		args := windowsShellArgs(id)
 		dir, err := os.UserHomeDir()
 		if err != nil {
 			return nil, err
@@ -50,4 +47,17 @@ func Start(id string, cols, rows int) (Terminal, error) {
 		return StartWindows(shell.Path, args, dir, cols, rows)
 	}
 	return nil, errors.New("本地 Shell 不存在或尚未安装，请刷新列表")
+}
+
+func windowsShellArgs(id string) []string {
+	if id == "cmd" {
+		return []string{"/D"}
+	}
+	// ConPTY transports UTF-8, but .NET's Console can still use a legacy code
+	// page and replace Unicode characters with '?' before ConPTY sees them.
+	// Set both console encodings and PowerShell's native-pipeline encoding in
+	// the child, not the app's console (which may be absent or shared).
+	// NoExit retains the interactive shell; profiles still load normally.
+	return []string{"-NoLogo", "-NoExit", "-Command",
+		"$OutputEncoding = [Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)"}
 }

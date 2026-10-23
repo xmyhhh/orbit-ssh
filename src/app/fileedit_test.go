@@ -156,13 +156,27 @@ func TestRemoteTextConcurrentSaves(t *testing.T) {
 }
 
 func TestRemoteTextSymlinkTarget(t *testing.T) {
+	t.Run("relative", func(t *testing.T) { testRemoteTextSymlinkTarget(t, false) })
+	if runtime.GOOS != "windows" {
+		t.Run("absolute", func(t *testing.T) { testRemoteTextSymlinkTarget(t, true) })
+	}
+}
+
+func testRemoteTextSymlinkTarget(t *testing.T, absolute bool) {
 	a, dir := transferTestApp(t)
 	target := path.Join(dir, "target.txt")
 	link := path.Join(dir, "link.txt")
 	if err := os.WriteFile(localTextTestPath(target), []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(localTextTestPath(target), localTextTestPath(link)); err != nil {
+	// The in-process Windows SFTP server exposes POSIX paths, so native
+	// drive-qualified absolute targets cannot model a remote POSIX symlink.
+	// Exercise relative targets on all hosts and absolute ones on Unix.
+	linkTarget := path.Base(target)
+	if absolute {
+		linkTarget = target
+	}
+	if err := os.Symlink(linkTarget, localTextTestPath(link)); err != nil {
 		if runtime.GOOS == "windows" {
 			t.Skip("Windows symlink privilege unavailable")
 		}
