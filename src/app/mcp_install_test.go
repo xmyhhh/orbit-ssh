@@ -38,12 +38,11 @@ func TestMCPInstallCLI(t *testing.T) {
 			path := filepath.Join(codexRoot, "config.toml")
 			data, readErr := os.ReadFile(path)
 			if tc.wantInstall {
-				if readErr != nil || !bytes.Contains(data, []byte("http://127.0.0.1:8765/mcp")) {
+				if readErr != nil || !bytes.Contains(data, []byte("command = ")) || !bytes.Contains(data, []byte("mcp-stdio")) || bytes.Contains(data, []byte("Authorization")) {
 					t.Fatalf("command did not install: %v", readErr)
 				}
-				token, tokenErr := os.ReadFile(filepath.Join(root, "OrbitSSH", "mcp-token"))
-				if tokenErr != nil || !bytes.Contains(data, bytes.TrimSpace(token)) || strings.Contains(output.String(), string(bytes.TrimSpace(token))) {
-					t.Fatalf("token was not installed or was printed to the terminal: %v", tokenErr)
+				if _, tokenErr := os.Stat(filepath.Join(root, "OrbitSSH", "mcp-token")); !os.IsNotExist(tokenErr) {
+					t.Fatalf("Codex stdio install unexpectedly created a token file: %v", tokenErr)
 				}
 				if !strings.Contains(output.String(), "重启 Codex") {
 					t.Fatal("missing restart guidance")

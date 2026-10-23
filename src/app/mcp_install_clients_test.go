@@ -58,7 +58,14 @@ func TestMCPInstallCLIAllAndPartialFailure(t *testing.T) {
 					}
 					continue
 				}
-				if !bytes.Contains(data, []byte("http://127.0.0.1:8765/mcp")) || strings.Count(output.String(), "已将 Orbit SSH MCP 接入 "+client.Name()+"：") != 1 {
+				if client.Target() == "codex" {
+					if !bytes.Contains(data, []byte("mcp-stdio")) || bytes.Contains(data, []byte("Authorization")) {
+						t.Fatalf("Codex did not get a token-free stdio config:\n%s", data)
+					}
+				} else if !bytes.Contains(data, []byte("http://127.0.0.1:8765/mcp")) {
+					t.Fatalf("HTTP endpoint missing for %s:\n%s", client.Name(), data)
+				}
+				if strings.Count(output.String(), "已将 Orbit SSH MCP 接入 "+client.Name()+"：") != 1 {
 					t.Fatalf("client not installed exactly once: %s\n%s", client.Name(), &output)
 				}
 			}

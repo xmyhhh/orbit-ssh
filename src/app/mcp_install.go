@@ -4,6 +4,7 @@ package app
 
 import (
 	"errors"
+	"os"
 
 	"orbitssh/src/mcp"
 )
@@ -26,6 +27,13 @@ func (a *App) InstallMCP(target string) (mcp.Result, error) {
 	if err != nil {
 		return mcp.Result{}, err
 	}
+	if client.Target() == "codex" {
+		command, err := os.Executable()
+		if err != nil {
+			return mcp.Result{}, err
+		}
+		return mcp.InstallCodexMCPStdio(path, command)
+	}
 	return client.Install(path, status.Endpoint, status.Token)
 }
 
@@ -47,6 +55,14 @@ func (a *App) MCPConfigSnippet(target string) (string, error) {
 	status := a.GetMCPStatus()
 	if !status.Running || status.Token == "" {
 		return "", errors.New("请先启用本机 MCP 服务，并确认服务运行中")
+	}
+	if client.Target() == "codex" {
+		command, err := os.Executable()
+		if err != nil {
+			return "", err
+		}
+		data, err := mcp.UpdateCodexMCPStdioConfig(nil, command)
+		return string(data), err
 	}
 	data, err := client.UpdateConfig(nil, status.Endpoint, status.Token)
 	return string(data), err

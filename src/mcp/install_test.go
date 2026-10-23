@@ -74,6 +74,39 @@ func TestUpdateCodexMCPConfig(t *testing.T) {
 	}
 }
 
+func TestUpdateCodexMCPStdioConfig(t *testing.T) {
+	original := []byte("# keep this comment\n[mcp_servers.orbit-ssh]\nurl = 'http://127.0.0.1:8765/mcp'\nenabled = false\nhttp_headers = { Authorization = 'Bearer old-secret' }\nstartup_timeout_sec = 30\nenabled_tools = ['list_sessions']\n[mcp_servers.other]\ncommand = 'keep'\n")
+	command := "/Applications/Orbit SSH.app/Contents/MacOS/OrbitSSH"
+	updated, err := UpdateCodexMCPStdioConfig(original, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(updated, []byte("# keep this comment")) || !bytes.Contains(updated, []byte("[mcp_servers.other]\ncommand = 'keep'")) {
+		t.Fatalf("unrelated config was not preserved:\n%s", updated)
+	}
+	if bytes.Contains(updated, []byte("8765")) || bytes.Contains(updated, []byte("old-secret")) || bytes.Contains(updated, []byte("Authorization")) {
+		t.Fatalf("HTTP transport credentials were retained:\n%s", updated)
+	}
+	var config map[string]any
+	if err = toml.Unmarshal(updated, &config); err != nil {
+		t.Fatal(err)
+	}
+	entry := config["mcp_servers"].(map[string]any)["orbit-ssh"].(map[string]any)
+	if entry["command"] != command || entry["enabled"] != true || !reflect.DeepEqual(entry["args"], []any{"mcp-stdio"}) {
+		t.Fatalf("wrong stdio config: %#v", entry)
+	}
+	if entry["startup_timeout_sec"] != int64(30) || !reflect.DeepEqual(entry["enabled_tools"], []any{"list_sessions"}) {
+		t.Fatalf("tool policy was not preserved: %#v", entry)
+	}
+	again, err := UpdateCodexMCPStdioConfig(updated, command)
+	if err != nil || !bytes.Equal(updated, again) {
+		t.Fatalf("repeat install changed the config: %v", err)
+	}
+	if _, err = UpdateCodexMCPStdioConfig(nil, ""); err == nil {
+		t.Fatal("empty executable path was accepted")
+	}
+}
+
 func TestCodexMCPUpdatePreservesPolicies(t *testing.T) {
 	original := []byte(`[mcp_servers.orbit-ssh]
 command = "old-transport"

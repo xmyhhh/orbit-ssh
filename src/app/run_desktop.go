@@ -19,8 +19,15 @@ import (
 // are embedded by the module root, because they live next to the Go packages.
 func Run(assets embed.FS, trayAsset []byte) error {
 	tray.SetAsset(trayAsset)
-	if len(os.Args) > 1 && os.Args[1] == "install" {
+	if len(os.Args) > 1 && (os.Args[1] == "install" || os.Args[1] == "mcp-stdio") {
 		mcp.PrepareConsole()
+	}
+	if handled, err := runMCPStdioCommand(os.Args[1:], os.Stdin, os.Stdout); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return nil
 	}
 	if handled, err := runMCPInstallCommand(os.Args[1:], os.Stdin, os.Stdout); handled {
 		if err != nil {

@@ -31,6 +31,61 @@ func updateCodexMCPConfig(data []byte, endpoint, token string) ([]byte, error) {
 	if endpoint == "" || token == "" {
 		return nil, errors.New("MCP 地址和访问令牌不能为空")
 	}
+	return updateCodexMCPEntry(data, func(entry map[string]any) {
+		// Replace transport/authentication settings while retaining tool policies,
+		// timeouts and other user options on this server.
+		for _, key := range []string{"command", "args", "env", "env_vars", "bearer_token_env_var", "http_headers_helper"} {
+			delete(entry, key)
+		}
+		headers := map[string]any{}
+		if previous, ok := entry["http_headers"].(map[string]any); ok {
+			for key, value := range previous {
+				if !strings.EqualFold(key, "Authorization") {
+					headers[key] = value
+				}
+			}
+		}
+		headers["Authorization"] = "Bearer " + token
+		entry["http_headers"] = headers
+		if previous, ok := entry["env_http_headers"].(map[string]any); ok {
+			envHeaders := map[string]any{}
+			for key, value := range previous {
+				if !strings.EqualFold(key, "Authorization") {
+					envHeaders[key] = value
+				}
+			}
+			if len(envHeaders) == 0 {
+				delete(entry, "env_http_headers")
+			} else {
+				entry["env_http_headers"] = envHeaders
+			}
+		}
+		entry["url"] = endpoint
+		entry["enabled"] = true
+	})
+}
+
+// UpdateCodexMCPStdioConfig configures Codex to launch this executable as a
+// stdio bridge. The bridge connects directly to Orbit SSH's loopback server,
+// avoiding proxy handling in Codex's HTTP transport.
+func UpdateCodexMCPStdioConfig(data []byte, command string) ([]byte, error) {
+	if command == "" {
+		return nil, errors.New("Codex MCP 启动程序路径不能为空")
+	}
+	return updateCodexMCPEntry(data, func(entry map[string]any) {
+		for _, key := range []string{
+			"url", "bearer_token", "bearer_token_env_var", "http_headers",
+			"env_http_headers", "http_headers_helper", "oauth", "type", "headers",
+		} {
+			delete(entry, key)
+		}
+		entry["command"] = command
+		entry["args"] = []any{"mcp-stdio"}
+		entry["enabled"] = true
+	})
+}
+
+func updateCodexMCPEntry(data []byte, update func(map[string]any)) ([]byte, error) {
 	var config map[string]any
 	if err := toml.Unmarshal(data, &config); err != nil {
 		// Parser diagnostics may contain credentials from the source document.
@@ -48,36 +103,7 @@ func updateCodexMCPConfig(data []byte, endpoint, token string) ([]byte, error) {
 	for key, value := range existing {
 		entry[key] = value
 	}
-	// Replace transport/authentication settings while retaining tool policies,
-	// timeouts and other user options on this server.
-	for _, key := range []string{"command", "args", "env", "env_vars", "bearer_token_env_var", "http_headers_helper"} {
-		delete(entry, key)
-	}
-	headers := map[string]any{}
-	if previous, ok := entry["http_headers"].(map[string]any); ok {
-		for key, value := range previous {
-			if !strings.EqualFold(key, "Authorization") {
-				headers[key] = value
-			}
-		}
-	}
-	headers["Authorization"] = "Bearer " + token
-	entry["http_headers"] = headers
-	if previous, ok := entry["env_http_headers"].(map[string]any); ok {
-		envHeaders := map[string]any{}
-		for key, value := range previous {
-			if !strings.EqualFold(key, "Authorization") {
-				envHeaders[key] = value
-			}
-		}
-		if len(envHeaders) == 0 {
-			delete(entry, "env_http_headers")
-		} else {
-			entry["env_http_headers"] = envHeaders
-		}
-	}
-	entry["url"] = endpoint
-	entry["enabled"] = true
+	update(entry)
 	if reflect.DeepEqual(existing, entry) {
 		return data, nil
 	}
@@ -156,6 +182,17 @@ func installCodexMCPConfig(path, endpoint, token string) (Result, error) {
 	return installMCPConfig(path, "Codex", func(data []byte) ([]byte, error) {
 		return updateCodexMCPConfig(data, endpoint, token)
 	})
+}
+
+// InstallCodexMCPStdio connects Codex to the local stdio bridge executable.
+func InstallCodexMCPStdio(path, command string) (Result, error) {
+	result, err := installMCPConfig(path, "Codex", func(data []byte) ([]byte, error) {
+		return UpdateCodexMCPStdioConfig(data, command)
+	})
+	if err != nil {
+		return result, fmt.Errorf("Codex 接入失败：%w", err)
+	}
+	return result, nil
 }
 
 func installMCPConfig(path, clientName string, update func([]byte) ([]byte, error)) (Result, error) {

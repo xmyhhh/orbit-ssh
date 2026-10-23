@@ -567,7 +567,7 @@ export function PreferencesDialog({
                   <div>
                     <strong>接入 AI 客户端</strong>
                     <p className="field-hint">
-                      自动配置当前用户，接入后重启客户端。修改端口后请再次接入。
+                      自动配置当前用户，接入后重启客户端。HTTP 客户端修改端口后请再次接入。
                     </p>
                   </div>
                   <div className="mcp-install-actions">

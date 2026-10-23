@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -72,15 +73,37 @@ func runMCPInstallCommandWithConfig(args []string, input io.Reader, output io.Wr
 	if err != nil {
 		return true, err
 	}
-	token, err := mcp.LoadOrCreateToken(filepath.Join(directory, "mcp-token"))
-	if err != nil {
-		return true, err
+	var token string
+	for _, client := range clients {
+		if client.Target() != "codex" {
+			token, err = mcp.LoadOrCreateToken(filepath.Join(directory, "mcp-token"))
+			if err != nil {
+				return true, err
+			}
+			break
+		}
 	}
 	preferences := store.snapshot().Preferences
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/mcp", preferences.MCPPort)
+	var codexCommand string
+	for _, client := range clients {
+		if client.Target() == "codex" {
+			codexCommand, err = os.Executable()
+			if err != nil {
+				return true, err
+			}
+			break
+		}
+	}
 	var failures []error
 	for i, client := range clients {
-		result, installErr := client.Install(paths[i], endpoint, token)
+		var result mcp.Result
+		var installErr error
+		if client.Target() == "codex" {
+			result, installErr = mcp.InstallCodexMCPStdio(paths[i], codexCommand)
+		} else {
+			result, installErr = client.Install(paths[i], endpoint, token)
+		}
 		if installErr != nil {
 			failures = append(failures, installErr)
 			continue
