@@ -1,6 +1,7 @@
 //go:build darwin && !android && !androidtest
 
 #import <Cocoa/Cocoa.h>
+#import <objc/runtime.h>
 
 #import "tray_darwin.h"
 
@@ -87,8 +88,39 @@ static NSImage *OrbitTrayImage(NSString *label) {
     return OrbitTrayFallbackImage();
 }
 
+// Wails' AppDelegate does not implement applicationShouldHandleReopen:, so
+// after the close button hides the window with orderOut: (close-to-tray) a
+// Dock icon click activates the app but leaves the hidden window hidden. When
+// the running delegate class misses the method, this hook is added to it and
+// routes the reopen event to the same Show callback the tray menu uses.
+static BOOL OrbitReopenShowWindow(id self, SEL cmd, NSApplication *sender, BOOL hasVisibleWindows) {
+    OrbitTrayAction(OrbitTrayActionShow, 0);
+    return YES;
+}
+
+static void OrbitTrayInstallReopenHook(void) {
+    NSApplication *app = [NSApplication sharedApplication];
+    if (app == nil || app.delegate == nil) {
+        // The delegate is set before the run loop starts, so this retry is
+        // only insurance for an unexpected launch order.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            OrbitTrayInstallReopenHook();
+        });
+        return;
+    }
+    Class delegateClass = object_getClass(app.delegate);
+    SEL reopenSelector = @selector(applicationShouldHandleReopen:hasVisibleWindows:);
+    // Leave a delegate that handles reopen itself untouched, so a future Wails
+    // version that ships the method keeps working unchanged.
+    if (delegateClass == nil || class_respondsToSelector(delegateClass, reopenSelector)) {
+        return;
+    }
+    class_addMethod(delegateClass, reopenSelector, (IMP)OrbitReopenShowWindow, "c@:@c");
+}
+
 void OrbitTrayCreate(const char *title, const unsigned char *imageData, int imageLength) {
     dispatch_async(dispatch_get_main_queue(), ^{
+        OrbitTrayInstallReopenHook();
         if (sStatusItem != nil) {
             OrbitTrayAction(OrbitTrayActionReady, 1);
             return;
