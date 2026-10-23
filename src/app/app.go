@@ -14,24 +14,27 @@ import (
 )
 
 type App struct {
-	ctx               context.Context
-	store             *Store
-	storeErr          error
-	mu                sync.Mutex
-	sessions          map[string]*remoteSession
-	localSessions     map[string]*localSession
-	pending           map[string]context.CancelFunc
-	closing           bool
-	forwardMu         sync.Mutex
-	forwards          map[string]*hostForwarding
-	emit              func(string, ...interface{})
-	transferMu        sync.Mutex
-	transfers         []*transferJob
-	transferRuns      map[string]bool
-	fileEditMu        sync.Mutex
-	dirtyEditors      map[string]bool
-	tray              trayState
-	desktop           bool
+	ctx           context.Context
+	store         *Store
+	storeErr      error
+	mu            sync.Mutex
+	sessions      map[string]*remoteSession
+	localSessions map[string]*localSession
+	pending       map[string]context.CancelFunc
+	closing       bool
+	forwardMu     sync.Mutex
+	forwards      map[string]*hostForwarding
+	emit          func(string, ...interface{})
+	transferMu    sync.Mutex
+	transfers     []*transferJob
+	transferRuns  map[string]bool
+	fileEditMu    sync.Mutex
+	dirtyEditors  map[string]bool
+	tray          trayState
+	desktop       bool
+	// notifyDecided resolves a decision taken on a system notification
+	// banner; it stays nil on starts that never wired the notify package.
+	notifyDecided     func(requestID string, approved bool) error
 	mcpMu             sync.Mutex
 	mcpServer         *http.Server
 	mcpListener       net.Listener
@@ -39,6 +42,8 @@ type App struct {
 	mcpToken          string
 	mcpError          string
 	mcpConnections    map[string]*mcpConnectionRequest
+	mcpSessionMu      sync.Mutex
+	mcpUnrestricted   map[string]bool
 	historyMu         sync.RWMutex
 	historyDir        string
 	history           map[string]TerminalHistoryRecord
@@ -54,8 +59,9 @@ type App struct {
 func NewApp() *App {
 	return &App{
 		sessions: map[string]*remoteSession{}, pending: map[string]context.CancelFunc{},
-		mcpConnections: map[string]*mcpConnectionRequest{},
-		history:        map[string]TerminalHistoryRecord{}, historyChanges: map[string]terminalHistoryChange{}, historyDeleted: map[string]bool{},
+		mcpConnections:  map[string]*mcpConnectionRequest{},
+		mcpUnrestricted: map[string]bool{},
+		history:         map[string]TerminalHistoryRecord{}, historyChanges: map[string]terminalHistoryChange{}, historyDeleted: map[string]bool{},
 	}
 }
 

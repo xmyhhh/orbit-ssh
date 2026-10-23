@@ -67,6 +67,7 @@ func (a *App) Disconnect(id string) error {
 	mcpRequest := a.mcpConnections[id]
 	delete(a.pending, id)
 	a.mu.Unlock()
+	a.clearSessionMCPUnrestricted(id)
 	if mcpRequest != nil {
 		mcpRequest.cancel()
 	}

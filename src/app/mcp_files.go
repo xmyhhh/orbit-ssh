@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"orbitssh/src/notify"
 )
 
 const mcpFileReadLimit = 512 * 1024
@@ -26,6 +28,13 @@ type mcpPendingCommand struct {
 
 var mcpCommandMu sync.Mutex
 var mcpPendingCommands = map[string]*mcpPendingCommand{}
+
+const (
+	mcpCommandMaxBytes = 4096
+	mcpInputMaxBytes   = 16 * 1024
+	mcpApprovalTimeout = 2 * time.Minute
+	mcpCommandSent     = "命令已发送到终端，结果请用 read_terminal 查看"
+)
 
 func (a *App) allowMCPFiles() error {
 	if err := a.ready(); err != nil {
@@ -137,13 +146,22 @@ func (a *App) mcpKillProcess(sessionID string, pid int, signal string) (map[stri
 }
 
 // requestMCPCommand queues a command for the user to approve in the UI. The
-// MCP call blocks until the dialog answers or the request times out.
+// MCP call blocks until the dialog answers or the request times out. The text
+// is written to the terminal verbatim once approved; callers that execute a
+// command append the trailing newline themselves. Windows whose user turned on
+// full consent (完全放行) skip the dialog entirely.
 func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) (string, error) {
-	if len(command) == 0 || len(command) > 4096 {
-		return "", errors.New("命令长度应为 1–4096 字节")
+	if len(command) == 0 || len(command) > mcpInputMaxBytes {
+		return "", errors.New("输入长度应为 1–16384 字节")
 	}
-	if strings.ContainsAny(command, "\x00") {
+	if strings.ContainsRune(command, '\x00') {
 		return "", errors.New("命令包含无效字符")
+	}
+	if a.sessionMCPUnrestricted(sessionID) {
+		if err := a.WriteTerminal(sessionID, command); err != nil {
+			return "", err
+		}
+		return mcpCommandSent, nil
 	}
 	if a.emit == nil {
 		return "", errors.New("请先打开 Orbit SSH 应用界面")
@@ -163,40 +181,87 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 		mcpCommandMu.Lock()
 		delete(mcpPendingCommands, request.id)
 		mcpCommandMu.Unlock()
+		if a.notifyDecided != nil {
+			notify.Forget(request.id)
+		}
+		// Also closes stale UI dialogs on cancellation and timeout. Emit only
+		// after removal so ListMCPCommands cannot return this request again.
+		a.emit("mcp:command-decided", map[string]any{"id": request.id})
 	}()
+	if a.notifyDecided != nil {
+		notify.Register(request.id, notify.Handlers{
+			Activate: a.showFromTray,
+			Decide: func(approved bool) error {
+				return a.notifyDecided(request.id, approved)
+			},
+		})
+	}
 	a.emit("mcp:command-request", map[string]any{
 		"id": request.id, "sessionId": sessionID, "command": command,
 		"dangerous": dangerousCommand(command),
+		"createdAt": request.created.UnixMilli(),
+		"expiresAt": request.created.Add(mcpApprovalTimeout).UnixMilli(),
 	})
+	if a.notifyDecided != nil {
+		name, _ := a.sessionNames(sessionID)
+		// A slow/absent desktop service must never block a dialog decision
+		// or prevent the approval timeout from running.
+		go notify.Approval("Orbit SSH 需要你确认命令", approvalBody(name, command), request.id)
+	}
 	select {
 	case approved := <-request.decided:
 		if !approved {
 			return "", errors.New("用户拒绝了这条命令")
 		}
-	case <-time.After(2 * time.Minute):
+	case <-time.After(time.Until(request.created.Add(mcpApprovalTimeout))):
 		return "", errors.New("等待用户确认超时")
 	case <-ctx.Done():
 		return "", errors.New("命令请求已取消")
 	}
-	if err := a.WriteTerminal(sessionID, command+"\n"); err != nil {
+	if err := a.WriteTerminal(sessionID, command); err != nil {
 		return "", err
 	}
-	return "命令已发送到终端，结果请用 read_terminal 查看", nil
+	return mcpCommandSent, nil
+}
+
+// approvalBody keeps the notification readable: the session the command
+// targets plus a preview of the payload.
+func approvalBody(sessionName, command string) string {
+	if command = strings.TrimSpace(command); command == "" {
+		command = "(空文本)"
+	}
+	const limit = 160
+	if utf8.RuneCountInString(command) > limit {
+		runes := []rune(command)
+		command = string(runes[:limit]) + "…"
+	}
+	if sessionName == "" {
+		sessionName = "终端"
+	}
+	return sessionName + " 请求：" + command
+}
+
+// Notification decisions use exactly the same single-use gate as the dialog.
+func (a *App) decideMCPFromNotification(id string, approved bool) error {
+	return a.DecideMCPCommand(id, approved)
 }
 
 // DecideMCPCommand is called by the confirmation dialog in the WebView.
 func (a *App) DecideMCPCommand(id string, approved bool) error {
 	mcpCommandMu.Lock()
+	defer mcpCommandMu.Unlock()
 	request := mcpPendingCommands[id]
-	mcpCommandMu.Unlock()
 	if request == nil {
 		return errors.New("命令请求不存在或已处理")
 	}
-	select {
-	case request.decided <- approved:
-	default:
-		return errors.New("命令请求已处理")
+	if !time.Now().Before(request.created.Add(mcpApprovalTimeout)) {
+		delete(mcpPendingCommands, id)
+		return errors.New("命令请求已超时")
 	}
+	// Remove under the same lock: a dialog click and a notification action
+	// cannot both decide the same request, even after the channel is drained.
+	delete(mcpPendingCommands, id)
+	request.decided <- approved
 	return nil
 }
 
@@ -214,6 +279,7 @@ func (a *App) ListMCPCommands() []map[string]any {
 		commands = append(commands, map[string]any{
 			"id": request.id, "sessionId": request.sessionID,
 			"command": request.command, "createdAt": request.created.UnixMilli(),
+			"expiresAt": request.created.Add(mcpApprovalTimeout).UnixMilli(),
 			"dangerous": dangerousCommand(request.command),
 		})
 	}

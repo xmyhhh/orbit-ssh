@@ -131,6 +131,8 @@ Wails 不会给 App 签名，Go 链接器只在可执行文件上留下一个 ad
 
 App 的 Bundle 标识符由 `build/darwin/Info.plist` 固定为 `io.orbitssh.macos`，与 Android 的 `io.orbitssh.android` 保持一致；未提供该文件时 Wails 会生成默认模板，标识符会退化为 `com.wails.<项目名>`。
 
+本机部署更新时，先从菜单栏退出应用并确认旧进程已经结束，再替换完整的已签名 `.app`。不要直接用 `cp` 或 `shutil.copy2` 覆盖已安装的 `Contents/MacOS/OrbitSSH`，也不要在进程运行时对原包重新签名；这样会使已映射代码页与签名不一致，导致系统以 `CODESIGNING / Invalid Page` 杀掉旧进程。开发调试应在独立 staging 目录完成构建、版本元数据更新、签名和 `codesign --verify --deep --strict` 校验，再在同一文件系统通过重命名替换整个应用包并保留备份。磁盘签名校验通过并不证明旧进程的内存映射仍然有效。
+
 macOS 版的平台差异：
 
 - 系统托盘使用菜单栏图标实现，WSL 只提供 Windows 版本，界面会隐藏对应入口。

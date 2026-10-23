@@ -100,6 +100,7 @@ func (a *App) streamLocalTerminal(id string, s *localSession) {
 			delete(a.localSessions, id)
 		}
 		a.mu.Unlock()
+		a.clearSessionMCPUnrestricted(id)
 		a.syncBackgroundState()
 		name := s.name
 		if name == "" {

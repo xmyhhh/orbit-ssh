@@ -152,7 +152,28 @@ func TestMCPCreateConnectAndShareTerminal(t *testing.T) {
 	a.store.mu.Lock()
 	a.store.state.Preferences.MCPAllowTerminalInput = true
 	a.store.mu.Unlock()
-	if result = a.callMCPTool("send_terminal_input", input); result.IsError {
+	// Executing text (a newline present) waits for the user dialog now. Answer
+	// the request the way the confirmation dialog does.
+	approved := make(chan mcpToolResult, 1)
+	go func() { approved <- a.callMCPTool("send_terminal_input", input) }()
+	var requests []map[string]any
+	for deadline := time.Now().Add(2 * time.Second); ; {
+		requests = a.ListMCPCommands()
+		if len(requests) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("executing input did not wait for approval: %+v", requests)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if requests[0]["command"] != "AI input\n" {
+		t.Fatalf("approval payload mismatch: %+v", requests[0])
+	}
+	if err := a.DecideMCPCommand(requests[0]["id"].(string), true); err != nil {
+		t.Fatal(err)
+	}
+	if result = <-approved; result.IsError {
 		t.Fatal(result.Content)
 	}
 	if err := a.WriteTerminal(id, "human input\n"); err != nil {

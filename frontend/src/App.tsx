@@ -54,6 +54,7 @@ import {
   RenameSessionDialog,
   SSHConfigDialog,
 } from "./dialogs";
+import { isApprovalExpired } from "./mcpApproval";
 import TerminalLayoutControl from "./TerminalLayoutControl";
 import TerminalFocusBar from "./TerminalFocusBar";
 import SessionTabs from "./SessionTabs";
@@ -121,6 +122,10 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [sshConfigOpen, setSSHConfigOpen] = useState(false);
   const [mcpCommand, setMCPCommand] = useState<MCPCommandRequest | null>(null);
+  const [mcpServiceOn, setMcpServiceOn] = useState(false);
+  const [mcpUnrestricted, setMcpUnrestricted] = useState<
+    Record<string, boolean>
+  >({});
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
     name: string;
@@ -338,7 +343,26 @@ export default function App() {
     );
     const offMCPCommand = listen("mcp:command-request", (value) => {
       const request = value as MCPCommandRequest;
-      if (request?.id) setMCPCommand(request);
+      if (request?.id && !isApprovalExpired(request))
+        setMCPCommand((prev) => prev ?? request);
+    });
+    const offMCPDecided = listen("mcp:command-decided", (value) => {
+      const event = value as { id?: string };
+      if (!event?.id) return;
+      setMCPCommand((prev) => (prev && prev.id === event.id ? null : prev));
+      if (isDesktop())
+        void backend()
+          .ListMCPCommands()
+          .then((items) => {
+            const next = items?.find(
+              (item) => item.id !== event.id && !isApprovalExpired(item),
+            );
+            if (next?.id)
+              setMCPCommand((prev) =>
+                !prev || prev.id === event.id ? next : prev,
+              );
+          })
+          .catch(() => {});
     });
     const offRenamed = listen("session:renamed", (value) => {
       const event = value as { sessionId?: string; name?: string };
@@ -360,17 +384,50 @@ export default function App() {
       void backend()
         .ListMCPCommands()
         .then((items) => {
-          const first = items?.[0] as MCPCommandRequest | undefined;
-          if (first?.id) setMCPCommand(first);
+          const first = items?.find((item) => !isApprovalExpired(item));
+          if (first?.id) setMCPCommand((prev) => prev ?? first);
         })
         .catch(() => {});
     return () => {
       offNotice();
       offMCPCommand();
+      offMCPDecided();
       offRenamed();
       clearTimeout(toastTimer.current);
     };
   }, []);
+
+  // MCP 服务在运行时，终端工具栏才提供"完全放行"，使得当前窗口的命令
+  // 不再排队等待用户确认。偏好关闭或服务停止时选项随之隐藏，新窗口
+  // 永远回到默认的逐条审核状态。
+  useEffect(() => {
+    if (!isDesktop() || !workspace.preferences.mcpEnabled) {
+      setMcpServiceOn(false);
+      return;
+    }
+    let cancelled = false;
+    const check = () =>
+      backend()
+        .GetMCPStatus()
+        .then((status) => {
+          if (!cancelled)
+            setMcpServiceOn(Boolean(status.running && status.allowInput));
+        })
+        .catch(() => {
+          if (!cancelled) setMcpServiceOn(false);
+        });
+    check();
+    // The server starts asynchronously at app launch; re-check shortly after.
+    const timer = setInterval(check, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    workspace.preferences.mcpEnabled,
+    workspace.preferences.mcpAllowTerminalInput,
+    workspace.preferences.mcpPort,
+  ]);
 
   useEffect(() => {
     try {
@@ -717,6 +774,20 @@ export default function App() {
       name: session.name ?? "",
       defaultName: sessionDefaultName(session),
     });
+  }
+  async function toggleSessionMCPUnrestricted(session: Session) {
+    const unrestricted = !mcpUnrestricted[session.id];
+    try {
+      await backend().SetSessionMCPUnrestricted(session.id, unrestricted);
+      setMcpUnrestricted((prev) => ({ ...prev, [session.id]: unrestricted }));
+      notify(
+        unrestricted
+          ? "已对该终端完全放行：AI 在此窗口执行命令不再需要确认"
+          : "已恢复该终端的 MCP 命令审核",
+      );
+    } catch (e) {
+      notify(`无法更新完全放行状态：${errorText(e)}`);
+    }
   }
   async function saveSessionName(id: string, name: string) {
     const session = sessionsRef.current.find((item) => item.id === id);
@@ -1230,6 +1301,27 @@ export default function App() {
                     >
                       <Pencil size={16} />
                     </button>
+                    {mcpServiceOn && (
+                      <button
+                        className={`icon-button ${activeSession && mcpUnrestricted[activeSession.id] ? "selected" : ""}`}
+                        title={
+                          activeSession && mcpUnrestricted[activeSession.id]
+                            ? "完全放行已开启：AI 在此终端执行命令不再需要确认"
+                            : "对当前终端完全放行（AI 执行命令免确认）"
+                        }
+                        aria-label="MCP 完全放行"
+                        aria-pressed={Boolean(
+                          activeSession && mcpUnrestricted[activeSession.id],
+                        )}
+                        disabled={activeSession?.status !== "connected"}
+                        onClick={() =>
+                          activeSession &&
+                          void toggleSessionMCPUnrestricted(activeSession)
+                        }
+                      >
+                        <ShieldCheck size={16} />
+                      </button>
+                    )}
                     <button
                       className="icon-button"
                       title="搜索终端 · Ctrl Shift F"
@@ -1604,6 +1696,7 @@ export default function App() {
       )}
       {mcpCommand && (
         <MCPCommandDialog
+          key={mcpCommand.id}
           request={{
             ...mcpCommand,
             sessionName: (() => {
@@ -1614,13 +1707,16 @@ export default function App() {
             })(),
           }}
           onClose={() => {
-            setMCPCommand(null);
+            const closedID = mcpCommand.id;
+            setMCPCommand((prev) => (prev?.id === closedID ? null : prev));
             if (isDesktop())
               void backend()
                 .ListMCPCommands()
                 .then((items) => {
-                  const next = items?.[0] as MCPCommandRequest | undefined;
-                  if (next?.id) setMCPCommand(next);
+                  const next = items?.find(
+                    (item) => item.id !== closedID && !isApprovalExpired(item),
+                  );
+                  if (next?.id) setMCPCommand((prev) => prev ?? next);
                 })
                 .catch(() => {});
           }}

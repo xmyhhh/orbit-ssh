@@ -465,6 +465,7 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 			delete(a.sessions, id)
 		}
 		a.mu.Unlock()
+		a.clearSessionMCPUnrestricted(id)
 		a.syncBackgroundState()
 		s.close()
 		message := "会话已结束"

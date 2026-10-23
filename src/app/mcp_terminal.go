@@ -17,6 +17,9 @@ type mcpSessionInfo struct {
 	Address     string `json:"address,omitempty"`
 	Username    string `json:"username,omitempty"`
 	Status      string `json:"status"`
+	// Unrestricted is true when the user turned on full consent (完全放行)
+	// for this window, so MCP terminal input runs without an approval dialog.
+	Unrestricted bool `json:"unrestricted"`
 }
 
 type mcpHistoryMatch struct {
@@ -42,11 +45,17 @@ func (a *App) mcpSessions() []mcpSessionInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	sessions := make([]mcpSessionInfo, 0, len(a.sessions)+len(a.localSessions))
+	unrestricted := func(id string) bool {
+		a.mcpSessionMu.Lock()
+		defer a.mcpSessionMu.Unlock()
+		return a.mcpUnrestricted[id]
+	}
 	for id, session := range a.sessions {
 		host := session.host
 		sessions = append(sessions, mcpSessionInfo{
 			ID: id, Kind: "ssh", Name: effectiveSessionName(session.customName, host.Name), DefaultName: host.Name,
 			Address: net.JoinHostPort(host.Address, strconv.Itoa(host.Port)), Username: host.Username, Status: "connected",
+			Unrestricted: unrestricted(id),
 		})
 	}
 	for id, session := range a.localSessions {
@@ -56,7 +65,7 @@ func (a *App) mcpSessions() []mcpSessionInfo {
 		}
 		sessions = append(sessions, mcpSessionInfo{
 			ID: id, Kind: kind, Name: effectiveSessionName(session.customName, session.name), DefaultName: session.name,
-			Status: "connected",
+			Status: "connected", Unrestricted: unrestricted(id),
 		})
 	}
 	sort.Slice(sessions, func(i, j int) bool { return sessions[i].ID < sessions[j].ID })

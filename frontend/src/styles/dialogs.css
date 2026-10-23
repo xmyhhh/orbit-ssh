@@ -326,44 +326,55 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mcp-command {
+.mcp-command-target {
   display: flex;
-  gap: 12px;
-  padding: 13px 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-soft);
-}
-.mcp-command strong {
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 12px;
   font-size: 12px;
 }
-.mcp-command p {
-  margin: 5px 0 0;
-  font-size: 11px;
-  line-height: 1.7;
+.mcp-command-target > span:first-child {
+  flex: 0 0 auto;
   color: var(--muted);
 }
-.mcp-command.danger {
-  border-color: var(--danger);
-  background: var(--danger-bg);
+.mcp-command-target strong {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
-.mcp-command.danger svg {
+.mcp-command-risk {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--danger-bg);
   color: var(--danger);
+  font-size: 10px;
 }
 .mcp-command-text {
   display: flex;
   gap: 9px;
   align-items: flex-start;
-  margin: 13px 0 0;
+  min-width: 0;
+  max-height: min(300px, 40dvh);
+  margin: 0;
   padding: 12px 13px;
-  background: var(--terminal-bg, #10201d);
-  color: #e6f2ee;
+  border: 1px solid var(--line-strong);
+  background: var(--terminal-bg);
+  color: var(--text);
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.7;
-  overflow-x: auto;
+  overflow: auto;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
 }
 .mcp-command-text code {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

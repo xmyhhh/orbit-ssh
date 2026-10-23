@@ -61,6 +61,7 @@ interface Backend {
   ): Promise<void>;
   ConnectMCPHost(id: string, size: TerminalSize): Promise<void>;
   RenameSession(id: string, name: string): Promise<void>;
+  SetSessionMCPUnrestricted(id: string, unrestricted: boolean): Promise<void>;
   Disconnect(id: string): Promise<void>;
   WriteTerminal(id: string, text: string): Promise<void>;
   ResizeTerminal(id: string, size: TerminalSize): Promise<void>;

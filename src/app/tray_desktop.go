@@ -13,6 +13,9 @@ import (
 
 func (a *App) desktopStartup(ctx context.Context) {
 	a.desktop = true
+	// Install before starting the MCP listener; callbacks remain immutable
+	// after startup and do not race an immediately arriving request.
+	a.notifyDecided = a.decideMCPFromNotification
 	a.startup(ctx)
 	if a.store != nil {
 		preferences := a.store.snapshot().Preferences

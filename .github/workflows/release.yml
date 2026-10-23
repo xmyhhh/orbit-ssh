@@ -115,6 +115,27 @@ jobs:
             exit 1
           fi
 
+      - name: Install frontend dependencies and run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend ci --no-audit --no-fund
+          npm --prefix frontend test
+          # Bindings are generated, not checked in. Go embed needs dist to
+          # exist before Wails can generate them on a clean checkout.
+          mkdir -p frontend/dist
+          touch frontend/dist/gitkeep
+          wails generate module ${{ matrix.tags }}
+          npm --prefix frontend run build
+
+      - name: Test the Go application
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ${{ matrix.tags }} ./...
+          go test -tags androidtest ./...
+          go vet ${{ matrix.tags }} ./...
+
       - name: Build the application
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.args }} ${{ matrix.tags }}
 

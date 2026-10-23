@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 type mcpToolContent struct {
@@ -38,17 +39,17 @@ func mcpToolDefinitions() []map[string]any {
 			"password":   stringSchema("仅本次连接使用的登录密码；省略时使用已保存密码"),
 			"passphrase": stringSchema("仅本次连接使用的私钥口令；省略时使用已保存口令"), "accepted_fingerprint": stringSchema("已核对的首次连接 SHA256 指纹；已信任主机可省略"),
 		}, []string{"host_id"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false}},
-		{"name": "list_sessions", "description": "列出 Orbit SSH 当前打开的 SSH、本地 Shell 和 WSL 终端会话，包括自定义名称和默认名称。", "inputSchema": objectSchema(nil, nil), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
+		{"name": "list_sessions", "description": "列出 Orbit SSH 当前打开的 SSH、本地 Shell 和 WSL 终端会话，包括自定义名称和默认名称。unrestricted 为 true 表示用户对该窗口开启了完全放行，MCP 输入不再弹确认；没有特殊需求时，优先把命令发送到 unrestricted 会话。", "inputSchema": objectSchema(nil, nil), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "rename_session", "description": "重命名一个活动终端会话。名称会显示在终端标签、分屏标题和终端历史中，并与 list_sessions 同步。传空名称可恢复默认名称。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "name": stringSchema("新的会话名称；最多 80 个字符，留空恢复默认名称")}, []string{"session_id", "name"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true}},
 		{"name": "read_terminal", "description": "读取一个活动终端最近的输出文本。输出会去除 ANSI 控制序列；最多返回 100000 个字符。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "max_chars": integerSchema("最多返回的字符数", 100000)}, []string{"session_id"}), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "search_terminal_history", "description": "搜索已保存的终端输出历史；省略 query 时返回最近记录。", "inputSchema": objectSchema(map[string]any{"query": stringSchema("要查找的文字；可省略"), "session_id": stringSchema("仅搜索指定会话的历史；可省略"), "limit": integerSchema("最多返回的记录数", 100)}, nil), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
-		{"name": "send_terminal_input", "description": "向一个活动终端发送原样文本。必须先启用偏好设置中的“允许 AI 输入终端”；文本中包含回车或换行时会执行对应命令。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "text": stringSchema("要发送的终端文本；命令执行需自行包含换行")}, []string{"session_id", "text"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false}},
+		{"name": "send_terminal_input", "description": "向一个活动终端发送原样文本。必须先启用偏好设置中的“允许 AI 输入终端”。包含换行或回车的文本等同于执行命令，需要用户在 Orbit SSH 界面确认后才会发送；用户对窗口开启完全放行后无需确认。无换行的文本（交互应答、不完整命令）直接输入，不弹确认。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "text": stringSchema("要发送的终端文本；命令执行需自行包含换行")}, []string{"session_id", "text"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false}},
 		{"name": "list_directory", "description": "列出远程目录内容。需启用“允许 AI 访问文件”。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "path": stringSchema("远程绝对路径；省略时使用登录目录")}, []string{"session_id"}), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "read_file", "description": "读取远程文本文件，最多 512 KB。二进制内容以 base64 返回。需启用“允许 AI 访问文件”。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "path": stringSchema("远程绝对路径")}, []string{"session_id", "path"}), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "write_file", "description": "用给定 UTF-8 内容覆盖远程文本文件。需同时启用“允许 AI 访问文件”和“允许 AI 输入终端”。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "path": stringSchema("远程绝对路径"), "content": stringSchema("完整的新文件内容，最多 2 MB")}, []string{"session_id", "path", "content"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true}},
 		{"name": "get_metrics", "description": "读取服务器 CPU、内存、磁盘、网络速率、磁盘 I/O、温度和前 500 个进程。只读。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID")}, []string{"session_id"}), "annotations": map[string]any{"readOnlyHint": true, "destructiveHint": false}},
 		{"name": "kill_process", "description": "向远程进程发送 TERM、KILL、HUP 等信号。需启用“允许 AI 输入终端”。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "pid": integerSchema("目标进程 ID", 4194304), "signal": map[string]any{"type": "string", "enum": []string{"TERM", "KILL", "HUP", "INT", "QUIT", "STOP", "CONT", "USR1", "USR2"}, "description": "信号；默认 TERM"}}, []string{"session_id", "pid"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false}},
-		{"name": "run_command", "description": "提议一条命令，在 Orbit SSH 界面等待用户确认后才发送到终端。需启用“允许 AI 输入终端”。确认后使用 read_terminal 查看结果。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "command": stringSchema("要执行的命令，不含结尾换行")}, []string{"session_id", "command"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false}},
+		{"name": "run_command", "description": "提议一条命令，在 Orbit SSH 界面等待用户确认后才发送到终端；用户对窗口开启完全放行后直接发送。需启用“允许 AI 输入终端”。确认后使用 read_terminal 查看结果。", "inputSchema": objectSchema(map[string]any{"session_id": stringSchema("Orbit SSH 会话 ID"), "command": stringSchema("要执行的命令，不含结尾换行")}, []string{"session_id", "command"}), "annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false}},
 	}
 }
 
@@ -150,6 +151,13 @@ func (a *App) callMCPToolContext(ctx context.Context, name string, arguments map
 				err = errors.New("输入文本应为 1–16384 字节")
 			} else if !a.store.snapshot().Preferences.MCPAllowTerminalInput {
 				err = errors.New("请先在偏好设置中启用“允许 AI 输入终端”")
+			} else if strings.ContainsAny(args.Text, "\r\n") {
+				// Text with a newline is executed, so it goes through the
+				// same approval dialog (or full consent) as run_command. The
+				// text is sent verbatim; no newline is appended.
+				var message string
+				message, err = a.requestMCPCommand(ctx, args.SessionID, args.Text)
+				value = map[string]any{"sent": err == nil, "sessionId": args.SessionID, "message": message}
 			} else {
 				err = a.WriteTerminal(args.SessionID, args.Text)
 				value = map[string]any{"sent": err == nil, "sessionId": args.SessionID}
@@ -210,11 +218,15 @@ func (a *App) callMCPToolContext(ctx context.Context, name string, arguments map
 			Command   string `json:"command"`
 		}
 		if err = decodeMCPArguments(arguments, &args); err == nil {
-			if !a.store.snapshot().Preferences.MCPAllowTerminalInput {
+			if len(args.Command) == 0 || len(args.Command) > mcpCommandMaxBytes {
+				err = errors.New("命令长度应为 1–4096 字节")
+			} else if !a.store.snapshot().Preferences.MCPAllowTerminalInput {
 				err = errors.New("请先在偏好设置中启用“允许 AI 输入终端”")
 			} else {
 				var message string
-				message, err = a.requestMCPCommand(ctx, args.SessionID, args.Command)
+				// The trailing newline is added here, while the approval
+				// payload shows the plain command.
+				message, err = a.requestMCPCommand(ctx, args.SessionID, args.Command+"\n")
 				value = map[string]any{"approved": err == nil, "message": message, "sessionId": args.SessionID}
 			}
 		}

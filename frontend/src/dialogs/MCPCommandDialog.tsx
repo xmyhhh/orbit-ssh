@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { ShieldAlert, TerminalSquare } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { backend, errorText } from "../bridge";
 import type { MCPCommandRequest } from "../types";
+import { approvalDeadline, isApprovalExpired, isApprovalGone } from "../mcpApproval";
 import { Modal } from "./Modal";
 
 export function MCPCommandDialog({
@@ -14,41 +14,82 @@ export function MCPCommandDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const danger = request.dangerous ?? dangerous(request.command);
+  const close = useRef(onClose);
+  close.current = onClose;
+  const processing = useRef(false);
+  useEffect(() => {
+    const deadline = approvalDeadline(request);
+    const timer = deadline === undefined ? undefined : window.setTimeout(
+      () => close.current(), Math.max(0, deadline - Date.now()),
+    );
+    // Reconcile missed events (hidden/minimized windows can suspend WebView
+    // delivery). A rejected/expired request must not trap the user in a modal.
+    let cancelled = false;
+    const check = async () => {
+      if (isApprovalExpired(request)) {
+        close.current();
+        return;
+      }
+      try {
+        const pending = await backend().ListMCPCommands();
+        if (!cancelled && !pending.some((item) => item.id === request.id))
+          close.current();
+      } catch {
+        // A transient bridge failure is not approval or rejection.
+      }
+    };
+    const interval = window.setInterval(() => void check(), 1000);
+    window.addEventListener("focus", check);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      clearInterval(interval);
+      window.removeEventListener("focus", check);
+    };
+  }, [request.id, request.createdAt, request.expiresAt]);
+
   async function decide(approved: boolean) {
+    if (isApprovalExpired(request)) {
+      onClose();
+      return;
+    }
+    // Closing or rejecting always dismisses immediately, even when the
+    // backend has already expired the request or the bridge is unavailable.
+    if (!approved) {
+      onClose();
+      if (!processing.current)
+        void backend().DecideMCPCommand(request.id, false).catch(() => {});
+      return;
+    }
+    if (processing.current) return;
+    processing.current = true;
     setBusy(true);
     setError("");
     try {
-      await backend().DecideMCPCommand(request.id, approved);
+      await backend().DecideMCPCommand(request.id, true);
       onClose();
     } catch (e) {
-      setError(errorText(e));
+      const message = errorText(e);
+      if (isApprovalGone(message)) onClose();
+      else setError(message);
       setBusy(false);
+    } finally {
+      processing.current = false;
     }
   }
   return (
-    <Modal title="AI 请求执行命令" onClose={() => void decide(false)}>
-      <div className={`mcp-command ${danger ? "danger" : ""}`}>
-        <ShieldAlert size={22} aria-hidden="true" />
-        <div>
-          <strong>
-            {request.sessionName
-              ? `会话：${request.sessionName}`
-              : `会话 ${request.sessionId}`}
-          </strong>
-          <p>
-            此命令由 MCP 客户端提交，只有在你确认后才会发送到终端。请仔细核对。
-          </p>
-        </div>
+    <Modal
+      title="执行命令？"
+      onClose={() => void decide(false)}
+    >
+      <div className="mcp-command-target">
+        <span>控制台</span>
+        <strong>{request.sessionName || request.sessionId}</strong>
+        {danger && <span className="mcp-command-risk">高风险</span>}
       </div>
-      <pre className="mcp-command-text" aria-label="待执行命令">
-        <TerminalSquare size={14} aria-hidden="true" />
+      <pre className="mcp-command-text" aria-label="待执行命令" tabIndex={0}>
         <code>{request.command}</code>
       </pre>
-      {danger && (
-        <p role="alert" className="form-error">
-          这条命令包含可能破坏系统的操作，请确认目标主机和参数。
-        </p>
-      )}
       {error && (
         <p role="alert" className="form-error">
           {error}
@@ -57,6 +98,7 @@ export function MCPCommandDialog({
       <div className="modal-footer">
         <button
           className="button secondary"
+          aria-label="拒绝执行命令"
           disabled={busy}
           onClick={() => void decide(false)}
         >
@@ -64,6 +106,7 @@ export function MCPCommandDialog({
         </button>
         <button
           className={`button ${danger ? "danger" : "primary"}`}
+          aria-label="允许执行命令"
           disabled={busy}
           onClick={() => void decide(true)}
         >
