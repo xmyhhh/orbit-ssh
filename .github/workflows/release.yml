@@ -105,7 +105,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="${RELEASE_TAG#v}"
+          # The first two segments carry the version line, so tags like v3.3
+          # and patch releases like v3.3.1 both go through the same rule.
+          tag="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
           app="$(node -p "require('./wails.json').info.productVersion.split('.').slice(0,2).join('.')")"
           pkg="$(node -p "require('./frontend/package.json').version.split('.').slice(0,2).join('.')")"
           if [ "$tag" != "$app" ] || [ "$tag" != "$pkg" ]; then
