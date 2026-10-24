@@ -46,14 +46,18 @@ function Sparkline({
   values: (number | null)[];
   label: string;
 }) {
-  const points = values
-    .map((v, i) =>
-      v === null
-        ? null
-        : `${(i * 300) / Math.max(1, values.length - 1)},${65 - Math.min(100, Math.max(0, v)) * 0.6}`,
-    )
-    .filter(Boolean)
-    .join(" ");
+  const segments: string[][] = [];
+  let segment: string[] = [];
+  values.forEach((value, index) => {
+    if (value === null || !Number.isFinite(value)) {
+      segment = [];
+      return;
+    }
+    if (!segment.length) segments.push(segment);
+    segment.push(
+      `${(index * 300) / Math.max(1, values.length - 1)},${65 - Math.min(100, Math.max(0, value)) * 0.6}`,
+    );
+  });
   return (
     <svg
       className="metric-chart"
@@ -63,16 +67,54 @@ function Sparkline({
       aria-label={label}
     >
       <path d="M0 5H300 M0 35H300 M0 65H300" className="chart-grid" />
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        vectorEffect="non-scaling-stroke"
-      />
+      {segments.map((points, index) => (
+        <polyline
+          key={index}
+          points={points.join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
     </svg>
   );
 }
+function metricIssues(metrics: Metrics): Record<string, string> {
+  const issues = { ...metrics.issues };
+  if (metrics.cores <= 0 && !issues.CPU)
+    issues.CPU = "未能读取 CPU 信息，请检查远端 /proc/stat 的读取权限。";
+  if (metrics.memoryTotal <= 0 && !issues.MEMORY)
+    issues.MEMORY = "未能读取内存信息，请检查远端 /proc/meminfo 的读取权限。";
+  return issues;
+}
+function sampleValues(metrics: Metrics) {
+  const issues = metricIssues(metrics);
+  return {
+    at: metrics.sampledAt,
+    cpu: issues.CPU ? null : metrics.cpuPercent,
+    memory: issues.MEMORY
+      ? null
+      : (metrics.memoryUsed / metrics.memoryTotal) * 100,
+  };
+}
+function Unavailable({ reason }: { reason: string }) {
+  return <span className="monitor-unavailable">未获取：{reason}</span>;
+}
+const metricLabels: Record<string, string> = {
+  CPU: "CPU",
+  MEMORY: "内存",
+  DISKS: "磁盘",
+  NETWORK: "网络",
+  DISKIO: "磁盘 I/O",
+  THERMAL: "温度",
+  PROCESSES: "进程",
+  HOSTNAME: "主机名",
+  SYSTEM: "系统信息",
+  UPTIME: "运行时间",
+  LOAD: "系统负载",
+  PROCESS_TOTAL: "进程总数",
+};
 function demoMetrics(): Metrics {
   const wave = Math.sin(Date.now() / 6000);
   const processes: ProcessMetric[] = [
@@ -170,7 +212,9 @@ function demoMetrics(): Metrics {
         writeRate: (860 + wave * 300) * 1024,
       },
     ],
-    thermals: [{ zone: "thermal_zone0", type: "x86_pkg_temp", celsius: 47 + wave * 4 }],
+    thermals: [
+      { zone: "thermal_zone0", type: "x86_pkg_temp", celsius: 47 + wave * 4 },
+    ],
     processes,
     processTotal: 5,
     warnings: [],
@@ -200,7 +244,7 @@ export default function MonitorPanel({
 }) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [history, setHistory] = useState<
-    { at: number; cpu: number | null; memory: number }[]
+    { at: number; cpu: number | null; memory: number | null }[]
   >([]);
   const [tab, setTab] = useState<"overview" | "processes">("overview");
   const [interval, setIntervalSeconds] = useState(5);
@@ -250,17 +294,15 @@ export default function MonitorPanel({
         setHistory((items) =>
           items.at(-1)?.at === data.sampledAt
             ? items
-            : [
-                ...items,
-                {
-                  at: data.sampledAt,
-                  cpu: data.cpuPercent,
-                  memory: (data.memoryUsed / data.memoryTotal) * 100,
-                },
-              ].slice(-60),
+            : [...items, sampleValues(data)].slice(-60),
         );
       } catch (e) {
-        if (!cancelled) setError(errorText(e));
+        if (!cancelled) {
+          setError(errorText(e));
+          setHistory((items) =>
+            [...items, { at: Date.now(), cpu: null, memory: null }].slice(-60),
+          );
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -284,9 +326,18 @@ export default function MonitorPanel({
     interval,
     refresh,
   ]);
+  const issues = useMemo(
+    () => (metrics ? metricIssues(metrics) : {}),
+    [metrics],
+  );
+  const issueReasons = new Set(Object.values(issues));
+  const warnings = (metrics?.warnings ?? []).filter(
+    (warning) => !issueReasons.has(warning),
+  );
+  const partial = issueReasons.size > 0 || !!metrics?.warnings.length;
   const processes = useMemo(() => {
     const value = query.trim().toLowerCase();
-    return (metrics?.processes ?? [])
+    return (issues.PROCESSES ? [] : (metrics?.processes ?? []))
       .filter((p) =>
         `${p.pid} ${p.user} ${p.command} ${p.state}`
           .toLowerCase()
@@ -295,8 +346,10 @@ export default function MonitorPanel({
       .sort((a, b) =>
         sort === "pid" ? a.pid - b.pid : b[sort] - a[sort] || a.pid - b.pid,
       );
-  }, [metrics, query, sort]);
-  const detail = metrics?.processes.find((p) => p.pid === selected);
+  }, [metrics, issues, query, sort]);
+  const detail = issues.PROCESSES
+    ? undefined
+    : metrics?.processes.find((p) => p.pid === selected);
   async function sendSignal(process: ProcessMetric) {
     const label = process.command.split(" ")[0].split("/").pop();
     const warning =
@@ -318,9 +371,12 @@ export default function MonitorPanel({
       setActionBusy(false);
     }
   }
-  const memoryPercent = metrics
-    ? (metrics.memoryUsed / metrics.memoryTotal) * 100
-    : 0;
+  const memoryPercent = metrics ? sampleValues(metrics).memory : null;
+  const processTotal =
+    metrics && !issues.PROCESS_TOTAL ? metrics.processTotal : "—";
+  const sampledTime = metrics
+    ? new Date(metrics.sampledAt).toLocaleString("zh-CN", { hour12: false })
+    : "";
   const status =
     session.status !== "connected"
       ? "已断开"
@@ -330,9 +386,11 @@ export default function MonitorPanel({
           ? "已暂停"
           : error
             ? "采样失败"
-            : loading
-              ? "采样中"
-              : "自动刷新";
+            : partial
+              ? "部分指标不可用"
+              : loading
+                ? "采样中"
+                : "自动刷新";
 
   return (
     <aside
@@ -365,9 +423,9 @@ export default function MonitorPanel({
         </div>
       </header>
       <div className="monitor-controls">
-        <span className={error ? "monitor-error-status" : ""}>
+        <span className={error || partial ? "monitor-error-status" : ""}>
           <i
-            className={`status-dot ${paused || error || session.status !== "connected" ? "offline" : ""}`}
+            className={`status-dot ${paused || error || partial || session.status !== "connected" ? "offline" : ""}`}
           />
           {status}
         </span>
@@ -406,7 +464,9 @@ export default function MonitorPanel({
       {error && (
         <div className="monitor-alert" role="alert">
           {error}
-          {metrics && <span>保留上次采样数据</span>}
+          {metrics && (
+            <span>保留上次采样数据（{sampledTime}），非当前数据</span>
+          )}
         </div>
       )}
       <div className="monitor-tabs" role="tablist" aria-label="监控视图">
@@ -422,7 +482,7 @@ export default function MonitorPanel({
           aria-selected={tab === "processes"}
           onClick={() => setTab("processes")}
         >
-          进程 <span>{metrics?.processTotal ?? "—"}</span>
+          进程 <span title={issues.PROCESS_TOTAL}>{processTotal}</span>
         </button>
       </div>
       {!metrics ? (
@@ -438,11 +498,36 @@ export default function MonitorPanel({
         </div>
       ) : (
         <div className="monitor-body">
+          {partial && (
+            <div className="monitor-alert" role="status">
+              {partial && <strong>部分指标不可用</strong>}
+              {Object.entries(issues).map(([key, reason]) => (
+                <p key={key}>
+                  {metricLabels[key] ?? key}未获取：{reason}
+                </p>
+              ))}
+              {warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          )}
           {tab === "overview" ? (
             <>
               <div className="monitor-system">
-                <strong>{metrics.hostname}</strong>
-                <span>{metrics.system}</span>
+                <strong>
+                  {issues.HOSTNAME ? (
+                    <Unavailable reason={issues.HOSTNAME} />
+                  ) : (
+                    metrics.hostname
+                  )}
+                </strong>
+                <span>
+                  {issues.SYSTEM ? (
+                    <Unavailable reason={issues.SYSTEM} />
+                  ) : (
+                    metrics.system
+                  )}
+                </span>
               </div>
               <div className="monitor-metrics">
                 <section className="monitor-metric">
@@ -451,13 +536,17 @@ export default function MonitorPanel({
                       <Cpu size={15} />
                       CPU
                     </span>
-                    <small>{metrics.cores} 核</small>
+                    <small>{issues.CPU ? "—" : `${metrics.cores} 核`}</small>
                   </div>
                   <strong>
-                    {metrics.cpuPercent === null
-                      ? "采样中"
-                      : metrics.cpuPercent.toFixed(1)}
-                    {metrics.cpuPercent !== null && <small>%</small>}
+                    {issues.CPU
+                      ? "未获取"
+                      : metrics.cpuPercent === null
+                        ? "采样中"
+                        : metrics.cpuPercent.toFixed(1)}
+                    {!issues.CPU && metrics.cpuPercent !== null && (
+                      <small>%</small>
+                    )}
                   </strong>
                   <Sparkline
                     values={history.map((h) => h.cpu)}
@@ -465,9 +554,13 @@ export default function MonitorPanel({
                   />
                   <footer>
                     <span>
-                      {metrics.cpuPercent === null
-                        ? "等待下一次采样"
-                        : "使用率"}
+                      {issues.CPU ? (
+                        <Unavailable reason={issues.CPU} />
+                      ) : metrics.cpuPercent === null ? (
+                        "等待下一次采样"
+                      ) : (
+                        "使用率"
+                      )}
                     </span>
                     <span>0–100%</span>
                   </footer>
@@ -478,18 +571,28 @@ export default function MonitorPanel({
                       <MemoryStick size={15} />
                       内存
                     </span>
-                    <small>{bytes(metrics.memoryTotal)}</small>
+                    <small>
+                      {issues.MEMORY ? "—" : bytes(metrics.memoryTotal)}
+                    </small>
                   </div>
                   <strong>
-                    {memoryPercent.toFixed(1)}
-                    <small>%</small>
+                    {memoryPercent === null
+                      ? "未获取"
+                      : memoryPercent.toFixed(1)}
+                    {memoryPercent !== null && <small>%</small>}
                   </strong>
                   <Sparkline
                     values={history.map((h) => h.memory)}
                     label="最近 60 次内存使用率趋势，范围 0–100%"
                   />
                   <footer>
-                    <span>{bytes(metrics.memoryUsed)} 已用</span>
+                    <span>
+                      {issues.MEMORY ? (
+                        <Unavailable reason={issues.MEMORY} />
+                      ) : (
+                        `${bytes(metrics.memoryUsed)} 已用`
+                      )}
+                    </span>
                     <span>0–100%</span>
                   </footer>
                 </section>
@@ -497,124 +600,170 @@ export default function MonitorPanel({
               <dl className="monitor-facts">
                 <div>
                   <dt>运行时间</dt>
-                  <dd>{duration(metrics.uptime)}</dd>
+                  <dd>
+                    {issues.UPTIME ? (
+                      <Unavailable reason={issues.UPTIME} />
+                    ) : (
+                      duration(metrics.uptime)
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt title="1 / 5 / 15 分钟系统负载">系统负载</dt>
-                  <dd>{metrics.load.map((n) => n.toFixed(2)).join(" / ")}</dd>
+                  <dd>
+                    {issues.LOAD ? (
+                      <Unavailable reason={issues.LOAD} />
+                    ) : (
+                      metrics.load.map((n) => n.toFixed(2)).join(" / ")
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt>交换空间</dt>
                   <dd>
-                    {bytes(metrics.swapUsed)} / {bytes(metrics.swapTotal)}
+                    {issues.MEMORY ? (
+                      <Unavailable reason={issues.MEMORY} />
+                    ) : (
+                      `${bytes(metrics.swapUsed)} / ${bytes(metrics.swapTotal)}`
+                    )}
                   </dd>
                 </div>
                 <div>
                   <dt>可用内存</dt>
-                  <dd>{bytes(metrics.memoryAvailable)}</dd>
+                  <dd>
+                    {issues.MEMORY ? (
+                      <Unavailable reason={issues.MEMORY} />
+                    ) : (
+                      bytes(metrics.memoryAvailable)
+                    )}
+                  </dd>
                 </div>
               </dl>
               <section className="monitor-disks">
                 <h3>
                   <HardDrive size={16} />
-                  磁盘 <span>{metrics.disks.length}</span>
+                  磁盘 <span>{issues.DISKS ? "—" : metrics.disks.length}</span>
                 </h3>
-                {metrics.disks.map((d) => (
-                  <div
-                    className="monitor-disk"
-                    key={`${d.filesystem}:${d.mount}`}
-                  >
-                    <div>
-                      <strong title={d.filesystem}>{d.mount}</strong>
-                      <span>{d.usedPercent.toFixed(0)}%</span>
-                    </div>
+                {issues.DISKS ? (
+                  <Unavailable reason={issues.DISKS} />
+                ) : (
+                  metrics.disks.map((d) => (
                     <div
-                      className={`disk-bar ${d.usedPercent >= 90 ? "high" : ""}`}
-                      role="meter"
-                      aria-label={`${d.mount} 磁盘用量`}
-                      aria-valuenow={d.usedPercent}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
+                      className="monitor-disk"
+                      key={`${d.filesystem}:${d.mount}`}
                     >
-                      <i style={{ width: `${d.usedPercent}%` }} />
+                      <div>
+                        <strong title={d.filesystem}>{d.mount}</strong>
+                        <span>{d.usedPercent.toFixed(0)}%</span>
+                      </div>
+                      <div
+                        className={`disk-bar ${d.usedPercent >= 90 ? "high" : ""}`}
+                        role="meter"
+                        aria-label={`${d.mount} 磁盘用量`}
+                        aria-valuenow={d.usedPercent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <i style={{ width: `${d.usedPercent}%` }} />
+                      </div>
+                      <small>
+                        {bytes(d.used)} / {bytes(d.total)}
+                        <span>可用 {bytes(d.available)}</span>
+                      </small>
                     </div>
-                    <small>
-                      {bytes(d.used)} / {bytes(d.total)}
-                      <span>可用 {bytes(d.available)}</span>
-                    </small>
-                  </div>
-                ))}
+                  ))
+                )}
               </section>
-              {!!metrics.networks?.length && (
+              {(issues.NETWORK || !!metrics.networks?.length) && (
                 <section className="monitor-disks">
                   <h3>
                     <Wifi size={16} />
-                    网络 <span>{metrics.networks.length}</span>
+                    网络{" "}
+                    <span>
+                      {issues.NETWORK ? "—" : metrics.networks?.length}
+                    </span>
                   </h3>
-                  {metrics.networks.map((n) => (
-                    <div className="monitor-io" key={n.interface}>
-                      <div>
-                        <strong title={n.interface}>{n.interface}</strong>
-                        <span>
-                          累计 ↓{bytes(n.rxBytes)} ↑{bytes(n.txBytes)}
-                        </span>
+                  {issues.NETWORK ? (
+                    <Unavailable reason={issues.NETWORK} />
+                  ) : (
+                    metrics.networks?.map((n) => (
+                      <div className="monitor-io" key={n.interface}>
+                        <div>
+                          <strong title={n.interface}>{n.interface}</strong>
+                          <span>
+                            累计 ↓{bytes(n.rxBytes)} ↑{bytes(n.txBytes)}
+                          </span>
+                        </div>
+                        <small>
+                          <span>下载 {rate(n.rxRate)}</span>
+                          <span>上传 {rate(n.txRate)}</span>
+                        </small>
                       </div>
-                      <small>
-                        <span>下载 {rate(n.rxRate)}</span>
-                        <span>上传 {rate(n.txRate)}</span>
-                      </small>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </section>
               )}
-              {!!metrics.diskIo?.length && (
+              {(issues.DISKIO || !!metrics.diskIo?.length) && (
                 <section className="monitor-disks">
                   <h3>
                     <Activity size={16} />
-                    磁盘 I/O <span>{metrics.diskIo.length}</span>
+                    磁盘 I/O{" "}
+                    <span>{issues.DISKIO ? "—" : metrics.diskIo?.length}</span>
                   </h3>
-                  {metrics.diskIo.map((d) => (
-                    <div className="monitor-io" key={d.device}>
-                      <div>
-                        <strong title={d.device}>{d.device}</strong>
-                        <span>
-                          {d.readOps + d.writeOps} 次操作
-                        </span>
+                  {issues.DISKIO ? (
+                    <Unavailable reason={issues.DISKIO} />
+                  ) : (
+                    metrics.diskIo?.map((d) => (
+                      <div className="monitor-io" key={d.device}>
+                        <div>
+                          <strong title={d.device}>{d.device}</strong>
+                          <span>{d.readOps + d.writeOps} 次操作</span>
+                        </div>
+                        <small>
+                          <span>读取 {rate(d.readRate)}</span>
+                          <span>写入 {rate(d.writeRate)}</span>
+                        </small>
                       </div>
-                      <small>
-                        <span>读取 {rate(d.readRate)}</span>
-                        <span>写入 {rate(d.writeRate)}</span>
-                      </small>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </section>
               )}
-              {!!metrics.thermals?.length && (
+              {(issues.THERMAL || !!metrics.thermals?.length) && (
                 <section className="monitor-disks">
                   <h3>
                     <Thermometer size={16} />
-                    温度 <span>{metrics.thermals.length}</span>
+                    温度{" "}
+                    <span>
+                      {issues.THERMAL ? "—" : metrics.thermals?.length}
+                    </span>
                   </h3>
-                  <div className="monitor-thermal-grid">
-                    {metrics.thermals.map((t) => (
-                      <div
-                        className={`monitor-thermal ${t.celsius >= 85 ? "high" : ""}`}
-                        key={`${t.zone}:${t.type}`}
-                      >
-                        <strong>{t.celsius.toFixed(1)}°C</strong>
-                        <span title={t.type || t.zone}>
-                          {t.type || t.zone}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {issues.THERMAL ? (
+                    <Unavailable reason={issues.THERMAL} />
+                  ) : (
+                    <div className="monitor-thermal-grid">
+                      {metrics.thermals?.map((t) => (
+                        <div
+                          className={`monitor-thermal ${t.celsius >= 85 ? "high" : ""}`}
+                          key={`${t.zone}:${t.type}`}
+                        >
+                          <strong>{t.celsius.toFixed(1)}°C</strong>
+                          <span title={t.type || t.zone}>
+                            {t.type || t.zone}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
               )}
               <button
                 className="monitor-process-link"
                 onClick={() => setTab("processes")}
               >
-                查看 {metrics.processTotal} 个进程 <span>→</span>
+                {issues.PROCESSES
+                  ? "无法读取进程"
+                  : `查看 ${processTotal} 个进程`}{" "}
+                <span>→</span>
               </button>
             </>
           ) : (
@@ -699,7 +848,13 @@ export default function MonitorPanel({
                 </table>
               </div>
               {!processes.length && (
-                <p className="process-no-results">没有匹配的进程</p>
+                <p className="process-no-results">
+                  {issues.PROCESSES ? (
+                    <>无法读取进程：{issues.PROCESSES}</>
+                  ) : (
+                    "没有匹配的进程"
+                  )}
+                </p>
               )}
               {processes.length > limit && (
                 <button
@@ -754,9 +909,7 @@ export default function MonitorPanel({
                       发送信号
                     </button>
                   </div>
-                  {session.demo && (
-                    <small>演示会话不会真正发送信号。</small>
-                  )}
+                  {session.demo && <small>演示会话不会真正发送信号。</small>}
                 </section>
               )}
               {notice && (
@@ -770,18 +923,13 @@ export default function MonitorPanel({
               </p>
             </>
           )}
-          {metrics.warnings.map((w) => (
-            <p className="monitor-alert" key={w}>
-              {w}
-            </p>
-          ))}
         </div>
       )}
       <footer className="monitor-updated">
         <span>{session.demo ? "演示数据" : "只读采样"}</span>
         <span>
           {metrics
-            ? `更新于 ${new Date(metrics.sampledAt).toLocaleTimeString("zh-CN", { hour12: false })}`
+            ? `${error ? "上次成功采样" : "更新于"} ${sampledTime}`
             : "尚未采样"}
         </span>
       </footer>

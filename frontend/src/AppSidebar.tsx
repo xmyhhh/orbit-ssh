@@ -4,6 +4,7 @@ import {
   CircleHelp,
   FolderClosed,
   History,
+  Moon,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
@@ -11,6 +12,7 @@ import {
   Search,
   Server,
   Settings2,
+  Sun,
   TerminalSquare,
   Workflow,
 } from "lucide-react";
@@ -30,6 +32,8 @@ export default function AppSidebar({
   navigate,
   onNewHost,
   onPalette,
+  dark,
+  onToggleTheme,
   onPreferences,
   onHelp,
   onAbout,
@@ -45,6 +49,8 @@ export default function AppSidebar({
   navigate: (page: Page, group?: string) => void;
   onNewHost: () => void;
   onPalette: () => void;
+  dark: boolean;
+  onToggleTheme: () => void;
   onPreferences: () => void;
   onHelp: () => void;
   onAbout: () => void;
@@ -196,6 +202,14 @@ export default function AppSidebar({
         <button onClick={onPreferences} title="偏好设置" aria-label="偏好设置">
           <Settings2 size={18} />
           <span>偏好设置</span>
+        </button>
+        <button
+          className="icon-button"
+          title={dark ? "切换浅色模式" : "切换深色模式"}
+          aria-label={dark ? "切换浅色模式" : "切换深色模式"}
+          onClick={onToggleTheme}
+        >
+          {dark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <button
           className="icon-button"

@@ -333,10 +333,35 @@
   border-radius: 6px;
   color: var(--danger);
   background: var(--danger-bg);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .monitor-alert span {
   display: block;
   font-size: 10px;
+}
+.monitor-alert p {
+  margin: 4px 0;
+}
+.monitor-body > .monitor-alert {
+  margin: 0 0 16px;
+}
+.monitor-unavailable {
+  display: block;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.monitor-disks > .monitor-unavailable {
+  margin-bottom: 20px;
+}
+.monitor-metric footer > span:first-child {
+  min-width: 0;
+}
+.monitor-metric footer > span:last-child {
+  flex-shrink: 0;
 }
 .monitor-error-status {
   color: var(--danger);

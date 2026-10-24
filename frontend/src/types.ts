@@ -188,6 +188,7 @@ export interface Metrics {
   thermals?: ThermalMetric[];
   processes: ProcessMetric[];
   processTotal: number;
+  issues?: Record<string, string>;
   warnings: string[];
 }
 export interface TerminalSize {

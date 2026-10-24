@@ -85,13 +85,17 @@ func TestParseMonitor(t *testing.T) {
 	if err != nil || fallback.MemoryAvailable != 3840000*1024 {
 		t.Fatalf("old kernel fallback: %+v %v", fallback, err)
 	}
-	for _, fixture := range []string{"", strings.Replace(monitorFixture, "cpu 100", "cpu invalid", 1), strings.Replace(monitorFixture, "MemTotal: 8192000", "MemTotal: 0", 1)} {
-		if _, _, err := parseMetrics(fixture); err == nil {
-			t.Fatal("malformed required data accepted")
+	if _, _, err := parseMetrics(""); err == nil {
+		t.Fatal("empty response accepted")
+	}
+	for _, fixture := range []string{strings.Replace(monitorFixture, "cpu 100", "cpu invalid", 1), strings.Replace(monitorFixture, "MemTotal: 8192000", "MemTotal: 0", 1)} {
+		m, _, err := parseMetrics(fixture)
+		if err != nil || len(m.Warnings) == 0 || len(m.Processes) != 2 {
+			t.Fatalf("invalid metric discarded healthy metrics: %+v %v", m, err)
 		}
 	}
 	partial, _, err := parseMetrics(strings.Split(monitorFixture, "__ORBIT_DISKS__")[0])
-	if err != nil || len(partial.Warnings) != 2 {
+	if err != nil || len(partial.Warnings) != 4 {
 		t.Fatalf("missing optional commands not reported: %+v %v", partial.Warnings, err)
 	}
 }

@@ -68,12 +68,10 @@
 }
 .terminal-fullscreen > .sidebar,
 .terminal-fullscreen > .sidebar-backdrop,
-.terminal-fullscreen .topbar,
-.terminal-fullscreen .tabbar,
+.terminal-fullscreen .workspace-bar,
 .terminal-fullscreen .session-switcher,
 .terminal-fullscreen .terminal-status,
-.is-mobile-terminal .topbar,
-.is-mobile-terminal .tabbar,
+.is-mobile-terminal .workspace-bar,
 .is-mobile-terminal .terminal-status {
   display: none;
 }

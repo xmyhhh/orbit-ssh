@@ -2,22 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   Check,
-  Clipboard,
   FolderOpen,
   History,
   LoaderCircle,
   Menu,
   Maximize2,
-  Moon,
   Pencil,
   Play,
   Plus,
   Search,
   Server,
-  Settings2,
   ShieldCheck,
   Star,
-  Sun,
   TerminalSquare,
   Trash2,
   Workflow,
@@ -466,13 +462,15 @@ export default function App() {
   }, [active]);
   useEffect(() => {
     if (!pendingWorkflowLaunch) return;
-    const session = [...sessions].reverse().find(
-      (item) =>
-        item.host.id === pendingWorkflowLaunch.hostID &&
-        item.status === "connected" &&
-        !item.demo &&
-        !isLocalSession(item),
-    );
+    const session = [...sessions]
+      .reverse()
+      .find(
+        (item) =>
+          item.host.id === pendingWorkflowLaunch.hostID &&
+          item.status === "connected" &&
+          !item.demo &&
+          !isLocalSession(item),
+      );
     if (!session) return;
     setPendingWorkflowLaunch(null);
     loadWorkflowInSession(pendingWorkflowLaunch.workflowID, session.id);
@@ -920,133 +918,123 @@ export default function App() {
         navigate={navigate}
         onNewHost={newHost}
         onPalette={() => setPaletteOpen(true)}
+        dark={dark}
+        onToggleTheme={() =>
+          void savePreferences({
+            ...workspace.preferences,
+            theme: dark ? "light" : "dark",
+          }).catch((e) => notify(errorText(e)))
+        }
         onPreferences={() => setPreferencesOpen(true)}
         onHelp={() => setHelpOpen(true)}
         onAbout={() => setAboutOpen(true)}
       />
 
       <div className="app-body">
-        <header className="topbar">
-          <div className="breadcrumb">
+        <div className="workspace-bar">
+          <button
+            className="icon-button mobile-menu"
+            aria-label="打开导航"
+            aria-expanded={sidebarOpen}
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            <Menu size={19} />
+          </button>
+          <div
+            ref={tabbarRef}
+            className="tabbar"
+            role="tablist"
+            aria-label="工作区标签"
+            onKeyDown={moveTabFocus}
+          >
             <button
-              className="icon-button mobile-menu"
-              aria-label="打开导航"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              role="tab"
+              aria-selected={active === "home"}
+              className={`workspace-tab ${active === "home" ? "selected" : ""}`}
+              onClick={() => setActive("home")}
             >
-              <Menu size={19} />
+              {page === "hosts" ? (
+                <Server size={15} />
+              ) : page === "local" || page === "wsl" ? (
+                <TerminalSquare size={15} />
+              ) : page === "workflows" ? (
+                <Workflow size={15} />
+              ) : (
+                <History size={15} />
+              )}
+              {pageTitle}
             </button>
-            <strong>{activeSession ? "终端会话" : pageTitle}</strong>
-          </div>
-          <div className="topbar-actions">
+            {[...sessionGroups].map(([hostID, items]) => {
+              const host = items[0].host;
+              const selected = activeSession?.host.id === hostID;
+              return (
+                <div
+                  key={hostID}
+                  className={`session-tab host-tab ${selected ? "selected" : ""}`}
+                >
+                  <button
+                    role="tab"
+                    aria-selected={selected}
+                    aria-label={`${host.name} · ${items.length} 个会话`}
+                    title={`${sessionAddress(items[0])} · ${items.length} 个会话`}
+                    draggable
+                    onClick={() => selectHostSessions(items)}
+                    onDragStart={(event) => {
+                      const remembered = lastActiveSessions.current.get(hostID);
+                      startSessionDrag(
+                        event,
+                        items.find((session) => session.id === remembered)
+                          ?.id ?? items[0].id,
+                      );
+                    }}
+                    onDragEnd={() => setDraggedSessionId(null)}
+                  >
+                    {items.some((s) => s.status === "connecting") ? (
+                      <LoaderCircle
+                        size={13}
+                        className="spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <span
+                        className={`status-dot ${items.some((s) => s.status === "connected") ? "" : "offline"}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span>{host.name}</span>
+                    <span className="tab-number" aria-hidden="true">
+                      {items.length}
+                    </span>
+                    {items[0].demo && <span className="tab-demo">体验</span>}
+                  </button>
+                  <button
+                    className="tab-close"
+                    aria-label={`关闭 ${host.name} 的全部会话`}
+                    title="关闭这组终端的全部会话"
+                    onClick={() => closeHostSessions(items)}
+                  >
+                    <X size={13} aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
             <button
-              className="icon-button"
-              aria-label={dark ? "切换浅色模式" : "切换深色模式"}
-              title={dark ? "切换浅色模式" : "切换深色模式"}
+              className="tab-add"
+              aria-label="选择主机新建终端"
+              title="选择主机连接"
               onClick={() =>
-                void savePreferences({
-                  ...workspace.preferences,
-                  theme: dark ? "light" : "dark",
-                }).catch((e) => notify(errorText(e)))
+                workspace.hosts.length ? setPaletteOpen(true) : newHost()
               }
             >
-              {dark ? <Sun size={18} /> : <Moon size={18} />}
+              <Plus size={17} />
             </button>
+            <span className="tabbar-space" />
+            <span className="tabbar-end">
+              {sessions.length
+                ? `${sessionGroups.size} 个终端组 · ${sessions.length} 个会话`
+                : "无活动会话"}
+            </span>
           </div>
-        </header>
-        <div
-          ref={tabbarRef}
-          className="tabbar"
-          role="tablist"
-          aria-label="工作区标签"
-          onKeyDown={moveTabFocus}
-        >
-          <button
-            role="tab"
-            aria-selected={active === "home"}
-            className={`workspace-tab ${active === "home" ? "selected" : ""}`}
-            onClick={() => setActive("home")}
-          >
-            {page === "hosts" ? (
-              <Server size={15} />
-            ) : page === "local" || page === "wsl" ? (
-              <TerminalSquare size={15} />
-            ) : page === "workflows" ? (
-              <Workflow size={15} />
-            ) : (
-              <History size={15} />
-            )}
-            {pageTitle}
-          </button>
-          {[...sessionGroups].map(([hostID, items]) => {
-            const host = items[0].host;
-            const selected = activeSession?.host.id === hostID;
-            return (
-              <div
-                key={hostID}
-                className={`session-tab host-tab ${selected ? "selected" : ""}`}
-              >
-                <button
-                  role="tab"
-                  aria-selected={selected}
-                  aria-label={`${host.name} · ${items.length} 个会话`}
-                  title={`${sessionAddress(items[0])} · ${items.length} 个会话`}
-                  draggable
-                  onClick={() => selectHostSessions(items)}
-                  onDragStart={(event) => {
-                    const remembered = lastActiveSessions.current.get(hostID);
-                    startSessionDrag(
-                      event,
-                      items.find((session) => session.id === remembered)?.id ??
-                        items[0].id,
-                    );
-                  }}
-                  onDragEnd={() => setDraggedSessionId(null)}
-                >
-                  {items.some((s) => s.status === "connecting") ? (
-                    <LoaderCircle
-                      size={13}
-                      className="spin"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <span
-                      className={`status-dot ${items.some((s) => s.status === "connected") ? "" : "offline"}`}
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span>{host.name}</span>
-                  <span className="tab-number" aria-hidden="true">
-                    {items.length}
-                  </span>
-                  {items[0].demo && <span className="tab-demo">体验</span>}
-                </button>
-                <button
-                  className="tab-close"
-                  aria-label={`关闭 ${host.name} 的全部会话`}
-                  title="关闭这组终端的全部会话"
-                  onClick={() => closeHostSessions(items)}
-                >
-                  <X size={13} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
-          <button
-            className="tab-add"
-            aria-label="选择主机新建终端"
-            title="选择主机连接"
-            onClick={() =>
-              workspace.hosts.length ? setPaletteOpen(true) : newHost()
-            }
-          >
-            <Plus size={17} />
-          </button>
-          <span className="tabbar-space" />
-          <span className="tabbar-end">
-            {sessions.length
-              ? `${sessionGroups.size} 个终端组 · ${sessions.length} 个会话`
-              : "无活动会话"}
-          </span>
         </div>
         <main id="main-content" className="main-content" tabIndex={-1}>
           {loading ? (
@@ -1333,17 +1321,6 @@ export default function App() {
                       <Search size={16} />
                     </button>
                     <button
-                      className="icon-button"
-                      title="粘贴剪贴板"
-                      aria-label="粘贴剪贴板"
-                      disabled={activeSession?.status !== "connected"}
-                      onClick={() =>
-                        handles.current.get(active)?.pasteFromClipboard()
-                      }
-                    >
-                      <Clipboard size={16} />
-                    </button>
-                    <button
                       className={`icon-button ${terminalHistory.find((record) => record.id === activeSession?.id)?.pinned ? "selected" : ""}`}
                       title={
                         terminalHistory.find(
@@ -1386,14 +1363,6 @@ export default function App() {
                       onClick={() => handles.current.get(active)?.clear()}
                     >
                       <Trash2 size={16} />
-                    </button>
-                    <button
-                      className="icon-button"
-                      title="终端显示设置"
-                      aria-label="终端显示设置"
-                      onClick={() => setPreferencesOpen(true)}
-                    >
-                      <Settings2 size={16} />
                     </button>
                     {!isLocalSession(activeSession) && (
                       <>
@@ -1630,7 +1599,9 @@ export default function App() {
               );
             })}
             {!workspace.hosts.length && (
-              <div className="workflow-library-empty">还没有已保存的 SSH 主机</div>
+              <div className="workflow-library-empty">
+                还没有已保存的 SSH 主机
+              </div>
             )}
           </div>
           <div className="modal-footer">
