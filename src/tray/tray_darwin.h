@@ -5,7 +5,10 @@
 // carries the menu bar artwork from the Go side; it is copied before the call
 // returns, so the caller may free it right away. Safe to call from any thread;
 // the work is moved to the main queue because AppKit requires it.
-void OrbitTrayCreate(const char *title, const unsigned char *imageData, int imageLength);
+void OrbitTrayCreate(const char *title, const unsigned char *imageData, int imageLength, int handleTermination);
+
+// Completes the pending asynchronous AppKit termination request on the main queue.
+void OrbitTrayReplyToTermination(int approved, int system);
 
 // Removes the menu bar item again.
 void OrbitTrayDestroy(void);

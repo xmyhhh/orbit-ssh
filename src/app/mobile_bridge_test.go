@@ -34,6 +34,27 @@ func TestMobileCallValidation(t *testing.T) {
 	}
 }
 
+func TestMobileEditorDraftAPI(t *testing.T) {
+	a, document := editorDraftTestApp(t)
+	call := func(method string, args ...interface{}) interface{} {
+		t.Helper()
+		value, err := mobileCall(a, method, mobile.Marshal(args))
+		if err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		return value
+	}
+	call("UpdateEditorDraft", "editor", "session-one", document, "Android recovery")
+	draft, ok := call("LoadEditorDraft", "session-one", document.Path).(*EditorDraft)
+	if !ok || draft == nil || draft.Text != "Android recovery" {
+		t.Fatal("mobile recovery API did not return saved edits")
+	}
+	call("RemoveEditorDraft", "session-one", document.Path)
+	if value := call("LoadEditorDraft", "session-one", document.Path); value.(*EditorDraft) != nil {
+		t.Fatal("mobile draft deletion failed")
+	}
+}
+
 func TestMobileTerminalHistoryAPI(t *testing.T) {
 	a := testApp(t, "127.0.0.1:22")
 	a.historyDir = t.TempDir()

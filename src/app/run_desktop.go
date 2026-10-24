@@ -37,6 +37,7 @@ func Run(assets embed.FS, trayAsset []byte) error {
 		return nil
 	}
 	application := NewApp()
+	defer application.stopSessionMonitor()
 	return wails.Run(&options.App{
 		Title: "Orbit SSH", Width: 1440, Height: 900, MinWidth: 900, MinHeight: 600,
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 250, A: 255},

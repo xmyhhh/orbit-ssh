@@ -41,7 +41,11 @@ func Start(callbacks Callbacks) (func(), error) {
 		image = (*C.uchar)(C.CBytes(asset))
 		defer C.free(unsafe.Pointer(image))
 	}
-	C.OrbitTrayCreate(title, image, imageLen)
+	var handleTermination C.int
+	if callbacks.Terminate != nil {
+		handleTermination = 1
+	}
+	C.OrbitTrayCreate(title, image, imageLen, handleTermination)
 
 	// The item is installed on the main thread, so wait for the result before
 	// reporting the tray as ready.
@@ -55,14 +59,19 @@ func Start(callbacks Callbacks) (func(), error) {
 	darwinTray.mu.Unlock()
 	if !available {
 		darwinTray.mu.Lock()
-		darwinTray.callbacks = Callbacks{}
+		// The delegate hook is independent of status item availability. Keep
+		// termination working even when the menu bar item cannot be created.
+		darwinTray.callbacks = Callbacks{Terminate: callbacks.Terminate}
 		darwinTray.mu.Unlock()
 		return nil, errors.New("无法在菜单栏创建 Orbit SSH 图标")
 	}
 	return func() {
 		C.OrbitTrayDestroy()
 		darwinTray.mu.Lock()
-		darwinTray.callbacks = Callbacks{}
+		// Removing the status item does not remove the application delegate
+		// hook. Keep lifecycle ownership until process teardown, including an
+		// OS shutdown that supersedes a pending user-Quit cleanup.
+		darwinTray.callbacks = Callbacks{Terminate: callbacks.Terminate}
 		darwinTray.mu.Unlock()
 	}, nil
 }
@@ -93,5 +102,22 @@ func darwinTrayCallback(action, value int) {
 		if callbacks.Quit != nil {
 			callbacks.Quit()
 		}
+	case 4:
+		darwinReplyToTermination(callbacks, value != 0, func(approved bool) {
+			var reply C.int
+			if approved {
+				reply = 1
+			}
+			C.OrbitTrayReplyToTermination(reply, C.int(value))
+		})
 	}
+}
+
+func darwinReplyToTermination(callbacks Callbacks, system bool, reply func(bool)) {
+	// A missing handler must not turn an OS shutdown into a permanent blocker.
+	approved := system
+	if callbacks.Terminate != nil {
+		approved = callbacks.Terminate(system)
+	}
+	reply(approved)
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -14,24 +15,30 @@ import (
 )
 
 type App struct {
-	ctx           context.Context
-	store         *Store
-	storeErr      error
-	mu            sync.Mutex
-	sessions      map[string]*remoteSession
-	localSessions map[string]*localSession
-	pending       map[string]context.CancelFunc
-	closing       bool
-	forwardMu     sync.Mutex
-	forwards      map[string]*hostForwarding
-	emit          func(string, ...interface{})
-	transferMu    sync.Mutex
-	transfers     []*transferJob
-	transferRuns  map[string]bool
-	fileEditMu    sync.Mutex
-	dirtyEditors  map[string]bool
-	tray          trayState
-	desktop       bool
+	ctx              context.Context
+	store            *Store
+	storeErr         error
+	mu               sync.Mutex
+	sessions         map[string]*remoteSession
+	localSessions    map[string]*localSession
+	pending          map[string]context.CancelFunc
+	closing          bool
+	shutdownOnce     sync.Once
+	shutdownDone     chan struct{}
+	forwardMu        sync.Mutex
+	forwards         map[string]*hostForwarding
+	emit             func(string, ...interface{})
+	transferMu       sync.Mutex
+	transfers        []*transferJob
+	transferRuns     map[string]bool
+	fileEditMu       sync.Mutex
+	editorDraftHosts map[string]string
+	dirtyEditors     map[string]bool
+	tray             trayState
+	desktop          bool
+	lifecycleMu      sync.Mutex
+	lifecycleStop    func()
+	lifecycleDone    bool
 	// notifyDecided resolves a decision taken on a system notification
 	// banner; it stays nil on starts that never wired the notify package.
 	notifyDecided     func(requestID string, approved bool) error
@@ -59,6 +66,7 @@ type App struct {
 func NewApp() *App {
 	return &App{
 		sessions: map[string]*remoteSession{}, pending: map[string]context.CancelFunc{},
+		shutdownDone:    make(chan struct{}),
 		mcpConnections:  map[string]*mcpConnectionRequest{},
 		mcpUnrestricted: map[string]bool{},
 		history:         map[string]TerminalHistoryRecord{}, historyChanges: map[string]terminalHistoryChange{}, historyDeleted: map[string]bool{},
@@ -221,9 +229,49 @@ func (a *App) DataDirectory() (string, error) {
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {
+	return a.requestClose(ctx, false)
+}
+
+// terminateNative distinguishes explicit native Quit from OS end-session.
+// Shutdown/logout is not cancellable by close-to-tray or a modal confirmation:
+// drafts are persisted continuously, and remote files are never auto-uploaded.
+func (a *App) terminateNative(system bool) bool {
+	if system {
+		a.tray.mu.Lock()
+		a.tray.systemEnding = true
+		a.tray.nativeTerminating = true
+		a.tray.exiting = true
+		a.tray.mu.Unlock()
+	} else if a.requestClose(a.ctx, true) {
+		return false
+	}
+	// AppKit/Windows may terminate without returning through Wails. Finish
+	// bounded cleanup before sending the native acknowledgement.
+	a.shutdown(a.ctx)
+	return true
+}
+
+func (a *App) requestClose(ctx context.Context, terminating bool) bool {
+	// Committed system exit must not wait for workspace persistence, whose
+	// mutex may be held across a stalled fsync. Check before any snapshot.
+	a.tray.mu.Lock()
+	ending := a.tray.systemEnding
+	a.tray.mu.Unlock()
+	if ending {
+		return false
+	}
 	closeToTray := a.store != nil && a.store.snapshot().Preferences.CloseToTray
 	a.tray.mu.Lock()
+	if a.tray.systemEnding {
+		a.tray.mu.Unlock()
+		return false
+	}
+	if a.tray.nativeTerminating {
+		a.tray.mu.Unlock()
+		return true
+	}
 	if a.tray.exiting {
+		a.tray.nativeTerminating = terminating
 		a.tray.mu.Unlock()
 		return false
 	}
@@ -231,7 +279,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		a.tray.mu.Unlock()
 		return true
 	}
-	requested := a.tray.quitRequested
+	requested := terminating || a.tray.quitRequested
 	a.tray.quitRequested = false
 	if !requested && closeToTray && a.tray.ready && !a.tray.stopped && a.tray.hideWindow != nil {
 		hide := a.tray.hideWindow
@@ -240,10 +288,20 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		return true
 	}
 	a.tray.prompting = true
+	a.tray.nativeTerminating = terminating
+	show := a.tray.showWindow
 	a.tray.mu.Unlock()
+	if terminating && show != nil {
+		show()
+	}
 	blocked := a.confirmExit(ctx)
 	a.tray.mu.Lock()
 	a.tray.prompting = false
+	if a.tray.systemEnding {
+		blocked = false
+	} else if blocked {
+		a.tray.nativeTerminating = false
+	}
 	if requested && !blocked {
 		a.tray.exiting = true
 	}
@@ -257,7 +315,7 @@ func (a *App) confirmExit(ctx context.Context) bool {
 	dirty := len(a.dirtyEditors) > 0
 	a.mu.Unlock()
 	if dirty {
-		confirmed, err := confirmAction(ctx, "仍有未保存的文件", "退出将丢失未保存的修改，并断开所有连接。", "放弃修改并退出")
+		confirmed, err := confirmAction(ctx, "仍有未保存的文件", "仍有未保存到服务器的修改。退出会断开所有连接，不会自动上传文件；仅已成功写入本机的恢复草稿可在下次打开同一文件时恢复。", "保留本地草稿并退出")
 		return err != nil || !confirmed
 	}
 	if a.store == nil || count == 0 || !a.store.snapshot().Preferences.ConfirmClose {
@@ -280,16 +338,53 @@ func (a *App) SetEditorDirty(id string, dirty bool) {
 	}
 }
 
+// shutdownBudget stays below Windows' normal end-session deadline and logind's
+// usual delay-inhibitor budget. A stalled transport/disk must not block the OS.
+const shutdownBudget = 3 * time.Second
+
 func (a *App) shutdown(_ context.Context) {
-	a.stopTray()
+	a.shutdownOnce.Do(func() {
+		// Mark closing before doing I/O so new/late connections cannot escape
+		// the resource snapshot taken by shutdownResources.
+		a.mu.Lock()
+		a.closing = true
+		a.mu.Unlock()
+		go func() {
+			defer close(a.shutdownDone)
+			if !waitForCleanup(shutdownBudget, a.shutdownResources) {
+				log.Printf("Shutdown cleanup exceeded %s; allowing system exit", shutdownBudget)
+			}
+		}()
+	})
+	<-a.shutdownDone
+}
+
+func waitForCleanup(budget time.Duration, cleanup func()) bool {
+	done := make(chan struct{})
+	go func() { defer close(done); cleanup() }()
+	timer := time.NewTimer(budget)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+func (a *App) shutdownResources() {
+	// Flush local history and stop services independently of slow remote closes.
+	var workers sync.WaitGroup
+	for _, cleanup := range []func(){a.flushTerminalHistory, a.stopMCP, a.stopTray} {
+		workers.Add(1)
+		go func(fn func()) { defer workers.Done(); fn() }(cleanup)
+	}
 	if a.store != nil {
 		a.store.mu.Lock()
 		a.store.mcpInputRevision++
 		a.invalidateMCPCommandsLocked()
 		a.store.mu.Unlock()
 	}
-	a.stopMCP()
-	a.flushTerminalHistory()
 	a.transferMu.Lock()
 	for _, job := range a.transfers {
 		job.cancel()
@@ -316,11 +411,14 @@ func (a *App) shutdown(_ context.Context) {
 		cancel()
 	}
 	for _, s := range sessions {
-		s.close()
+		workers.Add(1)
+		go func(s *remoteSession) { defer workers.Done(); s.close() }(s)
 	}
 	for _, s := range locals {
-		s.close()
+		workers.Add(1)
+		go func(s *localSession) { defer workers.Done(); s.close() }(s)
 	}
+	workers.Wait()
 	a.syncBackgroundState()
 }
 

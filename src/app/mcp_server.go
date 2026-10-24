@@ -24,6 +24,13 @@ type MCPStatus struct {
 
 func (a *App) configureMCP(preferences Preferences) error {
 	a.mcpMu.Lock()
+	a.mu.Lock()
+	closing := a.closing
+	a.mu.Unlock()
+	if closing {
+		a.mcpMu.Unlock()
+		return errors.New("应用正在退出，不能启动 MCP 服务")
+	}
 	if !preferences.MCPEnabled {
 		server := a.mcpServer
 		a.mcpServer = nil

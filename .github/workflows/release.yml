@@ -84,7 +84,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+            build-essential pkg-config dbus libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
@@ -135,6 +135,15 @@ jobs:
           go test ${{ matrix.tags }} ./...
           go test -tags androidtest ./...
           go vet ${{ matrix.tags }} ./...
+
+      - name: Test the macOS native termination handshake
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -fobjc-arc -framework Cocoa -framework CoreFoundation \
+            scripts/tests/macos-termination.m -o "$RUNNER_TEMP/orbit-termination-test"
+          "$RUNNER_TEMP/orbit-termination-test"
 
       - name: Build the application
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.args }} ${{ matrix.tags }}

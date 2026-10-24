@@ -23,6 +23,7 @@ func init() {
 		"RenameRemote", "MoveRemote", "RemoveRemote", "ChmodRemote", "KillProcess",
 		"QueueTransfer", "ListTransfers", "CancelTransfer", "ClearTransfers",
 		"ReadFilePreview", "ReadRemoteTextFile", "SaveRemoteTextFile", "SetEditorDirty", "UploadFile", "DownloadFile",
+		"UpdateEditorDraft", "LoadEditorDraft", "RemoveEditorDraft",
 		"DecideMCPCommand",
 	} {
 		mobileMethods[name] = true

@@ -45,6 +45,11 @@ func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start fun
 	}
 	ctx, cancel := context.WithCancel(parent)
 	a.mu.Lock()
+	if a.closing {
+		a.mu.Unlock()
+		cancel()
+		return errors.New("应用正在退出，不能启动终端")
+	}
 	if a.sessions[id] != nil || a.localSessions[id] != nil || a.pending[id] != nil {
 		a.mu.Unlock()
 		cancel()
@@ -65,7 +70,7 @@ func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start fun
 		return fmt.Errorf("无法启动 %s：%w", name, err)
 	}
 	a.mu.Lock()
-	if ctx.Err() != nil {
+	if a.closing || ctx.Err() != nil {
 		a.mu.Unlock()
 		// ConPTY needs a reader to drain output while the console closes.
 		go func() { _, _ = io.Copy(io.Discard, terminal) }()

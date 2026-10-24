@@ -11,10 +11,14 @@ type trayState struct {
 	quitRequested bool
 	prompting     bool
 	exiting       bool
-	showWindow    func()
-	hideWindow    func()
-	quitApp       func()
-	stop          func()
+	// nativeTerminating keeps Wails from stopping the run loop while AppKit
+	// owns a deferred termination reply and cleanup is still in progress.
+	nativeTerminating bool
+	systemEnding      bool
+	showWindow        func()
+	hideWindow        func()
+	quitApp           func()
+	stop              func()
 }
 
 func (a *App) showFromTray() {

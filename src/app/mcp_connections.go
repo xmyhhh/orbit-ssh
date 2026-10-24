@@ -114,6 +114,10 @@ func (a *App) connectMCPHost(parent context.Context, args mcpConnectHostArgs) (s
 		fingerprint: args.AcceptedFingerprint, done: make(chan error, 1),
 	}
 	a.mu.Lock()
+	if a.closing {
+		a.mu.Unlock()
+		return "", errors.New("应用正在退出，不能创建连接")
+	}
 	if len(a.mcpConnections) >= 20 {
 		a.mu.Unlock()
 		return "", errors.New("正在建立的 AI 连接过多，请稍后重试")

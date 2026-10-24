@@ -59,6 +59,10 @@ Windows 本地终端测试会通过真实 ConPTY 启动检测到的 PowerShell�
 
 Windows 系统托盘通过 Win32 通知区域 API 实现，使用内嵌应用图标，不增加 CGo 依赖。托盘测试在有 Explorer 通知区域的会话中验证真实图标注册、菜单回调、任务栏恢复通知和退出清理；没有通知区域时跳过这项桌面集成测试。关闭行为测试覆盖保留会话和编辑内容、取消退出以及旧配置的默认迁移。
 
+桌面端退出策略、平台握手、草稿恢复及手工验收见 [关机与退出机制](SHUTDOWN.md)。窗口关闭遵循「关闭到托盘」偏好；主动退出保留确认；系统关机、重启、注销不弹阻塞式确认，使用持续保存的本地恢复草稿，并在最多 3 秒的总预算内尽力完成退出清理。自动化测试不触发真实系统关机。
+
+macOS 原生退出使用 `NSTerminateLater` 等待 Go，再在主线程回复 AppKit；根据 Quit Apple Event 的原因区分主动退出和系统退出。该 delegate hook 替换 Wails 2.11 立即返回 `NSTerminateCancel` 的处理，升级 Wails 时需重新核对。原生握手回归测试可单独编译运行 `scripts/tests/macos-termination.m`（拦截系统回复，不实际终止应用或系统）。
+
 真实服务器监控测试需显式设置 `ORBIT_TEST_MONITOR_HOST` 为应用中已保存的主机名称或 ID，再运行：
 
 ```powershell

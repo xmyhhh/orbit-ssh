@@ -7,7 +7,7 @@ import {
   Save,
   WrapText,
 } from "lucide-react";
-import { backend, errorText } from "./bridge";
+import { backend, errorText, type EditorDraft } from "./bridge";
 import { Modal } from "./dialogs/Modal";
 import CodeEditor from "./CodeEditor";
 import {
@@ -18,6 +18,11 @@ import {
 import type { RemoteTextFile, Session } from "./types";
 import { Select } from "./ui/Select";
 import "./editor.css";
+
+import {
+  createEditorDraftPersistence,
+  editorDraftOperations,
+} from "./editorDraftPersistence";
 
 export default function TextFileDialog({
   session,
@@ -49,6 +54,14 @@ export default function TextFileDialog({
     null,
   );
   const [saved, setSaved] = useState(false);
+  const [recovery, setRecovery] = useState<EditorDraft | null>(null);
+  const [draftError, setDraftError] = useState("");
+  const [draftStatus, setDraftStatus] = useState<"pending" | "stored" | "">("");
+  const draftPersistence = useRef<ReturnType<
+    typeof createEditorDraftPersistence
+  > | null>(null);
+  const [draftDeleteFailed, setDraftDeleteFailed] = useState(false);
+  const [draftLoadFailed, setDraftLoadFailed] = useState(false);
   const request = useRef(0);
   const alive = useRef(true);
   const busy = useRef(false);
@@ -70,15 +83,85 @@ export default function TextFileDialog({
   }
   useEffect(() => {
     trackDirty(dirty);
-    function beforeUnload(event: BeforeUnloadEvent) {
-      if (dirty) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    }
-    window.addEventListener("beforeunload", beforeUnload);
-    return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [dirty]);
+
+  if (!draftPersistence.current) {
+    draftPersistence.current = createEditorDraftPersistence({
+      onPending: () => {
+        if (alive.current) setDraftStatus("pending");
+      },
+      onStored: () => {
+        if (alive.current) {
+          setDraftStatus("stored");
+          setDraftError("");
+        }
+      },
+      onError: (e) => {
+        if (alive.current) {
+          setDraftStatus("");
+          setDraftError(
+            `本地草稿保存失败，退出或关机可能丢失修改：${errorText(e)}`,
+          );
+        }
+      },
+    });
+  }
+
+  function flushDraft() {
+    void draftPersistence.current!.flush();
+  }
+
+  function scheduleDraft(value: string, baseline: RemoteTextFile) {
+    if (!remote || session.demo || draftLoadFailed) return;
+    draftPersistence.current!.schedule(() =>
+      backend().UpdateEditorDraft(
+        editorID.current,
+        session.id,
+        baseline,
+        value,
+      ),
+    );
+  }
+
+  async function clearDraft(savedText?: string): Promise<boolean> {
+    if (session.demo || !remote) return true;
+    try {
+      const cleared = await draftPersistence.current!.clear(
+        () => backend().RemoveEditorDraft(session.id, document?.path || path),
+        () => savedText === undefined || textRef.current === savedText,
+      );
+      if (!cleared) return false;
+      if (alive.current) {
+        setDraftStatus("");
+        setDraftError("");
+        setDraftDeleteFailed(false);
+        setDraftLoadFailed(false);
+      }
+      return true;
+    } catch (e) {
+      if (alive.current) {
+        setDraftDeleteFailed(true);
+        setDraftError(`无法清除本地草稿，原草稿仍保留：${errorText(e)}`);
+      }
+      return false;
+    }
+  }
+
+  useEffect(() => {
+    // Native quit guards use SetEditorDirty. Do not add a webview unload prompt
+    // that can block OS logout; flush best-effort without deleting the draft.
+    const hide = () => {
+      if (window.document.visibilityState === "hidden") flushDraft();
+    };
+    window.addEventListener("beforeunload", flushDraft);
+    window.addEventListener("pagehide", flushDraft);
+    window.document.addEventListener("visibilitychange", hide);
+    return () => {
+      window.removeEventListener("beforeunload", flushDraft);
+      window.removeEventListener("pagehide", flushDraft);
+      window.document.removeEventListener("visibilitychange", hide);
+    };
+  }, []);
 
   async function load() {
     const token = ++request.current;
@@ -110,7 +193,29 @@ export default function TextFileDialog({
           bom: false,
         };
       }
+      let draft: EditorDraft | null = null;
+      if (remote && !session.demo) {
+        try {
+          draft = await editorDraftOperations.run(() =>
+            backend().LoadEditorDraft(session.id, value.path),
+          );
+          if (alive.current && token === request.current) {
+            setDraftError("");
+            setDraftLoadFailed(false);
+          }
+        } catch (e) {
+          if (alive.current && token === request.current) {
+            // Do not overwrite an unreadable recovery copy with fresh edits.
+            setDraftLoadFailed(true);
+            setDraftError(
+              `无法读取本地恢复草稿，原草稿已保留；请重试或明确丢弃草稿后编辑：${errorText(e)}`,
+            );
+          }
+        }
+      }
       if (alive.current && token === request.current) {
+        setRecovery(draft);
+        setDraftStatus("");
         setDocument(value);
         setText(value.text);
         textRef.current = value.text;
@@ -131,18 +236,32 @@ export default function TextFileDialog({
     return () => {
       alive.current = false;
       request.current++;
+      // Unmount may mean shutdown or session navigation, not explicit discard.
+      flushDraft();
+      draftPersistence.current!.cancel();
       trackDirty(false);
     };
   }, [session.id, path, side]);
 
   async function save(): Promise<boolean> {
-    if (!remote || !document || busy.current || loading) return false;
+    if (
+      !remote ||
+      !document ||
+      busy.current ||
+      loading ||
+      recovery ||
+      draftLoadFailed
+    )
+      return false;
     if (textRef.current === document.text) return true;
     busy.current = true;
     setSaving(true);
     setError("");
     const submitted = textRef.current;
+    const saveRequest = request.current;
     try {
+      flushDraft();
+      await editorDraftOperations.idle();
       const value = session.demo
         ? { ...document, text: submitted }
         : await backend().SaveRemoteTextFile(
@@ -151,19 +270,39 @@ export default function TextFileDialog({
             submitted,
             document.revision,
           );
+      // A dialog may be reused for a different session/path during network IO.
+      // Its new text must never be written to or cleared under the old identity.
+      if (saveRequest !== request.current) return false;
       if (alive.current) {
         setDocument(value);
-        if (value.text !== submitted) {
+        if (value.text !== submitted && textRef.current === submitted) {
           textRef.current = value.text;
           setText(value.text);
           setGeneration((n) => n + 1);
         }
-        setSaved(true);
+        setSaved(textRef.current === value.text);
+        trackDirty(textRef.current !== value.text);
         onSaved();
       }
-      return true;
+      // Input may arrive before React applies readOnly, or the dialog may unmount
+      // during the network request. Never clear newer edits with an older save.
+      if (textRef.current !== value.text) {
+        scheduleDraft(textRef.current, value);
+        flushDraft();
+        return false;
+      }
+      // Keep a failed save's recovery copy. Only a successful remote save may
+      // clear it, after queued writes have completed.
+      const cleared = await clearDraft(value.text);
+      if (textRef.current !== value.text) {
+        scheduleDraft(textRef.current, value);
+        flushDraft();
+        return false;
+      }
+      return cleared;
     } catch (e) {
-      if (alive.current) setError(errorText(e));
+      if (alive.current && saveRequest === request.current)
+        setError(errorText(e));
       return false;
     } finally {
       busy.current = false;
@@ -172,16 +311,62 @@ export default function TextFileDialog({
   }
   function requestClose() {
     if (busy.current) return;
+    if (recovery || draftLoadFailed || (!dirty && draftDeleteFailed)) {
+      // Closing the recovery prompt is not consent to delete its saved copy.
+      // A broken disk/permissions must not trap the user in this dialog either.
+      flushDraft();
+      onClose();
+      return;
+    }
     if (confirmation) {
       setConfirmation(null);
       return;
     }
     if (dirty) setConfirmation("close");
-    else onClose();
+    else void discardAndContinue("close");
   }
+  async function discardAndContinue(action: "close" | "reload" | "recovery") {
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    try {
+      if (!(await clearDraft()) || !alive.current) return;
+      setRecovery(null);
+      setConfirmation(null);
+      if (action === "close") onClose();
+      else if (action === "reload") await load();
+    } finally {
+      busy.current = false;
+      if (alive.current) setSaving(false);
+    }
+  }
+
+  function recoverDraft() {
+    if (!recovery || !document || busy.current) return;
+    // Keep the draft's original revision. Using today's remote revision here
+    // would silently overwrite intervening changes on the next explicit save.
+    const baseline = {
+      ...document,
+      revision: recovery.revision,
+      lineEnding: recovery.lineEnding,
+      bom: recovery.bom,
+    };
+    setDocument(baseline);
+    setText(recovery.text);
+    textRef.current = recovery.text;
+    setRecovery(null);
+    setGeneration((n) => n + 1);
+    trackDirty(recovery.text !== document.text);
+    if (recovery.revision !== document.revision)
+      setError(
+        "FILE_CHANGED|远程文件与草稿原版本不同。已恢复本地修改；保存时仍会检查冲突，请先比较或复制修改，避免丢失。",
+      );
+    scheduleDraft(recovery.text, baseline);
+  }
+
   const saveAction = useRef(() => {});
   saveAction.current = () => {
-    if (!confirmation) void save();
+    if (!confirmation && !recovery) void save();
   };
   useEffect(() => {
     function key(event: KeyboardEvent) {
@@ -213,9 +398,7 @@ export default function TextFileDialog({
             size="md"
             className="text-editor-language-select"
             value={language}
-            onChange={(value) =>
-              setLanguage(value as EditorLanguage | "auto")
-            }
+            onChange={(value) => setLanguage(value as EditorLanguage | "auto")}
             options={[
               {
                 value: "auto",
@@ -240,8 +423,12 @@ export default function TextFileDialog({
         <div className="text-editor-toolbar-spacer" />
         <button
           className="button secondary compact"
-          disabled={loading || saving || !!confirmation}
-          onClick={() => (dirty ? setConfirmation("reload") : void load())}
+          disabled={loading || saving || !!confirmation || !!recovery}
+          onClick={() =>
+            dirty
+              ? setConfirmation("reload")
+              : void discardAndContinue("reload")
+          }
           title="重新读取文件"
         >
           <RefreshCw size={14} aria-hidden="true" />
@@ -250,7 +437,9 @@ export default function TextFileDialog({
         {remote && (
           <button
             className="button primary compact"
-            disabled={!dirty || loading || saving || !!confirmation}
+            disabled={
+              !dirty || loading || saving || !!confirmation || !!recovery
+            }
             onClick={() => void save()}
             title="保存到服务器（Ctrl / ⌘ S）"
           >
@@ -278,6 +467,80 @@ export default function TextFileDialog({
           )}
         </div>
       )}
+      {draftError && (
+        <div className="text-editor-error" role="alert">
+          <CircleAlert size={15} aria-hidden="true" />
+          <span>{draftError}</span>
+          {draftLoadFailed && (
+            <>
+              <button
+                className="button secondary compact"
+                disabled={saving || loading}
+                onClick={() => void load()}
+              >
+                重试读取草稿
+              </button>
+              <button
+                className="button secondary compact"
+                disabled={saving || loading}
+                onClick={() => void discardAndContinue("recovery")}
+              >
+                丢弃不可读草稿并编辑
+              </button>
+            </>
+          )}
+          {dirty && document && !draftLoadFailed && (
+            <button
+              className="button secondary compact"
+              disabled={saving}
+              onClick={() => {
+                scheduleDraft(textRef.current, document);
+                flushDraft();
+              }}
+            >
+              重试草稿
+            </button>
+          )}
+        </div>
+      )}
+      {recovery && (
+        <div
+          className="text-editor-confirm"
+          role="alert"
+          aria-label="恢复本地草稿"
+        >
+          <strong>发现此主机文件的本地草稿，是否恢复？</strong>
+          <span>
+            草稿保存于 {new Date(recovery.updatedAt).toLocaleString()}
+            ，尚未上传到服务器。
+            {recovery.revision !== document?.revision &&
+              " 远程文件已变化；恢复后保存仍会检查版本冲突。"}
+          </span>
+          <div>
+            <button
+              className="button secondary compact"
+              disabled={saving}
+              onClick={() => void discardAndContinue("recovery")}
+            >
+              丢弃草稿，使用远程内容
+            </button>
+            <button
+              className="button primary compact"
+              disabled={saving}
+              onClick={recoverDraft}
+            >
+              恢复草稿
+            </button>
+            <button
+              className="button secondary compact"
+              disabled={saving}
+              onClick={onClose}
+            >
+              暂不恢复，保留草稿并关闭
+            </button>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="text-editor-loading">
           <LoaderCircle className="spin" size={24} />
@@ -286,16 +549,29 @@ export default function TextFileDialog({
       ) : document ? (
         <CodeEditor
           key={generation}
-          initialValue={document.text}
+          initialValue={textRef.current}
           language={actualLanguage}
-          readOnly={!remote || saving || !!confirmation}
+          readOnly={
+            !remote ||
+            loading ||
+            saving ||
+            !!confirmation ||
+            !!recovery ||
+            draftLoadFailed
+          }
           wrap={wrap}
           onChange={(value) => {
             textRef.current = value;
             setText(value);
             setSaved(false);
+            // Notify the native manual-quit guard immediately, not after the
+            // debounced filesystem write (or React's next effect).
+            trackDirty(remote && value !== document.text);
+            scheduleDraft(value, document);
           }}
-          onSave={() => void save()}
+          onSave={() => {
+            if (!confirmation && !recovery) void save();
+          }}
           onPosition={(line, column) => setPosition({ line, column })}
         />
       ) : (
@@ -322,15 +598,23 @@ export default function TextFileDialog({
             </button>
             <button
               className="button secondary compact"
-              onClick={() => {
-                const action = confirmation;
-                setConfirmation(null);
-                if (action === "close") onClose();
-                else void load();
-              }}
+              disabled={saving}
+              onClick={() => void discardAndContinue(confirmation)}
             >
               {confirmation === "close" ? "放弃修改" : "放弃并载入"}
             </button>
+            {draftDeleteFailed && (
+              <button
+                className="button secondary compact"
+                disabled={saving}
+                onClick={() => {
+                  flushDraft();
+                  onClose();
+                }}
+              >
+                保留本地草稿并关闭
+              </button>
+            )}
             {confirmation === "close" && (
               <button
                 className="button primary compact"
@@ -350,7 +634,15 @@ export default function TextFileDialog({
       <div className="text-editor-status">
         <span role="status" aria-live="polite">
           {dirty ? (
-            "未保存"
+            session.demo ? (
+              "未保存"
+            ) : draftError ? (
+              "未保存 · 本地恢复不可用"
+            ) : draftStatus === "stored" ? (
+              "未上传 · 本地草稿已保存"
+            ) : (
+              "未保存 · 本地草稿待写入"
+            )
           ) : saved ? (
             <>
               <Check size={12} />

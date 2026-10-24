@@ -81,6 +81,14 @@ func (a *App) QueueTransfer(req TransferRequest) (string, error) {
 		name = fmt.Sprintf("%s 等 %d 项", name, len(req.Sources))
 	}
 	a.transferMu.Lock()
+	a.mu.Lock()
+	closing := a.closing
+	a.mu.Unlock()
+	if closing {
+		a.transferMu.Unlock()
+		cancel()
+		return "", errors.New("应用正在退出，不能添加传输")
+	}
 	// Limit retained history; active jobs are never evicted.
 	kept := []*transferJob{}
 	active := 0

@@ -43,6 +43,45 @@ func TestDarwinTrayCallbackRouting(t *testing.T) {
 	darwinTrayCallback(3, 0)
 }
 
+func TestDarwinTerminationReply(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		callback func(bool) bool
+		system   bool
+		want     bool
+	}{
+		{"approved", func(bool) bool { return true }, false, true},
+		{"cancelled", func(bool) bool { return false }, false, false},
+		{"system", func(system bool) bool { return system }, true, true},
+		{"missing-handler", nil, false, false},
+		{"missing-handler-system", nil, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			finished, replies := false, 0
+			callbacks := Callbacks{Terminate: tc.callback}
+			if tc.callback != nil {
+				callbacks.Terminate = func(system bool) bool {
+					if system != tc.system {
+						t.Error("termination reason was lost")
+					}
+					approved := tc.callback(system)
+					finished = true
+					return approved
+				}
+			}
+			darwinReplyToTermination(callbacks, tc.system, func(approved bool) {
+				replies++
+				if approved != tc.want || (tc.callback != nil && !finished) {
+					t.Fatalf("incorrect or premature native reply: %v", approved)
+				}
+			})
+			if replies != 1 {
+				t.Fatalf("expected exactly one reply, got %d", replies)
+			}
+		})
+	}
+}
+
 func boolToInt(value bool) int {
 	if value {
 		return 1

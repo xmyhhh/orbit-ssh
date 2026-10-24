@@ -26,6 +26,18 @@ import type {
 import { defaultShortcuts } from "./shortcuts";
 import type { TerminalHistoryRecord } from "./terminalHistory";
 
+export interface EditorDraft {
+  version: number;
+  editorID: string;
+  hostID: string;
+  path: string;
+  text: string;
+  revision: string;
+  lineEnding: RemoteTextFile["lineEnding"];
+  bom: boolean;
+  updatedAt: string;
+}
+
 interface Backend {
   GetPlatform(): Promise<string>;
   GetLocalShellInfo(): Promise<LocalShellInfo>;
@@ -89,10 +101,23 @@ interface Backend {
     revision: string,
   ): Promise<RemoteTextFile>;
   SetEditorDirty(id: string, dirty: boolean): Promise<void>;
+  UpdateEditorDraft(
+    editorID: string,
+    sessionID: string,
+    document: RemoteTextFile,
+    text: string,
+  ): Promise<void>;
+  LoadEditorDraft(sessionID: string, path: string): Promise<EditorDraft | null>;
+  RemoveEditorDraft(sessionID: string, path: string): Promise<void>;
   UploadFile(id: string, dir: string): Promise<boolean>;
   DownloadFile(id: string, path: string): Promise<boolean>;
   MakeDirectory(id: string, dir: string, name: string): Promise<void>;
-  RenameRemote(id: string, dir: string, from: string, to: string): Promise<void>;
+  RenameRemote(
+    id: string,
+    dir: string,
+    from: string,
+    to: string,
+  ): Promise<void>;
   MoveRemote(id: string, from: string, toDir: string): Promise<void>;
   RemoveRemote(id: string, filename: string): Promise<void>;
   ChmodRemote(id: string, filename: string, mode: string): Promise<void>;

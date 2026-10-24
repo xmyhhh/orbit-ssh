@@ -348,6 +348,11 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 	}
 	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
 	a.mu.Lock()
+	if a.closing {
+		a.mu.Unlock()
+		cancel()
+		return errors.New("应用正在退出，不能创建连接")
+	}
 	_, exists := a.sessions[id]
 	_, connecting := a.pending[id]
 	if exists || connecting || a.localSessions[id] != nil {
@@ -439,7 +444,7 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 		releaseForwarding: func() { a.releaseForwarding(forwarding) },
 		releaseTransport:  releaseTransport}
 	a.mu.Lock()
-	if ctx.Err() != nil {
+	if a.closing || ctx.Err() != nil {
 		a.mu.Unlock()
 		shell.Close()
 		return errors.New("连接已取消")

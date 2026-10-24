@@ -73,6 +73,139 @@ func TestTrayQuitCancellation(t *testing.T) {
 	}
 }
 
+func TestSystemTerminationBypassesTrayAndCleansUp(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	a.tray.ready = true
+	a.tray.hideWindow = func() { t.Fatal("system termination hid the window") }
+	shown, stopped, cancelled := 0, 0, 0
+	a.tray.showWindow = func() { shown++ }
+	a.tray.stop = func() { stopped++ }
+	a.pending["terminal"] = func() { cancelled++ }
+	a.SetEditorDirty("draft", true)
+	original := showMessageDialog
+	t.Cleanup(func() { showMessageDialog = original })
+	showMessageDialog = func(context.Context, runtime.MessageDialogOptions) (string, error) {
+		t.Error("OS end-session must not open a blocking confirmation")
+		return "", nil
+	}
+	if !a.terminateNative(true) {
+		t.Fatal("system termination was cancelled by close-to-tray")
+	}
+	if shown != 0 || stopped != 1 || cancelled != 1 || !a.closing || !a.tray.exiting {
+		t.Fatalf("termination replied before cleanup: shown=%d stopped=%d cancelled=%d closing=%v exiting=%v",
+			shown, stopped, cancelled, a.closing, a.tray.exiting)
+	}
+	// AppKit and the normal Wails shutdown path can both reach cleanup.
+	revision := a.store.mcpInputRevision
+	a.shutdown(a.ctx)
+	if stopped != 1 || cancelled != 1 || a.store.mcpInputRevision != revision {
+		t.Fatal("shutdown cleanup ran more than once")
+	}
+}
+
+func TestNativeQuitOwnsExitDuringCleanup(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	cleanupStarted, finishCleanup := make(chan struct{}), make(chan struct{})
+	a.tray.stop = func() {
+		close(cleanupStarted)
+		<-finishCleanup
+	}
+	done := make(chan bool, 1)
+	go func() { done <- a.terminateNative(false) }()
+	<-cleanupStarted
+	// Do not let a concurrent Wails close stop the native event loop before
+	// cleanup finishes and the deferred AppKit reply is sent.
+	blocked := a.beforeClose(a.ctx)
+	duplicateApproved := a.terminateNative(false)
+	close(finishCleanup)
+	approved := <-done
+	if !blocked || duplicateApproved || !approved {
+		t.Fatal("another close stole the native termination transaction")
+	}
+}
+
+func TestNativeQuitConfirmationCanCancelAndRetry(t *testing.T) {
+	for _, dirty := range []bool{false, true} {
+		t.Run(map[bool]string{false: "active-session", true: "unsaved-file"}[dirty], func(t *testing.T) {
+			a := testApp(t, "127.0.0.1:22")
+			a.tray.ready = true
+			hidden, shown, prompts, cancelled := 0, 0, 0, 0
+			a.tray.hideWindow = func() { hidden++ }
+			a.tray.showWindow = func() { shown++ }
+			a.pending["terminal"] = func() { cancelled++ }
+			a.SetEditorDirty("draft", dirty)
+			original := showMessageDialog
+			t.Cleanup(func() { showMessageDialog = original })
+			approve := false
+			showMessageDialog = func(_ context.Context, options runtime.MessageDialogOptions) (string, error) {
+				prompts++
+				if !a.beforeClose(a.ctx) {
+					t.Fatal("window close bypassed the active system confirmation")
+				}
+				if approve {
+					return options.Buttons[0], nil
+				}
+				return options.CancelButton, nil
+			}
+			if a.terminateNative(false) || cancelled != 0 || a.closing || a.tray.exiting || prompts != 1 || shown != 1 {
+				t.Fatal("cancelled system termination changed the workspace")
+			}
+			if !a.beforeClose(a.ctx) || hidden != 1 || prompts != 1 {
+				t.Fatal("cancelled system termination broke close-to-tray")
+			}
+			approve = true
+			if !a.terminateNative(false) || cancelled != 1 || !a.closing || prompts != 2 || shown != 2 || hidden != 1 {
+				t.Fatal("approved system termination did not exit and clean up")
+			}
+		})
+	}
+}
+
+func TestSystemShutdownOverridesPendingQuitConfirmation(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	a.SetEditorDirty("draft", true)
+	promptStarted, dismissPrompt := make(chan struct{}), make(chan struct{})
+	original := showMessageDialog
+	t.Cleanup(func() { showMessageDialog = original })
+	showMessageDialog = func(_ context.Context, options runtime.MessageDialogOptions) (string, error) {
+		close(promptStarted)
+		<-dismissPrompt
+		return options.CancelButton, nil
+	}
+	userQuit := make(chan bool, 1)
+	go func() { userQuit <- a.terminateNative(false) }()
+	<-promptStarted
+	approved := a.terminateNative(true)
+	close(dismissPrompt)
+	<-userQuit
+	if !approved || !a.closing || !a.tray.systemEnding || !a.tray.exiting {
+		t.Fatal("stale confirmation cancellation undid system shutdown")
+	}
+	if a.beforeClose(a.ctx) {
+		t.Fatal("Wails could not leave its event loop after end-session")
+	}
+}
+
+func TestCommittedSystemExitDoesNotReadLockedWorkspace(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	a.tray.systemEnding = true
+	a.store.mu.Lock()
+	done := make(chan bool, 1)
+	go func() { done <- a.beforeClose(a.ctx) }()
+	var blocked bool
+	select {
+	case blocked = <-done:
+		a.store.mu.Unlock()
+	case <-time.After(time.Second):
+		a.store.mu.Unlock()
+		<-done
+		t.Fatal("system exit waited for a locked workspace/disk write")
+	}
+	if blocked {
+		t.Fatal("committed system exit was blocked")
+	}
+}
+
 func TestCloseWithoutAvailableTrayExits(t *testing.T) {
 	for _, tc := range []struct {
 		name               string

@@ -12,6 +12,11 @@ type Callbacks struct {
 	Hide func()
 	// Quit asks the application to exit.
 	Quit func()
+	// Terminate handles native application/session termination. system is true
+	// for OS shutdown, restart or logout: never prompt or hide to the tray.
+	// Cleanup has a bounded deadline and finishes before replying to the OS.
+	// A user-initiated native Quit (system=false) may be cancelled.
+	Terminate func(system bool) bool
 	// Availability reports whether the tray entry could be installed.
 	Availability func(bool)
 }

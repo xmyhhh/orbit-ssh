@@ -8,8 +8,9 @@ package tray
 */
 import "C"
 
-// OrbitTrayAction is called by the menu bar items. It runs on the main thread,
-// so the work is moved to a goroutine to keep the menu responsive.
+// OrbitTrayAction is called by menu bar items and application delegate hooks.
+// It runs on the main thread, so confirmations and cleanup move to a goroutine
+// to keep AppKit responsive while it waits for a termination reply.
 //
 //export OrbitTrayAction
 func OrbitTrayAction(action C.int, value C.int) {

@@ -38,9 +38,11 @@ func (a *App) desktopStartup(ctx context.Context) {
 	a.tray.hideWindow = func() { runtime.WindowHide(ctx) }
 	a.tray.quitApp = func() { runtime.Quit(ctx) }
 	a.tray.mu.Unlock()
+	// Session shutdown handling must remain available even without a tray icon.
+	a.startSessionMonitor(ctx)
 	stop, err := tray.Start(tray.Callbacks{
 		Show: a.showFromTray, Hide: a.hideFromTray, Quit: a.quitFromTray,
-		Availability: a.setTrayAvailable,
+		Availability: a.setTrayAvailable, Terminate: a.terminateNative,
 	})
 	if err != nil {
 		log.Printf("System tray unavailable: %v", err)
