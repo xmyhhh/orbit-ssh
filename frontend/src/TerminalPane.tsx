@@ -28,7 +28,7 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props {
   session: Session;
-  selected: boolean;
+  visible: boolean;
   active: boolean;
   dark: boolean;
   fontSize: number;
@@ -110,7 +110,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
   function TerminalPane(
     {
       session,
-      selected,
+      visible,
       active,
       dark,
       fontSize,
@@ -147,6 +147,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     const latest = useRef({
       session,
       active,
+      visible,
       onClosed,
       onError,
       historyEnabled,
@@ -158,6 +159,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     latest.current = {
       session,
       active,
+      visible,
       onClosed,
       onError,
       historyEnabled,
@@ -478,7 +480,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       const openFrame = requestAnimationFrame(() => {
         if (!disposed && container.current) {
           term.open(container.current);
-          if (latest.current.active) attachWebglRenderer(term);
+          if (latest.current.visible) attachWebglRenderer(term);
           if (isAndroid()) disposeAndroidTouch = installAndroidTerminalTouch(container.current, term, {
             sessionID: session.id,
             active: () => latest.current.active,
@@ -621,19 +623,22 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     }, [session.id]);
 
     useEffect(() => {
-      let rendererFrame: number | undefined;
-      if (active) {
-        rendererFrame = requestAnimationFrame(() => {
-          const term = terminal.current;
-          if (term?.element) attachWebglRenderer(term);
-        });
-      } else if (!selected) releaseWebglRenderer();
-      return () => {
-        if (rendererFrame !== undefined) cancelAnimationFrame(rendererFrame);
-      };
-      // Renderer ownership follows session selection, not modal suspension.
+      if (!visible) {
+        releaseWebglRenderer();
+        return;
+      }
+      const rendererFrame = requestAnimationFrame(() => {
+        const term = terminal.current;
+        if (!term?.element) return;
+        attachWebglRenderer(term);
+        requestFit.current();
+        term.refresh(0, term.rows - 1);
+      });
+      return () => cancelAnimationFrame(rendererFrame);
+      // Every visible split pane needs a renderer, even when another pane has
+      // focus. Only release GPU resources when the pane is actually hidden.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active, selected, session.id]);
+    }, [visible, session.id]);
 
     useEffect(() => {
       if (historyEnabled) return;
