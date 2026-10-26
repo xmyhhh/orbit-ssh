@@ -133,6 +133,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     const search = useRef<SearchAddon | null>(null);
     const demoInput = useRef("");
     const connectionGeneration = useRef(0);
+    const reconnectPending = useRef(false);
     const writes = useRef<Promise<void>>(Promise.resolve());
     const outputDecoder = useRef(new TextDecoder());
     const historyOutput = useRef("");
@@ -388,10 +389,13 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       readBuffer: () =>
         terminal.current ? terminalBufferText(terminal.current) : "",
       flushHistory: flushHistoryOutput,
-      connectionMessage: (message, reset = false) => {
+      connectionMessage: async (message, reset = false) => {
         connectionGeneration.current++;
+        reconnectPending.current = reset;
         const term = terminal.current;
         if (!term) return;
+        // Flush old parser work before inspecting its active buffer and modes.
+        await new Promise<void>((resolve) => term.write("", resolve));
         // Leave a disconnected full-screen app and reset modes without clearing scrollback.
         const modes = reset
           ? `${term.buffer.active.type === "alternate" ? "\x1b[?1049l" : ""}\x1b[!p\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l`
@@ -578,6 +582,14 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           return false;
         return true;
       });
+      const offConnected = session.demo
+        ? () => {}
+        : listen(`ssh:connected:${session.id}`, () => {
+            if (reconnectPending.current) {
+              reconnectPending.current = false;
+              writeLine(term, "\r\n\x1b[90m[已重新连接 · 新的 Shell 会话]\x1b[0m");
+            }
+          });
       const offData = session.demo
         ? () => {}
         : listen(`ssh:data:${session.id}`, (data) => {
@@ -633,6 +645,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
         observer.disconnect();
         input.dispose();
         offData();
+        offConnected();
         offClosed();
         releaseWebglRenderer();
         term.dispose();

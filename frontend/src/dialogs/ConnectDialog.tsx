@@ -121,7 +121,11 @@ export function ConnectDialog({
   }
   return (
     <Modal
-      title={fingerprint ? "确认服务器身份" : `${reconnecting ? "重新连接" : "连接"} ${host.name}`}
+      title={
+        fingerprint
+          ? "确认服务器身份"
+          : `${reconnecting ? "重新连接" : "连接"} ${host.name}`
+      }
       onClose={onClose}
     >
       <div className="connection-destination">
@@ -329,7 +333,9 @@ export function ConnectDialog({
                 ? "检查已保存密码…"
                 : busy
                   ? "正在连接…"
-                  : reconnecting ? "重新连接" : "建立连接"}
+                  : reconnecting
+                    ? "重新连接"
+                    : "建立连接"}
               <ChevronRight size={16} />
             </button>
           </div>

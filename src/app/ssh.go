@@ -455,6 +455,11 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 	a.mu.Unlock()
 	keepClient = true
 	a.syncBackgroundState()
+	// Announce the new shell before streaming its banner/prompt, so a client
+	// reconnect separator never hides the prompt or interrupts shell output.
+	if a.emit != nil {
+		a.emit("ssh:connected:" + id)
+	}
 	var readers sync.WaitGroup
 	readers.Add(2)
 	for _, reader := range []io.Reader{stdout, stderr} {

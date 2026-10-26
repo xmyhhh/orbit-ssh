@@ -49,6 +49,8 @@ go test -tags androidtest ./...
 go vet ./...
 ```
 
+重连界面回归使用真实 xterm 渲染及模拟桌面桥接，不连接真实服务器：在 `frontend` 下先运行 `npx playwright install chromium`，再运行 `npm run test:e2e`。本机已安装 Chrome 时可设置 `PLAYWRIGHT_CHANNEL=chrome`；测试自动启动独立的 Vite 服务。CI 在 Linux 构建节点执行同一组浏览器测试。
+
 Go 会嵌入 `frontend/dist`，请先完成前端构建，再执行 Go 检查，避免同时改写 dist。默认测试使用本地 SSH / SFTP 服务和模拟凭据库，不接触用户配置。
 
 并发改动后建议再跑一次 `go test -race ./...` 和 `go test -race -tags androidtest ./...`，会话心跳等后台协程不会直接读取 `App` 上的可替换字段。

@@ -50,6 +50,9 @@ func TestSSHReconnectReusesIDAfterExitAndFailure(t *testing.T) {
 	}
 	first := connect()
 	readMarker("before-disconnect")
+	if err := a.SetSessionMCPUnrestricted("original", true); err != nil {
+		t.Fatal(err)
+	}
 	// Simulate a lost transport, not the UI's explicit Disconnect action.
 	first.client.Close()
 	select {
@@ -65,6 +68,9 @@ func TestSSHReconnectReusesIDAfterExitAndFailure(t *testing.T) {
 		t.Fatal("reconnect reused the dead SSH transport")
 	}
 	readMarker("after-reconnect")
+	if a.sessionMCPUnrestricted("original") {
+		t.Fatal("reconnect inherited the previous shell's AI consent")
+	}
 	if err := a.ResizeTerminal("original", TerminalSize{Cols: 120, Rows: 40}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,13 +85,14 @@ func TestSSHReconnectReusesIDAfterExitAndFailure(t *testing.T) {
 	}
 	// Immediate reuse after explicit cancellation must not receive late close events.
 	for i := 0; i < 3; i++ {
+		previous, _ := a.session("original")
 		if err := a.Disconnect("original"); err != nil {
 			t.Fatal(err)
 		}
 		select {
-		case <-closed:
+		case <-previous.finished:
 		default:
-			t.Fatal("Disconnect returned before the old close event was drained")
+			t.Fatal("Disconnect returned before the old stream was drained")
 		}
 		connect()
 		readMarker(fmt.Sprintf("retry-%d", i))

@@ -289,7 +289,7 @@ export interface TerminalHandle {
   focus: () => void;
   readBuffer: () => string;
   flushHistory: () => void;
-  connectionMessage: (message: string, reset?: boolean) => void;
+  connectionMessage: (message: string, reset?: boolean) => Promise<void>;
   search: (text: string) => boolean;
   size: () => TerminalSize;
 }

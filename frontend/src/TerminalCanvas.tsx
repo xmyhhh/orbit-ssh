@@ -318,7 +318,9 @@ export default function TerminalCanvas({
               {(s.status === "closed" || s.reconnecting) && (
                 <div className="reconnect-bar">
                   <span>
-                    {s.reconnecting ? "正在重新连接…" : isLocalSession(s) ? "终端已结束" : "连接已结束"}
+                    {s.reconnecting
+                      ? "正在重新连接…"
+                      : isLocalSession(s) ? "终端已结束" : "连接已结束"}
                     {s.error ? ` · ${s.error}` : ""}
                   </span>
                   <button
@@ -326,7 +328,9 @@ export default function TerminalCanvas({
                     disabled={s.status === "connecting"}
                     onClick={() => onReconnect(s)}
                   >
-                    {s.reconnecting ? "正在重新连接…" : isLocalSession(s) ? "重新打开" : "重新连接"}
+                    {s.reconnecting
+                      ? "正在重新连接…"
+                      : isLocalSession(s) ? "重新打开" : "重新连接"}
                     <ArrowRight size={13} />
                   </button>
                 </div>

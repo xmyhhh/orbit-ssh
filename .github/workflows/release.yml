@@ -136,6 +136,20 @@ jobs:
           go test -tags androidtest ./...
           go vet ${{ matrix.tags }} ./...
 
+      - name: Test terminal reconnect in the browser
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd frontend
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+
+      - name: Check reconnect concurrency
+        if: runner.os == 'Linux'
+        shell: bash
+        run: go test -race ${{ matrix.tags }} ./src/app -run 'TestSSHReconnect|TestCancelPendingHandshake|TestSameHostIndependentTerminals' -count=3
+
       - name: Test the macOS native termination handshake
         if: runner.os == 'macOS'
         shell: bash

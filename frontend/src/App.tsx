@@ -1443,7 +1443,14 @@ export default function App() {
                     onToggleHistory={toggleSessionHistory}
                     onHistoryOutput={recordTerminalOutput}
                     onZoom={zoomTerminal}
-                    onClosed={onSessionClosed}
+                    onClosed={(id, message) => {
+                      setMcpUnrestricted((previous) => {
+                        const next = { ...previous };
+                        delete next[id];
+                        return next;
+                      });
+                      onSessionClosed(id, message);
+                    }}
                     onError={notify}
                     onPaste={pasteToTerminal}
                     onReconnect={(session) => {
@@ -1454,7 +1461,9 @@ export default function App() {
                       else {
                         setReconnectSession(session);
                         setConnectHost(
-                          workspace.hosts.find((host) => host.id === session.host.id) ?? session.host,
+                          workspace.hosts.find(
+                            (host) => host.id === session.host.id,
+                          ) ?? session.host,
                         );
                       }
                     }}
