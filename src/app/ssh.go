@@ -39,6 +39,7 @@ type remoteSession struct {
 	once              sync.Once
 	closed            bool
 	done              chan struct{}
+	finished          chan struct{}
 	monitorMu         sync.Mutex
 	previousCPU       *cpuSample
 	previousNet       map[string]netSample
@@ -440,7 +441,7 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 			a.releaseForwarding(forwarding)
 		}
 	}()
-	s := &remoteSession{client: client, shell: shell, stdin: stdin, host: host, output: &terminalOutputBuffer{}, done: make(chan struct{}), x11: x11,
+	s := &remoteSession{client: client, shell: shell, stdin: stdin, host: host, output: &terminalOutputBuffer{}, done: make(chan struct{}), finished: make(chan struct{}), x11: x11,
 		releaseForwarding: func() { a.releaseForwarding(forwarding) },
 		releaseTransport:  releaseTransport}
 	a.mu.Lock()
@@ -463,6 +464,7 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 		}(reader)
 	}
 	go func() {
+		defer close(s.finished)
 		waitErr := shell.Wait()
 		readers.Wait()
 		current := a.removeTerminalSession(id, nil, s)

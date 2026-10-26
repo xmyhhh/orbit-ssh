@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "check": "tsc -b",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
     "test:layout": "node --experimental-strip-types --test tests/splitLayout.test.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },

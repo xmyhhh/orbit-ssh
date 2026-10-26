@@ -2,10 +2,100 @@ package app
 
 import (
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestSSHReconnectReusesIDAfterExitAndFailure(t *testing.T) {
+	address, fingerprint := testSSHServer(t)
+	a := testApp(t, address)
+	credentials := Credentials{Password: "session-only-secret"}
+	closed := make(chan string, 8)
+	data := make(chan string, 32)
+	a.emit = func(name string, args ...interface{}) {
+		if name == "ssh:closed:original" {
+			closed <- args[0].(string)
+		}
+		if name == "ssh:data:original" {
+			bytes, _ := base64.StdEncoding.DecodeString(args[0].(string))
+			data <- string(bytes)
+		}
+	}
+	connect := func() *remoteSession {
+		t.Helper()
+		if err := a.Connect("original", "test-host", credentials, fingerprint, TerminalSize{}); err != nil {
+			t.Fatal(err)
+		}
+		s, err := a.session("original")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	readMarker := func(marker string) {
+		t.Helper()
+		if err := a.WriteTerminal("original", marker); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case value := <-data:
+			if value != marker {
+				t.Fatalf("output = %q, want %q", value, marker)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("reconnected terminal did not accept input")
+		}
+	}
+	first := connect()
+	readMarker("before-disconnect")
+	// Simulate a lost transport, not the UI's explicit Disconnect action.
+	first.client.Close()
+	select {
+	case <-closed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("transport loss was not reported")
+	}
+	if err := a.Connect("original", "test-host", Credentials{Password: "wrong"}, "", TerminalSize{}); err == nil {
+		t.Fatal("reconnect bypassed authentication")
+	}
+	second := connect()
+	if first == second {
+		t.Fatal("reconnect reused the dead SSH transport")
+	}
+	readMarker("after-reconnect")
+	if err := a.ResizeTerminal("original", TerminalSize{Cols: 120, Rows: 40}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RenameSession("original", "发布验收"); err != nil {
+		t.Fatal(err)
+	}
+	if name, _ := a.sessionNames("original"); name != "发布验收" {
+		t.Fatalf("restored name = %q", name)
+	}
+	if _, err := a.ListDirectory("original", ""); err != nil {
+		t.Fatalf("SFTP did not recover: %v", err)
+	}
+	// Immediate reuse after explicit cancellation must not receive late close events.
+	for i := 0; i < 3; i++ {
+		if err := a.Disconnect("original"); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-closed:
+		default:
+			t.Fatal("Disconnect returned before the old close event was drained")
+		}
+		connect()
+		readMarker(fmt.Sprintf("retry-%d", i))
+		select {
+		case message := <-closed:
+			t.Fatalf("old connection closed its replacement: %s", message)
+		default:
+		}
+	}
+}
 
 func TestSameHostIndependentTerminals(t *testing.T) {
 	mockPasswordVault(t)

@@ -132,6 +132,7 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
     const fit = useRef<FitAddon | null>(null);
     const search = useRef<SearchAddon | null>(null);
     const demoInput = useRef("");
+    const connectionGeneration = useRef(0);
     const writes = useRef<Promise<void>>(Promise.resolve());
     const outputDecoder = useRef(new TextDecoder());
     const historyOutput = useRef("");
@@ -289,8 +290,16 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       }
       if (session.demo) demoType(text);
       else if (latest.current.session.status === "connected") {
+        const generation = connectionGeneration.current;
         writes.current = writes.current
-          .then(() => backend().WriteTerminal(session.id, text))
+          .then(() => {
+            // Never replay queued input from a disconnected shell into its replacement.
+            if (
+              generation === connectionGeneration.current &&
+              latest.current.session.status === "connected"
+            )
+              return backend().WriteTerminal(session.id, text);
+          })
           .catch((e) => latest.current.onError(errorText(e)));
       }
     }
@@ -379,6 +388,16 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
       readBuffer: () =>
         terminal.current ? terminalBufferText(terminal.current) : "",
       flushHistory: flushHistoryOutput,
+      connectionMessage: (message, reset = false) => {
+        connectionGeneration.current++;
+        const term = terminal.current;
+        if (!term) return;
+        // Leave a disconnected full-screen app and reset modes without clearing scrollback.
+        const modes = reset
+          ? `${term.buffer.active.type === "alternate" ? "\x1b[?1049l" : ""}\x1b[!p\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l`
+          : "";
+        writeLine(term, `${modes}\r\n\x1b[90m[${message}]\x1b[0m`);
+      },
       search: (text) =>
         search.current?.findNext(text, { incremental: true }) ?? false,
       size: () => ({
@@ -570,7 +589,8 @@ export const TerminalPane = forwardRef<TerminalHandle, Props>(
           });
       const offClosed = session.demo
         ? () => {}
-        : listen(`ssh:closed:${session.id}`, (message) => {
+         : listen(`ssh:closed:${session.id}`, (message) => {
+            connectionGeneration.current++;
             writeLine(
               term,
               `\r\n\x1b[90m[${session.localShell || session.wslDistribution ? "终端已结束" : "连接已断开"}]\x1b[0m`,

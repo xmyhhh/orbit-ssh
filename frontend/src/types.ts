@@ -261,6 +261,7 @@ export interface Session {
   wslDistribution?: string;
   localShell?: LocalShell;
   status: "connecting" | "connected" | "closed";
+  reconnecting?: boolean;
   error?: string;
 }
 export interface WSLInfo {
@@ -288,6 +289,7 @@ export interface TerminalHandle {
   focus: () => void;
   readBuffer: () => string;
   flushHistory: () => void;
+  connectionMessage: (message: string, reset?: boolean) => void;
   search: (text: string) => boolean;
   size: () => TerminalSize;
 }

@@ -110,6 +110,7 @@ export default function App() {
     isNew?: boolean;
   } | null>(null);
   const [connectHost, setConnectHost] = useState<Host | null>(null);
+  const [reconnectSession, setReconnectSession] = useState<Session | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -271,11 +272,13 @@ export default function App() {
 
   const {
     connect,
+    reconnect,
     openWSLTerminal,
     openLocalShell,
     removeSession,
     removeSessions,
     cancelConnection,
+    onSessionClosed,
   } = useSessionConnections({
     sessionsRef,
     setSessions,
@@ -677,6 +680,7 @@ export default function App() {
       notify("请使用桌面版连接 SSH。");
       return;
     }
+    setReconnectSession(null);
     setConnectHost(host);
   }
 
@@ -723,7 +727,9 @@ export default function App() {
     credentials: Credentials,
     fingerprint: string,
   ) {
-    await connect(host, credentials, fingerprint);
+    if (reconnectSession)
+      await reconnect(reconnectSession, host, credentials, fingerprint);
+    else await connect(host, credentials, fingerprint);
     if (pendingWorkflowLaunch?.hostID === host.id)
       workflowConnectSucceeded.current = true;
   }
@@ -1437,15 +1443,7 @@ export default function App() {
                     onToggleHistory={toggleSessionHistory}
                     onHistoryOutput={recordTerminalOutput}
                     onZoom={zoomTerminal}
-                    onClosed={(id, message) =>
-                      setSessions((items) =>
-                        items.map((item) =>
-                          item.id === id
-                            ? { ...item, status: "closed", error: message }
-                            : item,
-                        ),
-                      )
-                    }
+                    onClosed={onSessionClosed}
                     onError={notify}
                     onPaste={pasteToTerminal}
                     onReconnect={(session) => {
@@ -1453,7 +1451,12 @@ export default function App() {
                         void openLocalShell(session.localShell);
                       else if (session.wslDistribution)
                         void openWSLTerminal(session.wslDistribution);
-                      else chooseHost(session.host);
+                      else {
+                        setReconnectSession(session);
+                        setConnectHost(
+                          workspace.hosts.find((host) => host.id === session.host.id) ?? session.host,
+                        );
+                      }
                     }}
                   />
                   {monitorOpen &&
@@ -1627,8 +1630,9 @@ export default function App() {
       )}
       {connectHost && (
         <ConnectDialog
-          key={connectHost.id}
+          key={reconnectSession?.id ?? connectHost.id}
           host={connectHost}
+          reconnecting={Boolean(reconnectSession)}
           jumpHost={workspace.hosts.find(
             (h) => h.id === connectHost.jumpHostId,
           )}
@@ -1638,6 +1642,7 @@ export default function App() {
             cancelConnection();
 
             setConnectHost(null);
+            setReconnectSession(null);
             if (!workflowConnectSucceeded.current)
               setPendingWorkflowLaunch(null);
             workflowConnectSucceeded.current = false;

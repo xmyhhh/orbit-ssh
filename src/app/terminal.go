@@ -168,6 +168,11 @@ func (a *App) Disconnect(id string) error {
 	}
 	if s != nil {
 		s.close()
+		// A reconnect can reuse this ID. Drain the old stream and its close
+		// event before allowing a replacement to subscribe to the same ID.
+		if s.finished != nil {
+			<-s.finished
+		}
 	}
 	if local != nil {
 		local.close()

@@ -315,17 +315,18 @@ export default function TerminalCanvas({
                   );
                 }}
               />
-              {s.status === "closed" && (
+              {(s.status === "closed" || s.reconnecting) && (
                 <div className="reconnect-bar">
                   <span>
-                    {isLocalSession(s) ? "终端已结束" : "连接已结束"}
+                    {s.reconnecting ? "正在重新连接…" : isLocalSession(s) ? "终端已结束" : "连接已结束"}
                     {s.error ? ` · ${s.error}` : ""}
                   </span>
                   <button
                     className="button secondary compact"
+                    disabled={s.status === "connecting"}
                     onClick={() => onReconnect(s)}
                   >
-                    {isLocalSession(s) ? "重新打开" : "重新连接"}
+                    {s.reconnecting ? "正在重新连接…" : isLocalSession(s) ? "重新打开" : "重新连接"}
                     <ArrowRight size={13} />
                   </button>
                 </div>

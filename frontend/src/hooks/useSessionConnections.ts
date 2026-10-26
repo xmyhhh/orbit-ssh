@@ -40,8 +40,18 @@ export function useSessionConnections({
 }) {
   const connectingID = useRef<string | null>(null);
   const connectingIDs = useRef(new Set<string>());
+  const reconnectingIDs = useRef(new Set<string>());
+  const closedDuringConnect = useRef(new Set<string>());
+  const disconnecting = useRef(new Map<string, Promise<void>>());
   const terminalNumbers = useRef(new Map<string, number>());
   const { activateNewSession, pendingSplitRef } = layout;
+
+  function onSessionClosed(id: string, message: string) {
+    if (connectingIDs.current.has(id)) closedDuringConnect.current.add(id);
+    setSessions((items) => items.map((item) => item.id === id
+      ? { ...item, status: "closed", reconnecting: false, error: message }
+      : item));
+  }
 
   async function discardSession(session: Session, previousActive: string) {
     const { id, host, terminalNumber } = session;
@@ -65,9 +75,10 @@ export function useSessionConnections({
     connectingID.current = null;
     if (id) {
       connectingIDs.current.delete(id);
-      void backend()
+      const cleanup = backend()
         .Disconnect(id)
         .catch(() => {});
+      disconnecting.current.set(id, cleanup);
     }
   }
   function allocateSession(
@@ -93,6 +104,7 @@ export function useSessionConnections({
     fingerprint: string,
     mcpSessionID?: string,
     name?: string,
+    reconnectID?: string,
   ) {
     if (
       mcpSessionID &&
@@ -100,13 +112,31 @@ export function useSessionConnections({
         sessionsRef.current.some((session) => session.id === mcpSessionID))
     )
       return;
-    const session = allocateSession(host, mcpSessionID, name);
+    const previous = reconnectID
+      ? sessionsRef.current.find((session) => session.id === reconnectID)
+      : undefined;
+    if (reconnectID) {
+      if (!previous || previous.demo || previous.status !== "closed")
+        throw new Error("此终端当前无法重新连接");
+      if (reconnectingIDs.current.has(reconnectID))
+        throw new Error("上一次连接仍在结束，请稍后重试");
+      reconnectingIDs.current.add(reconnectID);
+    }
+    const session = previous
+      ? { ...previous, host, status: "connecting" as const, reconnecting: true, error: undefined }
+      : allocateSession(host, mcpSessionID, name);
     const id = session.id;
     const previousActive = active;
     connectingIDs.current.add(id);
+    closedDuringConnect.current.delete(id);
     if (!mcpSessionID) connectingID.current = id;
-    setSessions((s) => [...s, session]);
-    if (mcpSessionID) layout.activateSession(id);
+    setSessions((s) => previous
+      ? s.map((item) => item.id === id ? session : item)
+      : [...s, session]);
+    if (previous) {
+      setActive(id);
+      handles.current.get(id)?.connectionMessage("正在重新连接…", true);
+    } else if (mcpSessionID) layout.activateSession(id);
     else activateNewSession(id);
     try {
       const deadline = Date.now() + 5000;
@@ -127,10 +157,21 @@ export function useSessionConnections({
       setSessions((s) =>
         s.map((item) =>
           item.id === id && item.status !== "closed"
-            ? { ...item, status: "connected" }
+            ? { ...item, status: "connected", reconnecting: false }
             : item,
         ),
       );
+      if (previous) {
+        const current = sessionsRef.current.find((item) => item.id === id) ?? previous;
+        if (!closedDuringConnect.current.has(id)) {
+          handles.current.get(id)?.connectionMessage("已重新连接 · 新的 Shell 会话");
+          if (current?.name) {
+            await backend().RenameSession(id, current.name).catch((e) =>
+              notify(`已重新连接，恢复会话名称失败：${errorText(e)}`),
+            );
+          }
+        }
+      }
       if (!mcpSessionID) pendingSplitRef.current = null;
       update({
         ...stateRef.current,
@@ -168,13 +209,31 @@ export function useSessionConnections({
       }
       notify(`已连接 ${host.name}`);
     } catch (e) {
-      await discardSession(session, previousActive);
+      if (previous) {
+        await backend().Disconnect(id).catch(() => {});
+        await disconnecting.current.get(id);
+        setSessions((items) => items.map((item) => item.id === id
+          ? { ...item, status: "closed", reconnecting: false, error: errorText(e) }
+          : item));
+        handles.current.get(id)?.connectionMessage(`重新连接失败或已取消：${errorText(e)}`);
+      } else await discardSession(session, previousActive);
 
       throw e;
     } finally {
       connectingIDs.current.delete(id);
+      reconnectingIDs.current.delete(id);
+      closedDuringConnect.current.delete(id);
+      disconnecting.current.delete(id);
       if (connectingID.current === id) connectingID.current = null;
     }
+  }
+  async function reconnect(
+    session: Session,
+    host: Host,
+    credentials: Credentials,
+    fingerprint: string,
+  ) {
+    await connect(host, credentials, fingerprint, undefined, undefined, session.id);
   }
   async function openWSLTerminal(distribution: string) {
     await openLocalSession({ wslDistribution: distribution });
@@ -252,10 +311,12 @@ export function useSessionConnections({
   }
   return {
     connect,
+    reconnect,
     openWSLTerminal,
     openLocalShell,
     removeSession,
     removeSessions,
     cancelConnection,
+    onSessionClosed,
   };
 }
