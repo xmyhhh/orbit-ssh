@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          app="$(node -p "require('./wails.json').info.productVersion.split('.').slice(0,2).join('.')")"
+          app="$(node -p "require('./wails.json').info.productVersion")"
           if [ "$DRY_RUN" = "true" ]; then
             echo "ASSET_VERSION=$app" >> "$GITHUB_ENV"
           else
@@ -105,11 +105,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The first two segments carry the version line, so tags like v3.3
-          # and patch releases like v3.3.1 both go through the same rule.
-          tag="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
-          app="$(node -p "require('./wails.json').info.productVersion.split('.').slice(0,2).join('.')")"
-          pkg="$(node -p "require('./frontend/package.json').version.split('.').slice(0,2).join('.')")"
+          # Compare the complete patch version; legacy two-part tags imply .0.
+          tag="${RELEASE_TAG#v}"
+          if [[ "$tag" =~ ^[0-9]+\.[0-9]+$ ]]; then tag="$tag.0"; fi
+          app="$(node -p "require('./wails.json').info.productVersion")"
+          pkg="$(node -p "require('./frontend/package.json').version")"
           if [ "$tag" != "$app" ] || [ "$tag" != "$pkg" ]; then
             echo "::error::Tag $RELEASE_TAG does not match wails.json ($app) or frontend/package.json ($pkg)"
             exit 1
@@ -136,7 +136,7 @@ jobs:
           go test -tags androidtest ./...
           go vet ${{ matrix.tags }} ./...
 
-      - name: Test terminal reconnect in the browser
+      - name: Test terminal reconnect, transfer retry and update checks in the browser
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -145,10 +145,10 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:e2e
 
-      - name: Check reconnect concurrency
+      - name: Check reconnect, transfer retry and update concurrency
         if: runner.os == 'Linux'
         shell: bash
-        run: go test -race ${{ matrix.tags }} ./src/app -run 'TestSSHReconnect|TestCancelPendingHandshake|TestSameHostIndependentTerminals' -count=3
+        run: go test -race ${{ matrix.tags }} ./src/app -run 'TestSSHReconnect|TestCancelPendingHandshake|TestSameHostIndependentTerminals|TestRetryTransfer|TestRelease|TestFetchLatestRelease|TestCheckForUpdates' -count=3
 
       - name: Test the macOS native termination handshake
         if: runner.os == 'macOS'
@@ -301,6 +301,7 @@ jobs:
           body_path: release-notes.md
           draft: false
           prerelease: false
+          make_latest: true
           fail_on_unmatched_files: true
           files: |
             assets/*

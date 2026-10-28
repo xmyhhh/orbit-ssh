@@ -100,6 +100,74 @@
   color: var(--muted);
   font-size: 10px;
 }
+.about-dialog {
+  width: 600px;
+}
+.about-updates {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+.about-update-heading,
+.about-update-downloads {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.about-update-heading {
+  justify-content: space-between;
+  font-size: 12px;
+}
+.about-update-hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 9px 0;
+}
+.about-update-error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.about-update-status {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 550;
+  margin: 14px 0 6px;
+}
+.about-release-notes {
+  margin: 12px 0;
+  font-size: 12px;
+}
+.about-release-notes summary {
+  cursor: pointer;
+}
+.about-release-notes pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-family: inherit;
+  line-height: 1.8;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 12px;
+}
+.about-update-downloads a,
+.about-release-link {
+  text-decoration: none;
+}
+.about-release-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  font-size: 11px;
+  margin-top: 6px;
+}
 .field {
   display: flex;
   flex-direction: column;

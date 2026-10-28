@@ -45,7 +45,7 @@ export function Modal({
       if (event.key !== "Tab") return;
       const nodes = [
         ...(ref.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+          'button:not(:disabled), a[href], summary, input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
         ) ?? []),
       ].filter((n) => n.offsetParent !== null);
       const first = nodes[0],

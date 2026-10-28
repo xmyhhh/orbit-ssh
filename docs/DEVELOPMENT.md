@@ -210,6 +210,19 @@ git tag v3.2 && git push origin v3.2
 
 Android 的 APK 仍使用 `android/build.ps1` 本地构建，签名密钥保留在本地；需要把 APK 一起发布时，在汇总 job 中追加 `actions/upload-artifact` 即可。
 
+### 应用内检查更新
+
+桌面端「关于 → 检查更新」通过 Go 后端请求 `https://api.github.com/repos/xmyhhh/orbit-ssh/releases/latest`。不需要部署服务器、提供 Token 或增加更新清单；Release 的 `tag_name` 用于版本比较，`body` 用于应用内发布说明，`assets` 用于下载入口。请求超时为 15 秒，成功响应在当前应用进程内缓存 5 分钟，仅点击按钮时检查。
+
+后续发布需保持以下约定（现有发布工作流已使用这些格式）：
+
+- 同步更新 `frontend/package.json` 与 `wails.json` 的完整版本号，使用 `v3.3.9` 这样的正式标签；也兼容已有的 `v3.2` 两段标签。
+- 在 `docs/releases/<标签>.md` 填写发布说明，发布工作流会将其作为 GitHub Release 正文。
+- 最新桌面正式版本应设为 GitHub 的 **Latest**。草稿和 Pre-release 不参与检查；独立发布旧版本补丁或 Android APK 时，不要将其设为桌面仓库的 Latest。
+- 保持安装包命名：`OrbitSSH-<标签>-windows-x64-setup.exe` / `-portable.zip`、`OrbitSSH-<标签>-macos-arm64.dmg` / `-macos-x64.dmg`（也支持对应 ZIP）、`OrbitSSH-<标签>-linux-x64.tar.gz`。匹配当前程序系统与架构的已上传附件才显示下载按钮，没有匹配附件时提供发布页入口。
+
+实现位于 `src/app/updates.go` 与 `frontend/src/dialogs/AboutDialog.tsx`。版本号按数值比较，`3.3.10` 高于 `3.3.9`；本机版本较新时也会单独提示。说明以文本展示，下载链接交给系统浏览器，不会在运行中替换应用。Android 关于页提供复制发布页地址的入口。
+
 ## 模块边界
 
 | 位置 | 职责 |

@@ -186,6 +186,10 @@ func TestTransferCancellationAndFailurePreserveFiles(t *testing.T) {
 		close(release)
 		t.Fatal("no transfer progress")
 	}
+	if _, err = a.RetryTransfer(id); err == nil {
+		close(release)
+		t.Fatal("accepted retry of a running transfer")
+	}
 	queued, err := a.QueueTransfer(req)
 	if err != nil {
 		close(release)
@@ -198,6 +202,10 @@ func TestTransferCancellationAndFailurePreserveFiles(t *testing.T) {
 	if err = a.CancelTransfer(id); err != nil {
 		close(release)
 		t.Fatal(err)
+	}
+	if _, err = a.RetryTransfer(id); err == nil {
+		close(release)
+		t.Fatal("accepted retry before cancellation finished")
 	}
 	close(release)
 	if job := waitTransfer(t, a, "files", id); job.Status != "cancelled" {
@@ -217,6 +225,18 @@ func TestTransferCancellationAndFailurePreserveFiles(t *testing.T) {
 	for _, file := range listing.Files {
 		if strings.HasPrefix(file.Name, ".orbit-upload-") {
 			t.Fatal("cancel leaked partial remote file")
+		}
+	}
+	for _, cancelledID := range []string{id, queued} {
+		retry, err := a.RetryTransfer(cancelledID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if retry == cancelledID {
+			t.Fatal("retry reused the cancelled attempt")
+		}
+		if job := waitTransfer(t, a, "files", retry); job.Status != "completed" || job.CompletedFiles != 1 {
+			t.Fatalf("retry cancelled upload: %+v", job)
 		}
 	}
 	req.Sources = []string{filepath.Join(t.TempDir(), "missing.txt")}
@@ -324,5 +344,134 @@ func TestDownloadCancellationPreservesLocalFile(t *testing.T) {
 	entries, err := os.ReadDir(dest)
 	if err != nil || len(entries) != 1 {
 		t.Fatal("cancel leaked partial local file", err)
+	}
+	retry, err := a.RetryTransfer(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := waitTransfer(t, a, "files", retry); job.Status != "completed" || job.CompletedFiles != 1 {
+		t.Fatalf("retry cancelled download: %+v", job)
+	}
+	data, err = os.ReadFile(target)
+	if err != nil || !bytes.Equal(data, bytes.Repeat([]byte{13}, 2*1024*1024)) {
+		t.Fatal("retried download did not replace the complete file", err)
+	}
+}
+
+func TestRetryTransferPreservesRequestAndHistory(t *testing.T) {
+	for _, direction := range []string{"upload", "download"} {
+		for _, conflict := range []string{"skip", "replace"} {
+			t.Run(direction+"/"+conflict, func(t *testing.T) {
+				a, remote := transferTestApp(t)
+				client, err := a.sftpClient("files")
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeRemote := func(filename, text string) {
+					t.Helper()
+					f, err := client.Create(filename)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, err = f.Write([]byte(text))
+					closeErr := f.Close()
+					if err != nil || closeErr != nil {
+						t.Fatalf("write remote: %v %v", err, closeErr)
+					}
+				}
+				local := t.TempDir()
+				source := filepath.Join(local, "payload.txt")
+				destination := path.Join(remote, "destination")
+				if direction == "upload" {
+					if err = os.WriteFile(source, []byte("replacement"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					source = path.Join(remote, "payload.txt")
+					destination = filepath.Join(local, "destination")
+					writeRemote(source, "replacement")
+				}
+				req := TransferRequest{SessionID: "files", Direction: direction, Sources: []string{source}, Destination: destination, Conflict: conflict}
+				id, err := a.QueueTransfer(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				failed := waitTransfer(t, a, "files", id)
+				if failed.Status != "failed" || failed.Error == "" {
+					t.Fatalf("missing destination: %+v", failed)
+				}
+				// A caller changing its slice must not change the retained request.
+				req.Sources[0] = source + ".missing"
+				if direction == "upload" {
+					if err = client.Mkdir(destination); err != nil {
+						t.Fatal(err)
+					}
+					writeRemote(path.Join(destination, "payload.txt"), "original")
+				} else {
+					if err = os.Mkdir(destination, 0755); err != nil {
+						t.Fatal(err)
+					}
+					if err = os.WriteFile(filepath.Join(destination, "payload.txt"), []byte("original"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				retry, err := a.RetryTransfer(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				job := waitTransfer(t, a, "files", retry)
+				if retry == id || job.Status != "completed" || job.Destination != destination || job.Direction != direction {
+					t.Fatalf("retry: %+v", job)
+				}
+				want := "replacement"
+				if conflict == "skip" {
+					want = "original"
+					if job.Skipped != 1 || job.CompletedFiles != 0 {
+						t.Fatalf("retry did not preserve skip policy: %+v", job)
+					}
+				} else if job.CompletedFiles != 1 {
+					t.Fatalf("retry did not preserve replace policy: %+v", job)
+				}
+				side, target := "remote", path.Join(destination, "payload.txt")
+				if direction == "download" {
+					side, target = "local", filepath.Join(destination, "payload.txt")
+				}
+				preview, err := a.ReadFilePreview("files", side, target)
+				if err != nil || preview.Text != want {
+					t.Fatalf("retried content: %+v %v; want %q", preview, err, want)
+				}
+				if original := waitTransfer(t, a, "files", id); original != failed {
+					t.Fatalf("retry changed original history: %+v", original)
+				}
+				if _, err = a.RetryTransfer(retry); err == nil {
+					t.Fatal("accepted retry of a completed transfer")
+				}
+				a.ClearTransfers("files")
+				if _, err = a.RetryTransfer(id); err == nil {
+					t.Fatal("accepted retry of a cleared transfer")
+				}
+			})
+		}
+	}
+}
+
+func TestRetryTransferRequiresConnectedSession(t *testing.T) {
+	a, remote := transferTestApp(t)
+	source := filepath.Join(t.TempDir(), "missing.txt")
+	id, err := a.QueueTransfer(TransferRequest{SessionID: "files", Direction: "upload", Sources: []string{source}, Destination: remote, Conflict: "skip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := waitTransfer(t, a, "files", id); job.Status != "failed" {
+		t.Fatalf("expected failed transfer: %+v", job)
+	}
+	if err = a.Disconnect("files"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.RetryTransfer(id); err == nil {
+		t.Fatal("accepted retry without an active session")
+	}
+	if jobs := a.ListTransfers("files"); len(jobs) != 1 {
+		t.Fatalf("rejected retry added a job: %+v", jobs)
 	}
 }

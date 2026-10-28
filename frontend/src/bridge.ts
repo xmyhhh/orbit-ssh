@@ -38,7 +38,19 @@ export interface EditorDraft {
   updatedAt: string;
 }
 
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  status: "available" | "current" | "ahead";
+  releaseUrl: string;
+  notes: string;
+  publishedAt: string;
+  checkedAt: string;
+  downloads: { name: string; label: string; url: string }[];
+}
+
 interface Backend {
+  CheckForUpdates(currentVersion: string): Promise<UpdateInfo>;
   GetPlatform(): Promise<string>;
   GetLocalShellInfo(): Promise<LocalShellInfo>;
   ConnectLocalShell(
@@ -84,6 +96,7 @@ interface Backend {
   QueueTransfer(request: TransferRequest): Promise<string>;
   ListTransfers(sessionId: string): Promise<Transfer[]>;
   CancelTransfer(id: string): Promise<void>;
+  RetryTransfer(id: string): Promise<string>;
   ClearTransfers(sessionId: string): Promise<void>;
   ReadFilePreview(
     sessionId: string,

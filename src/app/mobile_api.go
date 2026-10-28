@@ -21,7 +21,7 @@ func init() {
 		"SyncTerminalHistory", "UpsertTerminalHistory", "AppendTerminalHistory", "DeleteTerminalHistory",
 		"ListDirectory", "ListLocalDirectory", "SelectLocalDirectory", "MakeLocalDirectory", "MakeDirectory",
 		"RenameRemote", "MoveRemote", "RemoveRemote", "ChmodRemote", "KillProcess",
-		"QueueTransfer", "ListTransfers", "CancelTransfer", "ClearTransfers",
+		"QueueTransfer", "ListTransfers", "CancelTransfer", "RetryTransfer", "ClearTransfers",
 		"ReadFilePreview", "ReadRemoteTextFile", "SaveRemoteTextFile", "SetEditorDirty", "UploadFile", "DownloadFile",
 		"UpdateEditorDraft", "LoadEditorDraft", "RemoveEditorDraft",
 		"DecideMCPCommand",

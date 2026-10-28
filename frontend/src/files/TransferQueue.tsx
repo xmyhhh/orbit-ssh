@@ -2,8 +2,9 @@ import {
   ArrowDownToLine,
   Check,
   ChevronDown,
-  CircleAlert,
   ListChecks,
+  LoaderCircle,
+  RotateCw,
   Upload,
   X,
 } from "lucide-react";
@@ -16,12 +17,18 @@ export default function TransferQueue({
   onToggle,
   onClear,
   onCancel,
+  canRetry,
+  retrying,
+  onRetry,
 }: {
   transfers: Transfer[];
   open: boolean;
   onToggle: () => void;
   onClear: () => void;
   onCancel: (id: string) => void;
+  canRetry: boolean;
+  retrying: string | null;
+  onRetry: (id: string) => void;
 }) {
   const active = transfers.filter((job) => !finished(job)).length;
   return (
@@ -120,12 +127,24 @@ export default function TransferQueue({
                       size={17}
                       aria-hidden="true"
                     />
-                  ) : job.status === "failed" ? (
-                    <CircleAlert
-                      className="job-failed"
-                      size={17}
-                      aria-hidden="true"
-                    />
+                  ) : job.status === "failed" || job.status === "cancelled" ? (
+                    <button
+                      className="icon-button"
+                      title={
+                        !canRetry
+                          ? "连接后可重试传输"
+                          : "按原路径及同名处理设置重新传输"
+                      }
+                      aria-label={`重试传输 ${job.name}`}
+                      disabled={!canRetry || retrying !== null}
+                      onClick={() => onRetry(job.id)}
+                    >
+                      {retrying === job.id ? (
+                        <LoaderCircle size={15} className="spin" />
+                      ) : (
+                        <RotateCw size={15} />
+                      )}
+                    </button>
                   ) : (
                     <span className="job-end" />
                   )}

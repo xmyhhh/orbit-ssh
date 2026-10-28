@@ -38,6 +38,8 @@ export default function FilesPane({
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [queueOpen, setQueueOpen] = useState(true);
   const [enqueueing, setEnqueueing] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const retryPending = useRef(false);
   const [androidFileSide, setAndroidFileSide] = useState<Side>("remote");
   const [preview, setPreview] = useState<{
     name: string;
@@ -119,6 +121,24 @@ export default function FilesPane({
   }
   function openPreview(side: Side, file: RemoteFile, filename: string) {
     setPreview({ name: file.name, side, path: filename });
+  }
+  async function retryTransfer(id: string) {
+    if (retryPending.current || session.demo || session.status !== "connected")
+      return;
+    retryPending.current = true;
+    setRetrying(id);
+    try {
+      await backend().RetryTransfer(id);
+      if (alive.current) {
+        setQueueOpen(true);
+        await refreshJobs();
+      }
+    } catch (e) {
+      if (alive.current) notify(errorText(e));
+    } finally {
+      retryPending.current = false;
+      if (alive.current) setRetrying(null);
+    }
   }
   const canTransfer =
     !session.demo &&
@@ -230,6 +250,9 @@ export default function FilesPane({
       <TransferQueue
         transfers={transfers}
         open={queueOpen}
+        canRetry={!session.demo && session.status === "connected"}
+        retrying={retrying}
+        onRetry={(id) => void retryTransfer(id)}
         onToggle={() => setQueueOpen(!queueOpen)}
         onClear={() => {
           void backend()

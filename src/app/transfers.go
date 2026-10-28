@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -72,6 +73,8 @@ func (a *App) QueueTransfer(req TransferRequest) (string, error) {
 			return "", errors.New("源路径必须是绝对路径")
 		}
 	}
+	// Retain an immutable snapshot for the worker and any later retry.
+	req.Sources = slices.Clone(req.Sources)
 	ctx, cancel := context.WithCancel(context.Background())
 	name := path.Base(req.Sources[0])
 	if req.Direction == "upload" {
@@ -154,6 +157,31 @@ func (a *App) CancelTransfer(id string) error {
 		}
 	}
 	return errors.New("传输任务不存在")
+}
+
+// RetryTransfer queues a fresh attempt with the original paths and conflict
+// policy. The previous attempt remains in history; partial files are not resumed.
+func (a *App) RetryTransfer(id string) (string, error) {
+	a.transferMu.Lock()
+	var request TransferRequest
+	found := false
+	for _, job := range a.transfers {
+		if job.view.ID != id {
+			continue
+		}
+		if job.view.Status != "failed" && job.view.Status != "cancelled" {
+			a.transferMu.Unlock()
+			return "", errors.New("只能重试失败或已取消的传输")
+		}
+		request = job.request
+		found = true
+		break
+	}
+	a.transferMu.Unlock()
+	if !found {
+		return "", errors.New("传输任务不存在或已清除")
+	}
+	return a.QueueTransfer(request)
 }
 
 func (a *App) ClearTransfers(sessionID string) {

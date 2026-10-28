@@ -35,6 +35,7 @@ type App struct {
 	editorDraftHosts map[string]string
 	dirtyEditors     map[string]bool
 	tray             trayState
+	updates          updateState
 	desktop          bool
 	lifecycleMu      sync.Mutex
 	lifecycleStop    func()
