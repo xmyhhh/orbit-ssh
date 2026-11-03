@@ -318,6 +318,50 @@
   line-height: 1.8;
   margin-top: 9px;
 }
+.trust-changed {
+  background: var(--danger-bg);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-top: 14px;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.trust-changed-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--danger);
+  font-weight: 600;
+}
+.trust-changed p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+.trust-changed dl {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.trust-changed dl > div {
+  display: grid;
+  gap: 3px;
+}
+.trust-changed dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+.trust-changed dd {
+  margin: 0;
+}
+.trust-changed code {
+  color: var(--text);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.trust-changed .text-button {
+  margin-top: 11px;
+  color: var(--danger);
+}
 .host-dialog {
   width: 570px;
 }

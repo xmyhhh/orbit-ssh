@@ -5,7 +5,9 @@ import {
   Eye,
   EyeOff,
   Fingerprint,
+  ShieldAlert,
   ShieldCheck,
+  ShieldOff,
   TerminalSquare,
 } from "lucide-react";
 import type { Credentials, Host } from "../types";
@@ -40,6 +42,10 @@ export function ConnectDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fingerprint, setFingerprint] = useState("");
+  const [changedKeys, setChangedKeys] = useState<{
+    previous: string;
+    current: string;
+  } | null>(null);
   const [hasSavedPassword, setHasSavedPassword] = useState(false);
   const [jumpHasSavedPassword, setJumpHasSavedPassword] = useState(false);
   const [checkingPassword, setCheckingPassword] = useState(
@@ -91,6 +97,7 @@ export function ConnectDialog({
     e?.preventDefault();
     setBusy(true);
     setError("");
+    setChangedKeys(null);
     try {
       await onConnect(host, credentials, accepted);
       if (!mounted.current) return;
@@ -102,19 +109,44 @@ export function ConnectDialog({
       const unknown = message.match(
         /HOST_KEY_UNKNOWN\|(SHA256:[A-Za-z0-9+/=]+)/,
       );
-      if (unknown) setFingerprint(unknown[1]);
-      else {
+      const changed = message.match(
+        /HOST_KEY_CHANGED\|(SHA256:[A-Za-z0-9+/=]+)\|(SHA256:[A-Za-z0-9+/=]+)(\|跳板机 (.+))?/,
+      );
+      if (unknown) {
+        setChangedKeys(null);
+        setFingerprint(unknown[1]);
+      } else {
         setFingerprint("");
-        setError(
-          message.includes("HOST_KEY_CHANGED")
-            ? `服务器指纹与之前保存的记录不同，连接已拒绝。请先与服务器管理员核实。\n${message}`
-            : message.includes("JUMP_HOST_UNTRUSTED")
-              ? `跳板机的服务器指纹尚未信任。请先单独连接一次跳板机并确认指纹。\n${message}`
-              : message
-                  .replace("KEY_PASSPHRASE_REQUIRED|", "")
-                  .replace("PASSWORD_REQUIRED|", ""),
-        );
+        if (changed && !changed[3]) {
+          setChangedKeys({ previous: changed[1], current: changed[2] });
+        } else {
+          setChangedKeys(null);
+          setError(
+            changed
+              ? `跳板机 ${changed[4]} 的服务器指纹与之前保存的记录不同，连接已拒绝。请先单独连接该跳板机，在主机设置中清除它的指纹。\n${message}`
+              : message.includes("JUMP_HOST_UNTRUSTED")
+                ? `跳板机的服务器指纹尚未信任。请先单独连接一次跳板机并确认指纹。\n${message}`
+                : message
+                    .replace("KEY_PASSPHRASE_REQUIRED|", "")
+                    .replace("PASSWORD_REQUIRED|", ""),
+          );
+        }
       }
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+  async function clearChangedFingerprint() {
+    setBusy(true);
+    setError("");
+    try {
+      await backend().ForgetHostKey(host.id);
+      if (!mounted.current) return;
+      setChangedKeys(null);
+      // Reconnect so the new fingerprint still has to be verified explicitly.
+      await connect();
+    } catch (e) {
+      if (mounted.current) setError(errorText(e));
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -312,6 +344,40 @@ export function ConnectDialog({
             credentials.rememberPassword === false && (
               <p className="field-hint">连接成功后清除已保存密码。</p>
             )}
+          {changedKeys && (
+            <div className="trust-changed" role="alert">
+              <div className="trust-changed-heading">
+                <ShieldAlert size={17} />
+                服务器指纹已变化，连接被拒绝
+              </div>
+              <p>
+                请先通过云控制台或管理员核实服务器当前指纹。清除旧记录后会重新连接，仍需在下一步核对并确认新指纹。
+              </p>
+              <dl>
+                <div>
+                  <dt>已保存的指纹</dt>
+                  <dd>
+                    <code>{changedKeys.previous}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>服务器当前指纹</dt>
+                  <dd>
+                    <code>{changedKeys.current}</code>
+                  </dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => void clearChangedFingerprint()}
+              >
+                <ShieldOff size={15} />
+                清除旧指纹并重新连接
+              </button>
+            </div>
+          )}
           {error && (
             <p className="form-error" role="alert">
               {error}

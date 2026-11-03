@@ -12,6 +12,7 @@ async function prepare(page: Page) {
         calls: [] as string[],
         renames: [] as string[][],
         writes: [] as string[][],
+        forgets: [] as string[],
         mode: "success",
         pending: null as null | {
           resolve: () => void;
@@ -65,6 +66,10 @@ async function prepare(page: Page) {
           if (mock.mode === "failure") throw new Error("模拟网络不可达");
           if (mock.mode === "trust")
             throw new Error("HOST_KEY_UNKNOWN|SHA256:abcd1234");
+          if (mock.mode === "changed")
+            throw new Error(
+              "HOST_KEY_CHANGED|SHA256:old1234|SHA256:new5678",
+            );
           if (mock.mode === "password")
             throw new Error("PASSWORD_REQUIRED|请输入登录密码");
           if (mock.mode === "pending")
@@ -88,6 +93,9 @@ async function prepare(page: Page) {
         },
         RenameSession: async (id: string, name: string) => {
           mock.renames.push([id, name]);
+        },
+        ForgetHostKey: async (hostID: string) => {
+          mock.forgets.push(hostID);
         },
       };
       Object.assign(window, {
@@ -261,6 +269,31 @@ test("reconnect keeps fingerprint and password verification", async ({
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator(".terminal-session")).toHaveCount(1);
   expect(await buffer(page)).toContain("OLD-OUTPUT-KEEP");
+});
+
+test("changed server key can be cleared from the connect dialog", async ({
+  page,
+}) => {
+  const id = await prepare(page);
+  await disconnect(page, id);
+  await page.evaluate(() => {
+    (window as any).__sshMock.mode = "changed";
+  });
+  await page.getByRole("button", { name: "重新连接", exact: true }).click();
+  const notice = page.locator(".trust-changed");
+  await expect(notice).toContainText("服务器指纹已变化");
+  await expect(notice).toContainText("SHA256:old1234");
+  await expect(notice).toContainText("SHA256:new5678");
+  await page.evaluate(() => {
+    (window as any).__sshMock.mode = "trust";
+  });
+  await notice
+    .getByRole("button", { name: "清除旧指纹并重新连接" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("SHA256:abcd1234");
+  expect(await page.evaluate(() => (window as any).__sshMock.forgets)).toEqual([
+    "test-host",
+  ]);
 });
 
 test("reconnect preserves split geometry and leaves the sibling terminal alone", async ({
