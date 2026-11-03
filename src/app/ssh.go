@@ -218,7 +218,7 @@ func (a *App) sshConfig(host Host, credentials Credentials, jump bool, acceptedF
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
-	address := net.JoinHostPort(host.Address, strconv.Itoa(host.Port))
+	address := hostAddress(host)
 	a.store.mu.Lock()
 	known := a.store.state.KnownHosts[address]
 	a.store.mu.Unlock()

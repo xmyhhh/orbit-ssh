@@ -642,6 +642,34 @@
   color: var(--accent-text);
   margin-top: 17px;
 }
+.trusted-fingerprint-field > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.trusted-fingerprint {
+  display: block;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  padding: 9px 11px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.trusted-fingerprint-field .text-button {
+  align-self: flex-start;
+}
+.trust-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  align-self: flex-start;
+}
+.trust-confirm-actions .text-button.danger {
+  color: var(--danger);
+}
 .preferences-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));

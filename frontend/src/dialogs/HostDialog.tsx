@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Check,
   ChevronRight,
   FileKey2,
+  Fingerprint,
   FolderOpen,
   LockKeyhole,
   Network,
+  ShieldOff,
 } from "lucide-react";
 import type { Host } from "../types";
 import { backend, errorText, isDesktop } from "../bridge";
@@ -64,7 +66,43 @@ export function HostDialog({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [credentialNotice, setCredentialNotice] = useState("");
+  const [trustedFingerprint, setTrustedFingerprint] = useState<string | null>(
+    null,
+  );
+  const [trustNotice, setTrustNotice] = useState("");
+  const [confirmingForget, setConfirmingForget] = useState(false);
   const [tab, setTab] = useState<"connection" | "tunneling">("connection");
+  useEffect(() => {
+    if (!host || isNew || !isDesktop()) return;
+    let active = true;
+    setTrustedFingerprint(null);
+    setTrustNotice("");
+    setConfirmingForget(false);
+    backend()
+      .TrustedFingerprint(host.id)
+      .then((value) => {
+        if (active) setTrustedFingerprint(value || "");
+      })
+      .catch(() => {
+        if (active) setTrustedFingerprint(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [host, isNew]);
+  function forgetFingerprint() {
+    if (!host) return;
+    setError("");
+    setTrustNotice("");
+    void backend()
+      .ForgetHostKey(host.id)
+      .then(() => {
+        setTrustedFingerprint("");
+        setConfirmingForget(false);
+        setTrustNotice("已清除已信任的服务器指纹，下次连接需重新核对。");
+      })
+      .catch((e) => setError(errorText(e)));
+  }
   const keyPathWarning =
     form.authType === "key" && isPublicKeyPath(form.keyPath)
       ? publicKeyWarning
@@ -356,6 +394,64 @@ export function HostDialog({
               通过另一台已保存主机转发连接；跳板机需已信任其服务器指纹。
             </span>
           </div>
+          {host && !isNew && isDesktop() && trustedFingerprint !== null && (
+            <div className="field trusted-fingerprint-field">
+              <span>
+                <Fingerprint size={14} />
+                已信任的服务器指纹
+              </span>
+              {trustedFingerprint ? (
+                <>
+                  <code className="trusted-fingerprint">
+                    {trustedFingerprint}
+                  </code>
+                  <p className="field-hint">
+                    服务器重装系统或更换 SSH 主机密钥后，可清除指纹并在下次连接时重新核对。
+                  </p>
+                  {confirmingForget ? (
+                    <>
+                      <p className="field-hint" role="alert">
+                        清除后，下次连接会重新显示服务器指纹并要求核对。仅在确认服务器已重装系统或密钥已更换时继续。
+                      </p>
+                      <div className="trust-confirm-actions">
+                        <button
+                          className="text-button danger"
+                          type="button"
+                          disabled={saving}
+                          onClick={forgetFingerprint}
+                        >
+                          <ShieldOff size={15} />
+                          确认清除
+                        </button>
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => setConfirmingForget(false)}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setConfirmingForget(true)}
+                    >
+                      <ShieldOff size={15} />
+                      清除已信任指纹
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="field-hint" role="status">
+                  {trustNotice ||
+                    "此主机尚未信任服务器指纹，首次连接时会要求核对。"}
+                </p>
+              )}
+            </div>
+          )}
           <div className="color-field">
             <span>主机颜色</span>
             <div>

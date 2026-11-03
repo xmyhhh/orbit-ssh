@@ -75,6 +75,8 @@ interface Backend {
   HasSavedPassword(hostID: string): Promise<boolean>;
   SavePassword(hostID: string, password: string): Promise<void>;
   ForgetPassword(hostID: string): Promise<void>;
+  TrustedFingerprint(hostID: string): Promise<string>;
+  ForgetHostKey(hostID: string): Promise<void>;
   Monitor(id: string): Promise<Metrics>;
   Connect(
     id: string,
