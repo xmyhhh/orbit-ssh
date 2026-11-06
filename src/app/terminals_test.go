@@ -11,6 +11,12 @@ import (
 func TestSSHReconnectReusesIDAfterExitAndFailure(t *testing.T) {
 	address, fingerprint := testSSHServer(t)
 	a := testApp(t, address)
+	preferences := a.store.snapshot().Preferences
+	preferences.MCPEnabled = true
+	preferences.MCPAllowTerminalInput = true
+	if err := a.SavePreferences(preferences); err != nil {
+		t.Fatal(err)
+	}
 	credentials := Credentials{Password: "session-only-secret"}
 	closed := make(chan string, 8)
 	data := make(chan string, 32)

@@ -57,6 +57,7 @@ type Preferences struct {
 	MCPEnabled             bool            `json:"mcpEnabled"`
 	MCPAllowConnections    bool            `json:"mcpAllowConnections"`
 	MCPAllowTerminalInput  bool            `json:"mcpAllowTerminalInput"`
+	MCPAllowDirectCommands bool            `json:"mcpAllowDirectCommands"`
 	MCPAllowFileAccess     bool            `json:"mcpAllowFileAccess"`
 	MCPPort                int             `json:"mcpPort"`
 	Shortcuts              WindowShortcuts `json:"shortcuts"`
@@ -138,6 +139,9 @@ func openStore(path string) (*Store, error) {
 	}
 	if s.state.Preferences.KeepAliveSeconds < 0 || s.state.Preferences.KeepAliveSeconds > 300 {
 		s.state.Preferences.KeepAliveSeconds = 30
+	}
+	if !s.state.Preferences.MCPEnabled || !s.state.Preferences.MCPAllowTerminalInput {
+		s.state.Preferences.MCPAllowDirectCommands = false
 	}
 	normalizeWindowShortcuts(&s.state.Preferences.Shortcuts)
 	return s, nil

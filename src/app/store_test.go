@@ -1,10 +1,33 @@
 package app
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestOpenStoreDisablesDirectCommandsWithoutBasePermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "workspace.json")
+	state := defaultState()
+	state.Preferences.MCPAllowDirectCommands = true
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.state.Preferences.MCPAllowDirectCommands {
+		t.Fatal("direct command access must be disabled when its base permissions are off")
+	}
+}
 
 func TestValidateHostRejectsPublicKeyFile(t *testing.T) {
 	base := Host{

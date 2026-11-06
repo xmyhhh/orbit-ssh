@@ -4,9 +4,9 @@
 
 Orbit SSH 是一款面向 Windows、macOS、Linux 和 Android 的个人 SSH 工具，适合日常连接 Linux 服务器、维护文件、配置 SSH 隧道，以及在本机运行本地 Shell（Windows 上还可用 WSL）。无需注册账号，主机配置和登录凭据保存在当前设备。
 
-**v3.3.11（Windows x64 / macOS / Linux x64）：[Windows 安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-windows-x64-setup.exe) · [Windows 便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-windows-x64-portable.zip) · [macOS](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-macos-arm64.dmg) · [Linux](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-linux-x64.tar.gz)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v3.3.11) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
+**v3.3.12（Windows x64 / macOS / Linux x64）：[Windows 安装版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-windows-x64-setup.exe) · [Windows 便携版](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-windows-x64-portable.zip) · [macOS](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-macos-arm64.dmg) · [Linux](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-linux-x64.tar.gz)** · [发布说明](https://github.com/xmyhhh/orbit-ssh/releases/tag/v3.3.12) · [反馈问题](https://github.com/xmyhhh/orbit-ssh/issues)
 
-**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.3.11 只发布桌面版；Android 的后台会话能力会在下个版本单独发布。
+**Android 最新版仍是 [v2.0 · APK](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk)**，v3.3.12 只发布桌面版；Android 的后台会话能力会在下个版本单独发布。
 
 ![Orbit SSH v3.0 首页：主机卡片、分组、收藏和搜索](docs/images/v3-home.png)
 
@@ -63,14 +63,14 @@ Orbit SSH 是一款面向 Windows、macOS、Linux 和 Android 的个人 SSH 工�
 
 | 平台 | 下载 | 运行要求 |
 | --- | --- | --- |
-| Windows x64 · 安装版 | [OrbitSSH-v3.3.11-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
-| Windows x64 · 便携版 | [OrbitSSH-v3.3.11-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
-| macOS · Apple Silicon | [OrbitSSH-v3.3.11-macos-arm64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-macos-arm64.dmg) | 双击 dmg，把 `Orbit SSH.app` 拖进「应用程序」。 |
-| macOS · Intel | [OrbitSSH-v3.3.11-macos-x64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-macos-x64.dmg) | 同上；未做公证的应用首次打开需要右键选择「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Orbit SSH.app"`。 |
-| Linux x64 | [OrbitSSH-v3.3.11-linux-x64.tar.gz](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/OrbitSSH-v3.3.11-linux-x64.tar.gz) | 解压后运行 `OrbitSSH`；需要 GTK 3、WebKitGTK 和 Secret Service。 |
+| Windows x64 · 安装版 | [OrbitSSH-v3.3.12-windows-x64-setup.exe](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-windows-x64-setup.exe) | 双击安装；重复安装会覆盖旧版本并保留配置。 |
+| Windows x64 · 便携版 | [OrbitSSH-v3.3.12-windows-x64-portable.zip](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-windows-x64-portable.zip) | 解压后运行 `OrbitSSH.exe`，无需安装。 |
+| macOS · Apple Silicon | [OrbitSSH-v3.3.12-macos-arm64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-macos-arm64.dmg) | 双击 dmg，把 `Orbit SSH.app` 拖进「应用程序」。 |
+| macOS · Intel | [OrbitSSH-v3.3.12-macos-x64.dmg](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-macos-x64.dmg) | 同上；未做公证的应用首次打开需要右键选择「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Orbit SSH.app"`。 |
+| Linux x64 | [OrbitSSH-v3.3.12-linux-x64.tar.gz](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/OrbitSSH-v3.3.12-linux-x64.tar.gz) | 解压后运行 `OrbitSSH`；需要 GTK 3、WebKitGTK 和 Secret Service。 |
 | Android ARM64 | [OrbitSSH-v2.0-android-arm64.apk](https://github.com/xmyhhh/orbit-ssh/releases/download/v2.0/OrbitSSH-v2.0-android-arm64.apk) | Android 9+；将 APK 传到手机，按系统提示允许安装。 |
 
-所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.11/SHA256SUMS.txt) 核对下载文件。
+所有安装包均包含界面和 SSH 引擎，无需安装 Go 或 Node.js。启动后进入「远程主机」，点击「新建连接」添加服务器。可用发布页的 [SHA256SUMS.txt](https://github.com/xmyhhh/orbit-ssh/releases/download/v3.3.12/SHA256SUMS.txt) 核对下载文件。
 
 Windows 安装版会把程序安装到当前用户目录（默认 `%LOCALAPPDATA%\Programs\Orbit SSH`），卸载入口在 Windows 设置或开始菜单中；主机配置、凭据和终端历史保存在 `%APPDATA%\OrbitSSH`，覆盖安装和卸载都不会删除。安装版会检测并安装 Microsoft Edge WebView2 Runtime；便携版需要系统已有 WebView2，Windows 11 通常已自带。如果无法启动或提示缺少 WebView2，请从 [微软官方网站](https://developer.microsoft.com/microsoft-edge/webview2/#download) 安装 Evergreen Runtime 后重试。WSL 是可选功能，使用时需另外安装 WSL 和 Linux 发行版。
 
@@ -182,7 +182,7 @@ MCP 提供以下工具：
 | `kill_process` | 向指定 PID 发送 TERM、KILL、HUP 等信号；需要「允许 AI 输入终端」。 |
 | `run_command` | 提交一条命令，默认审批通过后写入终端；当前终端完全放行时直接执行。 |
 
-`create_host` 和 `connect_host` 需要开启「允许 AI 创建连接」；`send_terminal_input`、`kill_process` 和 `run_command` 需要另外开启「允许 AI 输入终端」；`list_directory` 和 `read_file` 需要开启「允许 AI 访问文件」。三个权限相互独立，默认关闭。`write_file` 同时需要文件访问和终端输入权限。AI 创建的终端与手动打开的终端相同，你可以直接查看输出、继续输入或关闭连接。
+`create_host` 和 `connect_host` 需要开启「允许 AI 创建连接」；`send_terminal_input`、`kill_process` 和 `run_command` 需要另外开启「允许 AI 输入终端」；「允许 AI 直接执行命令」可让之后打开的终端默认完全放行，无需逐条审批；`list_directory` 和 `read_file` 需要开启「允许 AI 访问文件」。这些权限默认关闭。`write_file` 同时需要文件访问和终端输入权限。AI 创建的终端与手动打开的终端相同，你可以直接查看输出、继续输入或关闭连接。
 
 已有主机时，AI 先调用 `list_hosts` 获取主机 ID，再调用 `connect_host`。没有主机时，先调用 `create_host`，填写 `address`、`username` 及可选的 `name`、`port`、`auth_type`、`key_path`、`jump_host_id`、`group`，然后使用返回的主机 ID 建立连接。`auth_type` 支持 `password`、`key` 和 `agent`；默认端口为 22，提供 `key_path` 时默认使用私钥认证，否则使用密码认证；`jump_host_id` 指向另一台已保存的主机。`create_host` 只添加配置，不覆盖已有主机。`connect_host` 和 `rename_session` 都接受最多 80 个字符的终端名称；留空或传入空名称会恢复为默认的主机或 Shell 名称。终端名称也会出现在终端历史和 `list_sessions` 中。
 
@@ -198,11 +198,11 @@ MCP 提供以下工具：
 
 > 使用 Orbit SSH MCP 添加主机「测试机」，地址为 192.0.2.10，端口 22，用户名 ubuntu，使用本机 C:/Users/me/.ssh/id_ed25519 私钥。保存后连接，并把新终端显示在 Orbit SSH 中。
 
-要执行命令时，先在 Orbit SSH 中启用「允许 AI 输入终端」，再明确要求 AI 调用 `send_terminal_input` 或 `run_command`。默认情况下，`run_command` 和包含换行（`\n`）或回车（`\r`）的终端输入都会先显示审批弹窗，你确认后才发送；不含换行的交互文本直接输入。弹窗只展示目标控制台、完整命令和拒绝/允许操作，高风险内容会标记「高风险」；审批超过 2 分钟或请求取消后自动关闭。
+要执行命令时，先在 Orbit SSH 中启用「允许 AI 输入终端」，再明确要求 AI 调用 `send_terminal_input` 或 `run_command`。默认情况下，`run_command` 和包含换行（`\n`）或回车（`\r`）的终端输入都会先显示审批弹窗，你确认后才发送；不含换行的交互文本直接输入。若同时开启「允许 AI 直接执行命令」，之后新建的终端会默认完全放行。弹窗只展示目标控制台、完整命令和拒绝/允许操作，高风险内容会标记「高风险」；审批超过 2 分钟或请求取消后自动关闭。
 
 **审批是共享终端的输入确认，不是隔离执行的安全沙箱。** 弹窗显示本次发送的文本，不包含终端中已输入但尚未执行的内容；此前 AI 或人工输入的命令前缀、终端程序状态和按键绑定都可能影响实际执行结果。不要让不可信 AI 与人工输入混用同一终端；需要隔离或严格执行边界时，请使用专用终端并结合受限账号、容器或其他系统隔离措施。
 
-MCP 服务运行且允许终端输入时，可以在终端工具栏手动开启当前终端的「完全放行」。放行只对当前会话有效，不会持久保存；新终端默认仍需审核。`list_sessions` 返回 `unrestricted` 状态，AI 没有特殊需求时应优先使用已放行的终端。
+MCP 服务运行且允许终端输入时，可以在终端工具栏手动开启或关闭当前终端的「完全放行」。集成设置中的「允许 AI 直接执行命令」只为之后新建的终端默认开启放行；关闭该选项不会更改已经打开终端的状态。放行只对当前会话有效，不会持久保存。`list_sessions` 返回 `unrestricted` 状态，AI 没有特殊需求时应优先使用已放行的终端。
 
 需要审批时，应用会尝试发送系统通知：macOS 和 Linux 支持打开完整命令或拒绝操作，Windows 提供提醒；所有允许执行操作都在应用内确认，不会仅凭截断的通知预览直接执行。通知显示受系统通知权限、勿扰模式及桌面通知服务影响，发送失败不会阻塞应用内审批。
 

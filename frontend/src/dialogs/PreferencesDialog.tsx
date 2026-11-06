@@ -429,6 +429,7 @@ export function PreferencesDialog({
                           mcpEnabled: false,
                           mcpAllowConnections: false,
                           mcpAllowTerminalInput: false,
+                          mcpAllowDirectCommands: false,
                           mcpAllowFileAccess: false,
                         }
                       : { mcpEnabled: true },
@@ -517,6 +518,32 @@ export function PreferencesDialog({
                       void change({
                         mcpAllowTerminalInput:
                           !preferences.mcpAllowTerminalInput,
+                        ...(!preferences.mcpAllowTerminalInput
+                          ? {}
+                          : { mcpAllowDirectCommands: false }),
+                      })
+                    }
+                  >
+                    <span />
+                  </button>
+                </div>
+                <div className="setting-row">
+                  <div>
+                    <strong>允许 AI 直接执行命令</strong>
+                    <p className="field-hint">
+                      新建终端默认完全放行，命令无需逐条确认。只影响之后打开的终端；关闭此项不会撤销已有终端的放行。需同时启用“允许 AI 输入终端”。
+                    </p>
+                  </div>
+                  <button
+                    className={`switch ${preferences.mcpAllowDirectCommands ? "on" : ""}`}
+                    role="switch"
+                    aria-label="允许 AI 直接执行命令"
+                    aria-checked={preferences.mcpAllowDirectCommands}
+                    disabled={busy || !preferences.mcpAllowTerminalInput}
+                    onClick={() =>
+                      void change({
+                        mcpAllowDirectCommands:
+                          !preferences.mcpAllowDirectCommands,
                       })
                     }
                   >

@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"orbitssh/src/local"
 )
 
 // recordedTerminal is a fake local terminal that records every write, so the
@@ -30,6 +33,31 @@ func (t *recordedTerminal) Close() error { return nil }
 func (t *recordedTerminal) Resize(_, _ int) error { return nil }
 
 func (t *recordedTerminal) Wait() (uint32, error) { return 0, nil }
+
+type heldRecordedTerminal struct {
+	recordedTerminal
+	done chan struct{}
+	once sync.Once
+}
+
+func newHeldRecordedTerminal() *heldRecordedTerminal {
+	return &heldRecordedTerminal{done: make(chan struct{})}
+}
+
+func (t *heldRecordedTerminal) Read([]byte) (int, error) {
+	<-t.done
+	return 0, io.EOF
+}
+
+func (t *heldRecordedTerminal) Close() error {
+	t.once.Do(func() { close(t.done) })
+	return nil
+}
+
+func (t *heldRecordedTerminal) Wait() (uint32, error) {
+	<-t.done
+	return 0, nil
+}
 
 func (t *recordedTerminal) joined() string {
 	t.mu.Lock()
@@ -225,6 +253,88 @@ func TestSessionMCPUnrestrictedBypassesApproval(t *testing.T) {
 	}
 	if infos := a.mcpSessions(); len(infos) != 1 || infos[0].Unrestricted {
 		t.Fatalf("flag not cleared: %+v", a.mcpSessions())
+	}
+}
+
+func TestAutoUnrestrictedAppliesOnlyToNewTerminals(t *testing.T) {
+	a := testApp(t, "127.0.0.1:22")
+	p := a.store.snapshot().Preferences
+	p.MCPEnabled = true
+	p.MCPAllowTerminalInput = true
+	p.MCPAllowDirectCommands = true
+	if err := a.SavePreferences(p); err != nil {
+		t.Fatal(err)
+	}
+
+	terminals := map[string]*heldRecordedTerminal{}
+	start := func(id string) {
+		t.Helper()
+		terminal := newHeldRecordedTerminal()
+		terminals[id] = terminal
+		if err := a.connectLocalTerminal(id, "测试终端", TerminalSize{}, func(context.Context, int, int) (local.Terminal, error) {
+			return terminal, nil
+		}); err != nil {
+			t.Fatalf("connect %s: %v", id, err)
+		}
+	}
+	start("first")
+	if !a.GetSessionMCPUnrestricted("first") {
+		t.Fatal("new terminal should inherit the enabled direct-command setting")
+	}
+
+	// Changing the default is prospective: it neither grants nor revokes
+	// consent for a terminal that is already open.
+	p.MCPAllowDirectCommands = false
+	if err := a.SavePreferences(p); err != nil {
+		t.Fatal(err)
+	}
+	if !a.GetSessionMCPUnrestricted("first") {
+		t.Fatal("changing the default revoked consent from an existing terminal")
+	}
+	start("second")
+	if a.GetSessionMCPUnrestricted("second") {
+		t.Fatal("new terminal inherited consent after the default was disabled")
+	}
+
+	result := a.callMCPTool("run_command", map[string]json.RawMessage{
+		"session_id": json.RawMessage(`"first"`), "command": json.RawMessage(`"echo direct"`),
+	})
+	if result.IsError || terminals["first"].joined() != "echo direct\n" {
+		t.Fatalf("automatically unrestricted terminal did not execute directly: %+v, %q", result, terminals["first"].joined())
+	}
+
+	p.MCPAllowTerminalInput = false
+	if err := a.SavePreferences(p); err != nil {
+		t.Fatal(err)
+	}
+	p.MCPAllowTerminalInput = true
+	if err := a.SavePreferences(p); err != nil {
+		t.Fatal(err)
+	}
+	if a.GetSessionMCPUnrestricted("first") {
+		t.Fatal("revoked base terminal permission was silently restored")
+	}
+}
+
+func TestDefaultSessionMCPUnrestrictedRequiresEveryPermission(t *testing.T) {
+	preferences := Preferences{
+		MCPEnabled:             true,
+		MCPAllowTerminalInput:  true,
+		MCPAllowDirectCommands: true,
+	}
+	if !defaultSessionMCPUnrestricted(preferences) {
+		t.Fatal("all three permissions should enable the new-session default")
+	}
+	for _, disable := range []func(*Preferences){
+		func(p *Preferences) { p.MCPEnabled = false },
+		func(p *Preferences) { p.MCPAllowTerminalInput = false },
+		func(p *Preferences) { p.MCPAllowDirectCommands = false },
+	} {
+		p := preferences
+		disable(&p)
+		if defaultSessionMCPUnrestricted(p) {
+			t.Fatalf("missing permission must not grant default consent: %+v", p)
+		}
 	}
 }
 

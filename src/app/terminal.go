@@ -105,18 +105,22 @@ func (a *App) authorizeMCPInput(ctx context.Context, id string) (mcpTerminalAuth
 
 func (a *App) writeMCPTerminal(ctx context.Context, id, data string, auth mcpTerminalAuthorization, requireUnrestricted bool) error {
 	return a.writeTerminal(id, data, func(local *localSession, remote *remoteSession) error {
+		// Match session registration's store -> app -> consent lock order so
+		// changing the default cannot race a newly opened terminal.
+		a.store.mu.Lock()
 		a.mu.Lock()
 		current := local == auth.local && remote == auth.remote &&
 			a.localSessions[id] == auth.local && a.sessions[id] == auth.remote
 		unrestricted := !requireUnrestricted || a.sessionMCPUnrestricted(id)
 		a.mu.Unlock()
 		if !current {
+			a.store.mu.Unlock()
 			return errors.New("终端会话已结束或已替换")
 		}
 		if !unrestricted {
+			a.store.mu.Unlock()
 			return errors.New("终端完全放行已撤销，请重新请求确认")
 		}
-		a.store.mu.Lock()
 		err := mcpInputPermission(a.store.state.Preferences)
 		if err == nil && auth.revision != a.store.mcpInputRevision {
 			err = errors.New("终端输入授权已撤销，请重新请求确认")

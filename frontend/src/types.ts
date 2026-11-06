@@ -95,6 +95,7 @@ export interface Preferences {
   mcpEnabled: boolean;
   mcpAllowConnections: boolean;
   mcpAllowTerminalInput: boolean;
+  mcpAllowDirectCommands: boolean;
   mcpAllowFileAccess: boolean;
   mcpPort: number;
   shortcuts: WindowShortcuts;

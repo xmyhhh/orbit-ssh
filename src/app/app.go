@@ -179,6 +179,9 @@ func (a *App) SavePreferences(p Preferences) error {
 	if p.MCPPort < 1024 || p.MCPPort > 65535 {
 		return errors.New("MCP 端口范围为 1024–65535")
 	}
+	if !p.MCPEnabled || !p.MCPAllowTerminalInput {
+		p.MCPAllowDirectCommands = false
+	}
 	if p.KeepAliveSeconds < 0 || p.KeepAliveSeconds > 300 {
 		return errors.New("保活间隔范围为 0–300 秒")
 	}
@@ -196,6 +199,11 @@ func (a *App) SavePreferences(p Preferences) error {
 		// between observing the old authorization and this revocation.
 		a.store.mcpInputRevision++
 		a.invalidateMCPCommandsLocked()
+		// Revoking either base permission also forgets per-session consent, so
+		// re-enabling input later cannot silently restore an old grant.
+		a.mcpSessionMu.Lock()
+		clear(a.mcpUnrestricted)
+		a.mcpSessionMu.Unlock()
 	}
 	a.store.mu.Unlock()
 	if a.desktop {

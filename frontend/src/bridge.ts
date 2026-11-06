@@ -88,6 +88,7 @@ interface Backend {
   ConnectMCPHost(id: string, size: TerminalSize): Promise<void>;
   RenameSession(id: string, name: string): Promise<void>;
   SetSessionMCPUnrestricted(id: string, unrestricted: boolean): Promise<void>;
+  GetSessionMCPUnrestricted(id: string): Promise<boolean>;
   Disconnect(id: string): Promise<void>;
   WriteTerminal(id: string, text: string): Promise<void>;
   ResizeTerminal(id: string, size: TerminalSize): Promise<void>;
@@ -214,6 +215,7 @@ export const defaults: Workspace = {
     mcpEnabled: false,
     mcpAllowConnections: false,
     mcpAllowTerminalInput: false,
+    mcpAllowDirectCommands: false,
     mcpAllowFileAccess: false,
     mcpPort: 8765,
     shortcuts: defaultShortcuts,

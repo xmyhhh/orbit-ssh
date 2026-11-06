@@ -69,9 +69,18 @@ func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start fun
 	if err != nil {
 		return fmt.Errorf("无法启动 %s：%w", name, err)
 	}
+	store := a.store
+	defaultUnrestricted := false
+	if store != nil {
+		store.mu.Lock()
+		defaultUnrestricted = defaultSessionMCPUnrestricted(store.state.Preferences)
+	}
 	a.mu.Lock()
 	if a.closing || ctx.Err() != nil {
 		a.mu.Unlock()
+		if store != nil {
+			store.mu.Unlock()
+		}
 		// ConPTY needs a reader to drain output while the console closes.
 		go func() { _, _ = io.Copy(io.Discard, terminal) }()
 		_ = terminal.Close()
@@ -82,10 +91,14 @@ func (a *App) connectLocalTerminal(id, name string, size TerminalSize, start fun
 		a.localSessions = map[string]*localSession{}
 	}
 	a.localSessions[id] = s
+	a.setSessionMCPUnrestrictedLocked(id, defaultUnrestricted)
 	delete(a.pending, id)
 	// Start the reader before Disconnect can close this terminal.
 	a.streamLocalTerminal(id, s)
 	a.mu.Unlock()
+	if store != nil {
+		store.mu.Unlock()
+	}
 	a.syncBackgroundState()
 	return nil
 }

@@ -30,6 +30,7 @@ export function useSessionConnections({
   stateRef,
   update,
   onOpenLocal,
+  onMCPUnrestricted,
   notify,
 }: {
   sessionsRef: RefObject<Session[]>;
@@ -41,6 +42,7 @@ export function useSessionConnections({
   stateRef: RefObject<Workspace>;
   update: (value: Workspace) => void;
   onOpenLocal: () => void;
+  onMCPUnrestricted: (id: string, unrestricted: boolean) => void;
   notify: (message: string) => void;
 }) {
   const connectingID = useRef<string | null>(null);
@@ -172,6 +174,7 @@ export function useSessionConnections({
         await backend().Disconnect(id);
         throw new Error("连接已取消");
       }
+      onMCPUnrestricted(id, await backend().GetSessionMCPUnrestricted(id));
       // A remote exit can arrive before the Connect promise resolves.
       setSessions((s) =>
         s.map((item) =>
@@ -309,6 +312,10 @@ export function useSessionConnections({
         await backend().Disconnect(session.id);
         return;
       }
+      onMCPUnrestricted(
+        session.id,
+        await backend().GetSessionMCPUnrestricted(session.id),
+      );
       setSessions((items) =>
         items.map((item) =>
           item.id === session.id && item.status !== "closed"

@@ -288,6 +288,12 @@ export default function App() {
     layout: terminalLayout,
     stateRef,
     update,
+    onMCPUnrestricted: (id, unrestricted) => {
+      setMcpUnrestricted((previous) => ({
+        ...previous,
+        [id]: unrestricted,
+      }));
+    },
     notify,
     onOpenLocal: () => {
       setSidebarOpen(false);
@@ -635,6 +641,14 @@ export default function App() {
       .catch(() => {})
       .then(async () => {
         if (isDesktop()) await backend().SavePreferences(preferences);
+        if (
+          (previous.mcpEnabled && !preferences.mcpEnabled) ||
+          (previous.mcpAllowTerminalInput &&
+            !preferences.mcpAllowTerminalInput)
+        )
+          setMcpUnrestricted((current) =>
+            Object.fromEntries(Object.keys(current).map((id) => [id, false])),
+          );
       });
     preferenceWrites.current = request;
     try {

@@ -444,15 +444,28 @@ func (a *App) connectSSH(parent context.Context, id, hostID string, credentials 
 	s := &remoteSession{client: client, shell: shell, stdin: stdin, host: host, output: &terminalOutputBuffer{}, done: make(chan struct{}), finished: make(chan struct{}), x11: x11,
 		releaseForwarding: func() { a.releaseForwarding(forwarding) },
 		releaseTransport:  releaseTransport}
+	store := a.store
+	defaultUnrestricted := false
+	if store != nil {
+		store.mu.Lock()
+		defaultUnrestricted = defaultSessionMCPUnrestricted(store.state.Preferences)
+	}
 	a.mu.Lock()
 	if a.closing || ctx.Err() != nil {
 		a.mu.Unlock()
+		if store != nil {
+			store.mu.Unlock()
+		}
 		shell.Close()
 		return errors.New("连接已取消")
 	}
 	a.sessions[id] = s
+	a.setSessionMCPUnrestrictedLocked(id, defaultUnrestricted)
 	delete(a.pending, id)
 	a.mu.Unlock()
+	if store != nil {
+		store.mu.Unlock()
+	}
 	keepClient = true
 	a.syncBackgroundState()
 	// Announce the new shell before streaming its banner/prompt, so a client
