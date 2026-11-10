@@ -813,6 +813,11 @@
   gap: 20px;
   border-top: 1px solid var(--line);
 }
+/* The copy must yield before the control: long hints wrap, they never shrink
+   the switch into an oval with the knob hanging outside. */
+.setting-row > div {
+  min-width: 0;
+}
 .setting-row strong {
   font-size: 12px;
   font-weight: 550;
@@ -893,7 +898,11 @@
   color: var(--accent);
 }
 .switch {
+  /* A flex item in .setting-row: long hint text must squeeze the copy, never
+     the track, otherwise the knob renders outside the 33px switch. */
+  flex: 0 0 auto;
   width: 33px;
+  min-width: 33px;
   height: 19px;
   border-radius: 20px;
   background: var(--line-strong);
@@ -904,6 +913,7 @@
 .switch > span {
   height: 13px;
   width: 13px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: var(--surface);
   box-shadow: 0 1px 3px #0002;
