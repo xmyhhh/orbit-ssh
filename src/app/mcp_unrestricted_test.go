@@ -345,7 +345,7 @@ func TestMCPUnrestrictedRejectsCancelledContext(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := a.requestMCPCommand(ctx, "local", "never run\n"); err == nil {
+	if _, err := a.requestMCPCommand(ctx, "local", "never run\n", ""); err == nil {
 		t.Fatal("unrestricted input accepted a cancelled request")
 	}
 	result := a.callMCPToolContext(ctx, "send_terminal_input", map[string]json.RawMessage{

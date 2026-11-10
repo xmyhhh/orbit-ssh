@@ -51,3 +51,13 @@ test("MCP approval keeps only the target, command, and actions", () => {
   assert.match(dialog, /aria-label="允许执行命令"/);
   assert.match(dialog, /aria-label="拒绝执行命令"/);
 });
+
+test("MCP approval shows the optional AI reason only when present", () => {
+  assert.match(dialog, /\{request\.reason && \(/);
+  assert.match(dialog, /className="mcp-command-reason"/);
+  assert.match(dialog, /AI 说明/);
+  assert.match(dialog, /\{request\.reason\}/);
+  const reasonRule = styles.match(/\.mcp-command-reason\s*\{([^}]+)\}/)[1];
+  assert.match(reasonRule, /color:\s*var\(--muted\)/);
+  assert.match(reasonRule, /overflow-wrap:\s*anywhere/);
+});

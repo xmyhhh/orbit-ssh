@@ -62,6 +62,7 @@ export interface MCPCommandRequest {
   id: string;
   sessionId: string;
   command: string;
+  reason?: string;
   createdAt?: number;
   expiresAt?: number;
   dangerous?: boolean;

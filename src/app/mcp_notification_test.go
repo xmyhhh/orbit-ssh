@@ -21,7 +21,7 @@ func TestMCPDecisionOnlyAcceptedOnce(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := a.requestMCPCommand(ctx, "local", "echo once\n")
+		_, err := a.requestMCPCommand(ctx, "local", "echo once\n", "")
 		done <- err
 	}()
 	var id string
@@ -89,7 +89,7 @@ func TestMCPCancellationClosesDialog(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := a.requestMCPCommand(ctx, "local", "must not execute\n")
+		_, err := a.requestMCPCommand(ctx, "local", "must not execute\n", "")
 		done <- err
 	}()
 	var id string
@@ -151,7 +151,7 @@ func TestMCPRevocationInvalidatesPendingApproval(t *testing.T) {
 			}
 			done := make(chan error, 1)
 			go func() {
-				_, err := a.requestMCPCommand(context.Background(), "local", "never run\n")
+				_, err := a.requestMCPCommand(context.Background(), "local", "never run\n", "")
 				done <- err
 			}()
 			var id string
@@ -221,7 +221,7 @@ func TestMCPDecisionRejectsCancelledAndRevokedRequests(t *testing.T) {
 					t.Error("invalidated decision was accepted")
 				}
 			}
-			if _, err := a.requestMCPCommand(ctx, "local", "never run\n"); err == nil {
+			if _, err := a.requestMCPCommand(ctx, "local", "never run\n", ""); err == nil {
 				t.Fatal("invalidated command succeeded")
 			}
 			if terminal.joined() != "" {
@@ -259,7 +259,7 @@ func TestMCPApprovalReadyAlongsideCancellationOrRevocation(t *testing.T) {
 					cancel()
 				}
 			}
-			if _, err := a.requestMCPCommand(ctx, "local", "never run\n"); err == nil {
+			if _, err := a.requestMCPCommand(ctx, "local", "never run\n", ""); err == nil {
 				t.Fatal("approval won over cancellation/revocation")
 			}
 			if terminal.joined() != "" {
@@ -270,9 +270,16 @@ func TestMCPApprovalReadyAlongsideCancellationOrRevocation(t *testing.T) {
 }
 
 func TestApprovalPreview(t *testing.T) {
-	body := approvalBody("终端 A", "  "+strings.Repeat("文", 200)+"\n")
+	body := approvalBody("终端 A", "", "  "+strings.Repeat("文", 200)+"\n")
 	if !utf8.ValidString(body) || !strings.HasPrefix(body, "终端 A 请求：") ||
 		!strings.HasSuffix(body, "…") || utf8.RuneCountInString(body) > 175 {
 		t.Fatalf("invalid preview: %q", body)
+	}
+	withReason := approvalBody("终端 A", "更新软件包索引", "apt-get update")
+	if withReason != "终端 A 请求（更新软件包索引）：apt-get update" {
+		t.Fatalf("reason missing from the notification: %q", withReason)
+	}
+	if approvalBody("", "", "") != "终端 请求：(空文本)" {
+		t.Fatalf("empty preview changed: %q", approvalBody("", "", ""))
 	}
 }

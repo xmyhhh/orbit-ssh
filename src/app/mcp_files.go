@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"orbitssh/src/notify"
@@ -22,6 +23,7 @@ type mcpPendingCommand struct {
 	id        string
 	sessionID string
 	command   string
+	reason    string
 	created   time.Time
 	decided   chan bool
 	app       *App
@@ -38,7 +40,60 @@ const (
 	mcpInputMaxBytes   = 16 * 1024
 	mcpApprovalTimeout = 2 * time.Minute
 	mcpCommandSent     = "命令已发送到终端，结果请用 read_terminal 查看"
+	// The optional explanation shown in the approval dialog stays short: 35
+	// characters for CJK text, or 35 words for other text.
+	mcpReasonMaxChars = 35
+	mcpReasonMaxWords = 35
+	// 35 English words rarely exceed this many characters; the cap stops one
+	// absurdly long token, which would otherwise count as a single word.
+	mcpReasonMaxEnglishRunes = 300
 )
+
+// normalizeMCPReason validates the optional explanation an AI attaches to a
+// command that needs user approval. Text containing CJK characters is limited
+// to 35 characters; other text is limited to 35 words, so an English sentence
+// is not rejected for exceeding 35 characters. Whitespace-only input is valid
+// and simply not displayed in the dialog.
+func normalizeMCPReason(reason string) (string, error) {
+	fields := strings.Fields(reason)
+	if len(fields) == 0 {
+		return "", nil
+	}
+	for _, r := range reason {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return "", errors.New("reason 包含无效字符，请使用普通文字")
+		}
+	}
+	// Wrapped or multi-line explanations are collapsed so the dialog keeps one
+	// readable line.
+	reason = strings.Join(fields, " ")
+	// Any CJK character switches the limit to characters, which matches how
+	// the text is written and counted by hand.
+	if usesCJK(reason) {
+		if count := utf8.RuneCountInString(reason); count > mcpReasonMaxChars {
+			return "", fmt.Errorf("reason 过长：必须简短于 %d 个字符（当前 %d 个），请写得更简短", mcpReasonMaxChars, count)
+		}
+		return reason, nil
+	}
+	if len(fields) > mcpReasonMaxWords {
+		return "", fmt.Errorf("reason 过长：必须简短于 %d 个单词（当前 %d 个），请写得更简短", mcpReasonMaxWords, len(fields))
+	}
+	// A single absurd token counts as one word, so cap its length as well.
+	if utf8.RuneCountInString(reason) > mcpReasonMaxEnglishRunes {
+		return "", fmt.Errorf("reason 过长：必须简短于 %d 个单词，请写得更简短", mcpReasonMaxWords)
+	}
+	return reason, nil
+}
+
+func usesCJK(text string) bool {
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) ||
+			unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
+			return true
+		}
+	}
+	return false
+}
 
 func (a *App) allowMCPFiles() error {
 	if err := a.ready(); err != nil {
@@ -154,7 +209,9 @@ func (a *App) mcpKillProcess(sessionID string, pid int, signal string) (map[stri
 // is written to the terminal verbatim once approved; callers that execute a
 // command append the trailing newline themselves. Windows whose user turned on
 // full consent (完全放行) skip the dialog entirely.
-func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) (string, error) {
+//
+// reason is the AI's optional, already validated explanation for the dialog.
+func (a *App) requestMCPCommand(ctx context.Context, sessionID, command, reason string) (string, error) {
 	if len(command) == 0 || len(command) > mcpInputMaxBytes {
 		return "", errors.New("输入长度应为 1–16384 字节")
 	}
@@ -178,7 +235,7 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 	defer cancel(nil)
 	request := &mcpPendingCommand{
 		id: "cmd-" + rand.Text(), sessionID: sessionID, command: command,
-		created: time.Now(), decided: make(chan bool, 1),
+		reason: reason, created: time.Now(), decided: make(chan bool, 1),
 		app: a, ctx: ctx, cancel: cancel, revision: auth.revision,
 	}
 	// Store -> command is also the order used by revocation and decisions.
@@ -223,6 +280,7 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 	}
 	a.emit("mcp:command-request", map[string]any{
 		"id": request.id, "sessionId": sessionID, "command": command,
+		"reason":    reason,
 		"dangerous": dangerousCommand(command),
 		"createdAt": request.created.UnixMilli(),
 		"expiresAt": request.created.Add(mcpApprovalTimeout).UnixMilli(),
@@ -231,7 +289,7 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 		name, _ := a.sessionNames(sessionID)
 		// A slow/absent desktop service must never block a dialog decision
 		// or prevent the approval timeout from running.
-		go notify.Approval("Orbit SSH 需要你确认命令", approvalBody(name, command), request.id)
+		go notify.Approval("Orbit SSH 需要你确认命令", approvalBody(name, reason, command), request.id)
 	}
 	select {
 	case approved := <-request.decided:
@@ -253,8 +311,8 @@ func (a *App) requestMCPCommand(ctx context.Context, sessionID, command string) 
 }
 
 // approvalBody keeps the notification readable: the session the command
-// targets plus a preview of the payload.
-func approvalBody(sessionName, command string) string {
+// targets, the optional AI reason and a preview of the payload.
+func approvalBody(sessionName, reason, command string) string {
 	if command = strings.TrimSpace(command); command == "" {
 		command = "(空文本)"
 	}
@@ -265,6 +323,9 @@ func approvalBody(sessionName, command string) string {
 	}
 	if sessionName == "" {
 		sessionName = "终端"
+	}
+	if reason != "" {
+		return sessionName + " 请求（" + reason + "）：" + command
 	}
 	return sessionName + " 请求：" + command
 }
@@ -343,7 +404,8 @@ func (a *App) ListMCPCommands() []map[string]any {
 		request := mcpPendingCommands[id]
 		commands = append(commands, map[string]any{
 			"id": request.id, "sessionId": request.sessionID,
-			"command": request.command, "createdAt": request.created.UnixMilli(),
+			"command": request.command, "reason": request.reason,
+			"createdAt": request.created.UnixMilli(),
 			"expiresAt": request.created.Add(mcpApprovalTimeout).UnixMilli(),
 			"dangerous": dangerousCommand(request.command),
 		})

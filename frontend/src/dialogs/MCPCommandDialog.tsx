@@ -87,6 +87,12 @@ export function MCPCommandDialog({
         <strong>{request.sessionName || request.sessionId}</strong>
         {danger && <span className="mcp-command-risk">高风险</span>}
       </div>
+      {request.reason && (
+        <p className="mcp-command-reason">
+          <span>AI 说明</span>
+          {request.reason}
+        </p>
+      )}
       <pre className="mcp-command-text" aria-label="待执行命令" tabIndex={0}>
         <code>{request.command}</code>
       </pre>

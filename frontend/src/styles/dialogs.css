@@ -464,6 +464,19 @@
   color: var(--danger);
   font-size: 10px;
 }
+.mcp-command-reason {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.mcp-command-reason span {
+  margin-right: 8px;
+  color: var(--text);
+}
 .mcp-command-text {
   display: flex;
   gap: 9px;
