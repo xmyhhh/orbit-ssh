@@ -133,6 +133,9 @@ func (a *App) ImportSSHConfig(entries []SSHConfigEntry) (SSHConfigImportResult, 
 			host.Favorite = existing.Favorite
 			host.PortForwards = existing.PortForwards
 			host.X11 = existing.X11
+			host.ProxyType = existing.ProxyType
+			host.ProxyAddress = existing.ProxyAddress
+			host.ProxyPort = existing.ProxyPort
 			result.Updated++
 		} else {
 			result.Added++

@@ -20,6 +20,9 @@ type Host struct {
 	AuthType      string        `json:"authType"`
 	KeyPath       string        `json:"keyPath"`
 	JumpHostID    string        `json:"jumpHostId,omitempty"`
+	ProxyType     string        `json:"proxyType,omitempty"`
+	ProxyAddress  string        `json:"proxyAddress,omitempty"`
+	ProxyPort     int           `json:"proxyPort,omitempty"`
 	Color         string        `json:"color"`
 	Favorite      bool          `json:"favorite"`
 	LastConnected string        `json:"lastConnected"`
@@ -209,6 +212,9 @@ func validateHost(h Host) error {
 			return errors.New("主机不能以自身作为跳板机")
 		}
 	}
+	if err := validateProxy(h); err != nil {
+		return err
+	}
 	return validateTunneling(h.PortForwards, h.X11)
 }
 
@@ -230,9 +236,15 @@ func validateJumpChain(hosts []Host, next Host) error {
 	seen := map[string]bool{next.ID: true}
 	current := next
 	for current.JumpHostID != "" {
+		if current.ProxyType != "" {
+			return errors.New("连接代理不能与跳板机同时使用")
+		}
 		jump, ok := byID[current.JumpHostID]
 		if !ok {
 			return errors.New("跳板机不存在，请重新选择")
+		}
+		if jump.ProxyType != "" {
+			return errors.New("已启用连接代理的主机不能用作跳板机")
 		}
 		if seen[jump.ID] {
 			return errors.New("跳板机配置存在循环引用")
@@ -267,6 +279,21 @@ func (s *Store) saveHost(h Host) error {
 	defer s.mu.Unlock()
 	if err := validateJumpChain(s.state.Hosts, h); err != nil {
 		return err
+	}
+	if h.ProxyType != "" {
+		updated := append([]Host(nil), s.state.Hosts...)
+		for i := range updated {
+			if updated[i].ID == h.ID {
+				updated[i] = h
+			}
+		}
+		for _, existing := range s.state.Hosts {
+			if existing.ID != h.ID {
+				if err := validateJumpChain(updated, existing); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	previous := append([]Host{}, s.state.Hosts...)
 	found := false

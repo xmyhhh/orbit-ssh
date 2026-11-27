@@ -134,6 +134,19 @@ export function HostDialog({
       setError("主机地址应为 IP 或域名，不包含协议、空格或路径。");
       return;
     }
+    if (
+      form.proxyType &&
+      (!form.proxyAddress?.trim() ||
+        /[\s/\\\[\]]/.test(form.proxyAddress) ||
+        !Number.isInteger(form.proxyPort) ||
+        !form.proxyPort ||
+        form.proxyPort < 1 ||
+        form.proxyPort > 65535)
+    ) {
+      setTab("connection");
+      setError("请填写有效的代理地址和端口（1–65535）。");
+      return;
+    }
     const tunnelError = validateTunnelSettings(
       form.portForwards ?? [],
       form.x11 ?? defaultX11,
@@ -150,6 +163,7 @@ export function HostDialog({
         name: form.name.trim(),
         address: form.address.trim(),
         username: form.username.trim(),
+        proxyAddress: form.proxyAddress?.trim(),
         group: form.group.trim() || "默认分组",
       });
       onClose();
@@ -374,11 +388,63 @@ export function HostDialog({
             </label>
           )}
           <div className="field">
+            <span>连接代理</span>
+            <Select
+              ariaLabel="连接代理"
+              size="lg"
+              value={form.proxyType ?? ""}
+              disabled={Boolean(form.jumpHostId)}
+              onChange={(value) =>
+                setForm((f) => ({
+                  ...f,
+                  proxyType: (value || undefined) as Host["proxyType"],
+                  proxyAddress: value
+                    ? f.proxyAddress || "127.0.0.1"
+                    : undefined,
+                  proxyPort: value ? f.proxyPort || 7890 : undefined,
+                }))
+              }
+              options={[
+                { value: "", label: "不使用代理" },
+                { value: "socks5", label: "SOCKS5" },
+                { value: "http", label: "HTTP CONNECT" },
+              ]}
+            />
+            <span className="field-hint">
+              连接代理与跳板机不能同时使用；代理需支持 TCP 连接。
+            </span>
+          </div>
+          {form.proxyType && (
+            <div className="form-row host-address">
+              <label className="field">
+                代理地址
+                <input
+                  value={form.proxyAddress ?? ""}
+                  placeholder="127.0.0.1"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  onChange={(e) => field("proxyAddress", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                代理端口
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={form.proxyPort || ""}
+                  onChange={(e) => field("proxyPort", Number(e.target.value))}
+                />
+              </label>
+            </div>
+          )}
+          <div className="field">
             <span>跳板机（ProxyJump，可选）</span>
             <Select
               ariaLabel="跳板机（ProxyJump，可选）"
               size="lg"
               value={form.jumpHostId ?? ""}
+              disabled={Boolean(form.proxyType)}
               onChange={(value) => field("jumpHostId", value)}
               options={[
                 { value: "", label: "直连目标主机" },
@@ -387,6 +453,7 @@ export function HostDialog({
                   .map((item) => ({
                     value: item.id,
                     label: `${item.name}（${item.username}@${item.address}）`,
+                    disabled: Boolean(item.proxyType),
                   })),
               ]}
             />
@@ -406,7 +473,8 @@ export function HostDialog({
                     {trustedFingerprint}
                   </code>
                   <p className="field-hint">
-                    服务器重装系统或更换 SSH 主机密钥后，可清除指纹并在下次连接时重新核对。
+                    服务器重装系统或更换 SSH
+                    主机密钥后，可清除指纹并在下次连接时重新核对。
                   </p>
                   {confirmingForget ? (
                     <>

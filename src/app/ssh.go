@@ -265,6 +265,14 @@ func (a *App) openSSHClient(parent context.Context, host Host, credentials Crede
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
+	for _, hop := range chain {
+		if err := validateProxy(hop); err != nil {
+			return nil, nil, func() {}, err
+		}
+		if len(chain) > 1 && hop.ProxyType != "" {
+			return nil, nil, func() {}, errors.New("连接代理不能与跳板机同时使用")
+		}
+	}
 	var (
 		client   *ssh.Client
 		trusts   []hopTrust
@@ -290,7 +298,11 @@ func (a *App) openSSHClient(parent context.Context, host Host, credentials Crede
 		ctx, cancel := context.WithTimeout(parent, 20*time.Second)
 		var raw net.Conn
 		if client == nil {
-			raw, err = platform.DialSSH(ctx, address)
+			if hop.ProxyType != "" {
+				raw, err = dialSSHProxy(ctx, hop, address)
+			} else {
+				raw, err = platform.DialSSH(ctx, address)
+			}
 		} else {
 			raw, err = client.DialContext(ctx, "tcp", address)
 		}

@@ -24,6 +24,9 @@ export interface Host {
   authType: "password" | "key" | "agent";
   keyPath: string;
   jumpHostId?: string;
+  proxyType?: "socks5" | "http";
+  proxyAddress?: string;
+  proxyPort?: number;
   color: string;
   favorite: boolean;
   lastConnected: string;
